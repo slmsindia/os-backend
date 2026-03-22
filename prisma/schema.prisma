@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id          String   @id @default(uuid())
+  mobile      String   @unique
+  password    String
+  fullName    String
+  gender      Gender
+  dateOfBirth DateTime
+  roleId      String
+  parentId    String?
+  tenantId    String
+  createdAt   DateTime @default(now())
+  parent      User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children    User[]   @relation("UserHierarchy")
+  role        Role     @relation(fields: [roleId], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  permissions RolePermission[]
+  users       User[]
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  mobile    String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

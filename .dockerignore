@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+.env
+.git
+prisma/migrations
+*.md
+Dockerfile
+docker-compose.yml
