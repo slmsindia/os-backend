@@ -6,6 +6,10 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:G9W38EdRXIJtdAXKKpVB@3.111.55.59:54325/osdb1
+      - REDIS_HOST=online-saathi-osdbr-xenn16
+      - REDIS_PORT=6379
+      - REDIS_USERNAME=default
+      - REDIS_PASSWORD=yUOn9G8gMuEJEDkcYXmq
       - REDIS_URL=redis://default:yUOn9G8gMuEJEDkcYXmq@online-saathi-osdbr-xenn16:6379
       - JWT_SECRET=12345
       - PORT=3000
