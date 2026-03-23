@@ -11,7 +11,7 @@ const sendOtpSMS = async (mobile, otp) => {
   try {
     const message = `Dear Saathi,  OTP for Your Online Saathi App Account Registration is ${otp}. OTP will expire in 10 minutes. Keep Using your Online Saathi App.\n\nSHLAXM`;
 
-    // ensure 91 prefix for india
+    // ensure 91 prefix for india 
     const formattedMobile = mobile.startsWith("91") ? mobile : `91${mobile}`;
 
     const params = {
