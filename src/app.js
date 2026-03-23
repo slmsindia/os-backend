@@ -18,10 +18,10 @@ app.use(morgan("dev"));
 app.use(express.json());
 
 // routes
-app.use("/auth", authRoutes);
-app.use("/users", userRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 
-app.get("/ping", (req, res) => res.json({ message: "pong" }));
+app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "not found" }));
