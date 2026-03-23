@@ -109,6 +109,48 @@ const authController = {
     // In JWT, logout is usually handled by the client (deleting the token).
     // This endpoint can be used to perform any server-side cleanup or logging.
     res.json({ success: true, message: "logged out" });
+  },
+
+  forgotPassword: async (req, res) => {
+    const { mobile } = req.body;
+    if (!mobile) return res.status(400).json({ message: "mobile required" });
+
+    try {
+      const user = await prisma.user.findUnique({ where: { mobile } });
+      if (!user) return res.status(404).json({ message: "user not found" });
+
+      const success = await sendOtp(mobile);
+      if (!success) return res.status(500).json({ message: "failed to send otp" });
+
+      res.json({ success: true, message: "otp sent" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "error" });
+    }
+  },
+
+  resetPassword: async (req, res) => {
+    const { mobile, otp, newPassword } = req.body;
+    if (!mobile || !otp || !newPassword) return res.status(400).json({ message: "fields missing" });
+
+    try {
+      const result = await verifyOtp(mobile, otp);
+      if (!result.success) return res.status(400).json({ message: result.message });
+
+      const user = await prisma.user.findUnique({ where: { mobile } });
+      if (!user) return res.status(404).json({ message: "user not found" });
+
+      const hash = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hash }
+      });
+
+      res.json({ success: true, message: "password updated" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "error" });
+    }
   }
 };
 
