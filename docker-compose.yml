@@ -5,8 +5,8 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://darpanpatel:password@db:5432/saathi?schema=public
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:G9W38EdRXIJtdAXKKpVB@3.111.55.59:54325/osdb1
+      - REDIS_URL=redis://default:yUOn9G8gMuEJEDkcYXmq@online-saathi-osdbr-xenn16:6379
       - JWT_SECRET=12345
       - PORT=3000
     depends_on:
@@ -16,7 +16,7 @@ services:
         condition: service_started
 
   db:
-    image: postgres:15
+    image: postgres:18
     environment:
       - POSTGRES_USER=darpanpatel
       - POSTGRES_PASSWORD=password
