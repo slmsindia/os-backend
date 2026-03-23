@@ -72,7 +72,8 @@ const authController = {
           roleId: role.id,
           tenantId: tenant.id,
           parentId: null
-        }
+        },
+        include: { role: true }
       });
 
       const accessToken = generateToken(user);
