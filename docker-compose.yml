@@ -13,6 +13,7 @@ services:
       - REDIS_URL=redis://default:yUOn9G8gMuEJEDkcYXmq@online-saathi-osdbr-xenn16:6379
       - JWT_SECRET=12345
       - PORT=3000
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175
     depends_on:
       db:
         condition: service_healthy
