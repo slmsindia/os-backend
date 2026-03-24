@@ -20,6 +20,23 @@ enum Gender {
   OTHER
 }
 
+enum UserType {
+  USER
+  MEMBER
+  SAATHI
+  BUSINESS_PARTNER
+  STATE_PARTNER
+  DISTRICT_PARTNER
+  COUNTRY_HEAD
+  ADMIN
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id          String   @id @default(uuid())
   mobile      String   @unique
@@ -28,6 +45,9 @@ model User {
   gender      Gender
   dateOfBirth DateTime
   roleId      String
+  userType    UserType       @default(USER)
+  approvalStatus ApprovalStatus @default(APPROVED)
+  approvedAt  DateTime?
   parentId    String?
   tenantId    String
   createdAt   DateTime @default(now())
