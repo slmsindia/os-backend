@@ -6,7 +6,8 @@ const EXPIRES = process.env.JWT_EXPIRE_IN || "1h";
 const generateToken = (user) => {
   return jwt.sign({
     user_id: user.id,
-    role: user.role.name,
+    identity: user.identity,
+    roles: user.roles ? user.roles.map(ur => ur.role.name) : [],
     tenant_id: user.tenantId,
     parent_id: user.parentId,
   }, SECRET, { expiresIn: EXPIRES });
