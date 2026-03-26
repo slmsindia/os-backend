@@ -1,9 +1,12 @@
+const bcrypt = require("bcrypt");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
 
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
-    const { mobile, fullName, password, gender, dateOfBirth } = req.body;
+    const { mobile, fullName, password, gender, dateOfBirth, parentId } = req.body;
     const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!mobile || !fullName || !password) {
@@ -11,6 +14,19 @@ const adminController = {
     }
 
     try {
+      let finalParentId = myId;
+
+      // If explicit parentId provided, verify it belongs to same tenant
+      if (parentId) {
+        const parent = await prisma.user.findFirst({
+          where: { id: parentId, tenantId: myTenantId }
+        });
+        if (!parent) {
+          return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
+        }
+        finalParentId = parentId;
+      }
+
       const hash = await bcrypt.hash(password, 10);
       const user = await prisma.user.create({
         data: {
@@ -21,7 +37,7 @@ const adminController = {
           dateOfBirth: new Date(dateOfBirth),
           identity: targetIdentity,
           tenantId: myTenantId,
-          parentId: myId,
+          parentId: finalParentId,
           createdBy: myId
         }
       });

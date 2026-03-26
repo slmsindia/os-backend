@@ -1,25 +1,51 @@
+const bcrypt = require("bcrypt");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
 
 const superAdminController = {
   createTenant: async (req, res) => {
-    const { name, domain } = req.body;
+    const { name, domain, adminMobile, adminName, adminPassword } = req.body;
 
-    if (!name || !domain) {
-      return res.status(400).json({ success: false, message: "name and domain are required" });
+    if (!name || !domain || !adminMobile || !adminName || !adminPassword) {
+      return res.status(400).json({ success: false, message: "tenant and admin details are required" });
     }
 
     try {
-      const tenant = await prisma.tenant.create({
-        data: { name, domain }
+      // Use a transaction to ensure both tenant and admin are created
+      const result = await prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: { name, domain }
+        });
+
+        const hash = await bcrypt.hash(adminPassword, 10);
+        const admin = await tx.user.create({
+          data: {
+            mobile: adminMobile,
+            fullName: adminName,
+            password: hash,
+            gender: "MALE", // Default or could be passed
+            dateOfBirth: new Date("1990-01-01"), // Placeholder or could be passed
+            identity: "ADMIN",
+            tenantId: tenant.id
+          }
+        });
+
+        return { tenant, admin };
       });
 
       await logAction({
         action: "CREATE_TENANT",
-        targetId: tenant.id,
-        metadata: { name, domain }
+        targetId: result.tenant.id,
+        metadata: { name, domain, adminMobile }
       });
 
-      res.status(201).json({ success: true, tenant });
+      res.status(201).json({ 
+        success: true, 
+        message: "Tenant and Admin created successfully",
+        tenant: result.tenant, 
+        admin: { id: result.admin.id, mobile: result.admin.mobile } 
+      });
     } catch (err) {
       console.error(err);
       if (err.code === "P2002") {

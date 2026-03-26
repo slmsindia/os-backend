@@ -1,4 +1,6 @@
 const { logAction } = require("../utils/audit");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 const userController = {
   getProfile: async (req, res) => {
@@ -29,7 +31,7 @@ const userController = {
     }
 
     try {
-      // 1. Domain/Tenant scoped user check
+      // tenant check
       const targetUser = await prisma.user.findFirst({
         where: { id, tenantId: myTenantId }
       });
