@@ -254,7 +254,15 @@ const authController = {
       }
 
       const accessToken = generateToken(user);
-      res.status(201).json({ success: true, user: { id: user.id, role: user.role.name, userType: user.userType }, accessToken });
+      res.status(201).json({
+        success: true,
+        user: {
+          id: user.id,
+          role: user.role?.name || user.userType || "USER",
+          userType: user.userType
+        },
+        accessToken
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "error" });
@@ -284,7 +292,12 @@ const authController = {
       }
 
       const accessToken = generateToken(user);
-      res.json({ success: true, accessToken, role: user.role?.name, userType: user.userType });
+      res.json({
+        success: true,
+        accessToken,
+        role: user.role?.name || user.userType || "USER",
+        userType: user.userType
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "error" });
