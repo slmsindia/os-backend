@@ -2,53 +2,9 @@ const bcrypt = require("bcrypt");
 const { PrismaClient } = require("@prisma/client");
 const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
 const { generateToken } = require("../utils/jwt");
+const { logAction } = require("../utils/audit");
 
 const prisma = new PrismaClient();
-
-const VALID_USER_TYPES = [
-  "USER",
-  "MEMBER",
-  "SAATHI",
-  "BUSINESS_PARTNER",
-  "STATE_PARTNER",
-  "DISTRICT_PARTNER",
-  "COUNTRY_HEAD",
-  "ADMIN"
-];
-
-const AUTO_APPROVED_USER_TYPES = ["USER"];
-
-const USER_TYPE_TO_ROLE = {
-  USER: "USER",
-  MEMBER: "MEMBER",
-  SAATHI: "SAATHI",
-  BUSINESS_PARTNER: "BUSINESS_PARTNER",
-  STATE_PARTNER: "STATE_PARTNER",
-  DISTRICT_PARTNER: "DISTRICT_PARTNER",
-  COUNTRY_HEAD: "COUNTRY_HEAD",
-  ADMIN: "ADMIN"
-};
-
-const normalizeUserType = (value) => {
-  if (!value || typeof value !== "string") return "USER";
-  return value.trim().toUpperCase().replace(/[\s-]+/g, "_");
-};
-
-const getDefaultTenant = async () => {
-  let tenant = await prisma.tenant.findFirst({ where: { id: "default" } });
-  if (!tenant) {
-    tenant = await prisma.tenant.create({ data: { id: "default", name: "Main" } });
-  }
-  return tenant;
-};
-
-const getOrCreateRole = async (roleName) => {
-  let role = await prisma.role.findUnique({ where: { name: roleName } });
-  if (!role) {
-    role = await prisma.role.create({ data: { name: roleName } });
-  }
-  return role;
-};
 
 const isStrongPassword = (password) => {
   if (typeof password !== "string") return false;
@@ -57,6 +13,14 @@ const isStrongPassword = (password) => {
   const hasNumber = /\d/.test(password);
   const hasSpecial = /[^A-Za-z0-9]/.test(password);
   return hasLength && hasUppercase && hasNumber && hasSpecial;
+};
+
+const getOrCreateRole = async (roleName) => {
+  let role = await prisma.role.findUnique({ where: { name: roleName } });
+  if (!role) {
+    role = await prisma.role.create({ data: { name: roleName } });
+  }
+  return role;
 };
 
 const authController = {
@@ -70,12 +34,6 @@ const authController = {
     try {
       const existing = await prisma.user.findUnique({ where: { mobile } });
       if (existing) {
-        if (existing.approvalStatus === "PENDING") {
-          return res.status(409).json({
-            success: false,
-            message: "already registered, pending admin approval"
-          });
-        }
         return res.status(409).json({ success: false, message: "already registered" });
       }
 
@@ -114,7 +72,7 @@ const authController = {
     try {
       const existing = await prisma.user.findUnique({
         where: { mobile },
-        include: { role: true }
+        include: { roles: { include: { role: true } } }
       });
 
       if (!existing) {
@@ -124,10 +82,9 @@ const authController = {
       return res.json({
         success: true,
         exists: true,
-        approvalStatus: existing.approvalStatus,
-        userType: existing.userType,
-        role: existing.role?.name,
-        canLogin: existing.approvalStatus === "APPROVED"
+        identity: existing.identity,
+        roles: existing.roles.map((ur) => ur.role.name),
+        canLogin: true
       });
     } catch (err) {
       console.error(err);
@@ -146,10 +103,6 @@ const authController = {
       const existing = await prisma.user.findUnique({ where: { mobile } });
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
-      }
-
-      if (existing.approvalStatus !== "APPROVED") {
-        return res.status(403).json({ success: false, message: "account not approved yet" });
       }
 
       const success = await sendOtp(mobile);
@@ -189,7 +142,7 @@ const authController = {
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await prisma.user.update({
-        where: { mobile },
+        where: { id: existing.id },
         data: { password: hashedPassword }
       });
 
@@ -201,33 +154,24 @@ const authController = {
   },
 
   register: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, userType } = req.body;
-    if (!mobile || !fullName || !password) return res.status(400).json({ message: "fields missing" });
+    const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
+    const tenantId = req.tenant_id;
+
+    if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
+      return res.status(400).json({ message: "fields missing" });
+    }
 
     try {
-      const normalizedUserType = normalizeUserType(userType);
-      if (!VALID_USER_TYPES.includes(normalizedUserType)) {
-        return res.status(400).json({ message: "invalid userType" });
-      }
-
       if (!(await isMobileVerified(mobile))) {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
       const existing = await prisma.user.findUnique({ where: { mobile } });
-      if (existing) {
-        if (existing.approvalStatus === "PENDING") {
-          return res.status(409).json({ message: "already registered, pending admin approval" });
-        }
-        return res.status(409).json({ message: "already registered" });
-      }
+      if (existing) return res.status(409).json({ message: "already registered" });
 
-      const tenant = await getDefaultTenant();
-      const roleName = USER_TYPE_TO_ROLE[normalizedUserType] || "USER";
-      const role = await getOrCreateRole(roleName);
-      const approvalStatus = AUTO_APPROVED_USER_TYPES.includes(normalizedUserType) ? "APPROVED" : "PENDING";
-
+      const defaultRole = await getOrCreateRole("USER");
       const hash = await bcrypt.hash(password, 10);
+
       const user = await prisma.user.create({
         data: {
           mobile,
@@ -235,31 +179,33 @@ const authController = {
           gender,
           dateOfBirth: new Date(dateOfBirth),
           password: hash,
-          roleId: role.id,
-          userType: normalizedUserType,
-          approvalStatus,
-          approvedAt: approvalStatus === "APPROVED" ? new Date() : null,
-          tenantId: tenant.id,
-          parentId: null
+          tenantId,
+          identity: "USER",
+          referredBy: referredBy || null,
+          roles: {
+            create: {
+              roleId: defaultRole.id
+            }
+          }
         },
-        include: { role: true }
+        include: { roles: { include: { role: true } } }
       });
 
-      if (approvalStatus === "PENDING") {
-        return res.status(202).json({
-          success: true,
-          approvalRequired: true,
-          message: "registration request submitted, waiting for admin approval"
-        });
-      }
-
       const accessToken = generateToken(user);
+
+      await logAction({
+        userId: user.id,
+        action: "USER_REGISTER",
+        tenantId,
+        metadata: { mobile: user.mobile }
+      });
+
       res.status(201).json({
         success: true,
         user: {
           id: user.id,
-          role: user.role?.name || user.userType || "USER",
-          userType: user.userType
+          identity: user.identity,
+          roles: user.roles.map((ur) => ur.role.name)
         },
         accessToken
       });
@@ -271,32 +217,34 @@ const authController = {
 
   login: async (req, res) => {
     const { mobile, password } = req.body;
+    const tenantId = req.tenant_id;
+
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
     try {
       const user = await prisma.user.findFirst({
-        where: { mobile },
-        include: { role: true }
+        where: { mobile, tenantId },
+        include: { roles: { include: { role: true } } }
       });
 
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: "invalid mobile or pass" });
       }
 
-      if (user.approvalStatus === "PENDING") {
-        return res.status(403).json({ message: "account pending admin approval" });
-      }
-
-      if (user.approvalStatus === "REJECTED") {
-        return res.status(403).json({ message: "account request rejected, contact admin" });
-      }
-
       const accessToken = generateToken(user);
+
+      await logAction({
+        userId: user.id,
+        action: "USER_LOGIN",
+        tenantId,
+        metadata: { ip: req.ip }
+      });
+
       res.json({
         success: true,
         accessToken,
-        role: user.role?.name || user.userType || "USER",
-        userType: user.userType
+        identity: user.identity,
+        roles: user.roles.map((ur) => ur.role.name)
       });
     } catch (err) {
       console.error(err);
@@ -305,51 +253,7 @@ const authController = {
   },
 
   logout: async (req, res) => {
-    // In JWT, logout is usually handled by the client (deleting the token).
-    // This endpoint can be used to perform any server-side cleanup or logging.
     res.json({ success: true, message: "logged out" });
-  },
-
-  forgotPassword: async (req, res) => {
-    const { mobile } = req.body;
-    if (!mobile) return res.status(400).json({ message: "mobile required" });
-
-    try {
-      const user = await prisma.user.findUnique({ where: { mobile } });
-      if (!user) return res.status(404).json({ message: "user not found" });
-
-      const success = await sendOtp(mobile);
-      if (!success) return res.status(500).json({ message: "failed to send otp" });
-
-      res.json({ success: true, message: "otp sent" });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "error" });
-    }
-  },
-
-  resetPassword: async (req, res) => {
-    const { mobile, otp, newPassword } = req.body;
-    if (!mobile || !otp || !newPassword) return res.status(400).json({ message: "fields missing" });
-
-    try {
-      const result = await verifyOtp(mobile, otp);
-      if (!result.success) return res.status(400).json({ message: result.message });
-
-      const user = await prisma.user.findUnique({ where: { mobile } });
-      if (!user) return res.status(404).json({ message: "user not found" });
-
-      const hash = await bcrypt.hash(newPassword, 10);
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { password: hash }
-      });
-
-      res.json({ success: true, message: "password updated" });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "error" });
-    }
   }
 };
 

@@ -1,3 +1,4 @@
+const { logAction } = require("../utils/audit");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
@@ -27,10 +28,11 @@ const getOrCreateRole = async (roleName) => {
 
 const userController = {
   getProfile: async (req, res) => {
+    const { user_id: myId, tenant_id: myTenantId } = req.user;
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.user_id },
-        include: { role: true }
+      const user = await prisma.user.findFirst({
+        where: { id: myId, tenantId: myTenantId },
+        include: { roles: { include: { role: true } } }
       });
 
       if (!user) return res.status(404).json({ message: "user not found" });
@@ -46,12 +48,22 @@ const userController = {
   changeRole: async (req, res) => {
     const { id } = req.params;
     const { roleName } = req.body;
+    const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!roleName) {
       return res.status(400).json({ success: false, message: "roleName is required" });
     }
 
     try {
+      // tenant check
+      const targetUser = await prisma.user.findFirst({
+        where: { id, tenantId: myTenantId }
+      });
+
+      if (!targetUser) {
+        return res.status(404).json({ success: false, message: "User not found in tenant" });
+      }
+
       const role = await prisma.role.findUnique({
         where: { name: roleName }
       });
@@ -62,17 +74,33 @@ const userController = {
 
       const updatedUser = await prisma.user.update({
         where: { id },
-        data: { roleId: role.id },
-        include: { role: true }
+        data: {
+          roles: {
+            upsert: {
+              where: { userId_roleId: { userId: id, roleId: role.id } },
+              create: { roleId: role.id },
+              update: {}
+            }
+          }
+        },
+        include: { roles: { include: { role: true } } }
+      });
+
+      await logAction({
+        userId: myId,
+        action: "ROLE_ASSIGNMENT",
+        targetId: id,
+        tenantId: myTenantId,
+        metadata: { roleName }
       });
 
       res.json({
         success: true,
-        message: "Role updated successfully",
+        message: "Role assigned successfully",
         user: {
           id: updatedUser.id,
           fullName: updatedUser.fullName,
-          role: updatedUser.role.name
+          roles: updatedUser.roles.map(ur => ur.role.name)
         }
       });
     } catch (err) {

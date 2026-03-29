@@ -4,22 +4,30 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 require("dotenv").config();
 
+const tenantMiddleware = require("./middleware/tenant.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
+const adminRoutes = require("./routes/admin.routes");
+const superAdminRoutes = require("./routes/superadmin.routes");
 
 const app = express();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:5174'],
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
   credentials: true
 }));
 app.use(morgan("dev"));
 app.use(express.json());
 
+// Multi-tenant resolution middleware
+app.use(tenantMiddleware);
+
 // routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/super-admin", superAdminRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
