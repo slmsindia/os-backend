@@ -13,14 +13,17 @@ module.exports = async (req, res, next) => {
     });
 
     if (!tenant) {
-      // Fallback: If no tenant matches the domain, try to use the first available tenant
-      const fallbackTenant = await prisma.tenant.findFirst();
+      // Fallback to the main organization if the domain lookup fails
+      const fallbackTenant = await prisma.tenant.findFirst({
+        where: { domain: "os.dpinfoserver.co.in" }
+      }) || await prisma.tenant.findFirst();
+
       if (fallbackTenant) {
         req.tenant_id = fallbackTenant.id;
         return next();
       }
 
-      console.warn(`Tenant not found for: ${domain}. Proceeding without tenant context.`);
+      console.warn(`No tenant found for: ${domain}. Check your Tenant table.`);
       return next();
     }
 
