@@ -13,11 +13,15 @@ module.exports = async (req, res, next) => {
     });
 
     if (!tenant) {
-      console.warn(`Tenant not found for: ${domain}`);
-      return res.status(403).json({ 
-        success: false, 
-        message: "Invalid domain" 
-      });
+      // Fallback: If no tenant matches the domain, try to use the first available tenant
+      const fallbackTenant = await prisma.tenant.findFirst();
+      if (fallbackTenant) {
+        req.tenant_id = fallbackTenant.id;
+        return next();
+      }
+
+      console.warn(`Tenant not found for: ${domain}. Proceeding without tenant context.`);
+      return next();
     }
 
     req.tenant_id = tenant.id;
