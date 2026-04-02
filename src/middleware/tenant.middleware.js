@@ -17,10 +17,19 @@ module.exports = async (req, res, next) => {
 
   try {
     if (!tenant) {
+      const fallbackTenant = await prisma.tenant.findFirst({
+        where: { domain: "os.dpinfoserver.co.in" }
+      }) || await prisma.tenant.findFirst();
+
+      if (process.env.NODE_ENV !== "production" && fallbackTenant) {
+        req.tenant_id = fallbackTenant.id;
+        return next();
+      }
+
       console.warn(`Tenant not found for: ${host}`);
-      return res.status(403).json({ 
-        success: false, 
-        message: "Invalid domain" 
+      return res.status(403).json({
+        success: false,
+        message: "Invalid domain"
       });
     }
     req.tenant_id = tenant.id;

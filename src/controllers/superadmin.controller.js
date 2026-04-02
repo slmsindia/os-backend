@@ -24,8 +24,8 @@ const superAdminController = {
             mobile: adminMobile,
             fullName: adminName,
             password: hash,
-            gender: "MALE", // Default or could be passed
-            dateOfBirth: new Date("1990-01-01"), // Placeholder or could be passed
+            gender: "MALE",
+            dateOfBirth: new Date("1990-01-01"),
             identity: "ADMIN",
             tenantId: tenant.id
           }
@@ -40,11 +40,11 @@ const superAdminController = {
         metadata: { name, domain, adminMobile }
       });
 
-      res.status(201).json({ 
-        success: true, 
+      res.status(201).json({
+        success: true,
         message: "Tenant and Admin created successfully",
-        tenant: result.tenant, 
-        admin: { id: result.admin.id, mobile: result.admin.mobile } 
+        tenant: result.tenant,
+        admin: { id: result.admin.id, mobile: result.admin.mobile }
       });
     } catch (err) {
       console.error(err);

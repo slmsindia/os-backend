@@ -9,7 +9,10 @@ const redis = process.env.REDIS_URL
       password: process.env.REDIS_PASSWORD,
     });
 
-redis.on("error", (err) => console.error("redis error:", err));
-redis.on("connect", () => console.log("redis connected"));
+redis.on("error", (err) => {
+  console.error("redis connection error:", err.message);
+});
+
+redis.on("connect", () => console.log(`redis connected to ${redis.options.host}`));
 
 module.exports = redis;

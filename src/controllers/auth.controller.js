@@ -238,7 +238,7 @@ const authController = {
 
     try {
       const user = await prisma.user.findFirst({
-        where: { mobile, tenantId },
+        where: { mobile },
         include: { roles: { include: { role: true } } }
       });
 

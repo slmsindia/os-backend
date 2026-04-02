@@ -21,10 +21,10 @@ app.use(cors({
 app.use(morgan("dev"));
 app.use(express.json());
 
-// Multi-tenant resolution middleware
+
 app.use(tenantMiddleware);
 
-// routes
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
@@ -34,10 +34,10 @@ app.use("/Prabhu", prabhuRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
-// 404
+
 app.use((req, res) => res.status(404).json({ message: "not found" }));
 
-// error handler
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
