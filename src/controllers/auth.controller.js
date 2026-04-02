@@ -63,7 +63,7 @@ const authController = {
           dateOfBirth: new Date(dateOfBirth),
           password: hash,
           tenantId,
-          identity: "USER", 
+          identity: "USER",
           referredBy: referredBy || null
         },
         include: { roles: { include: { role: true } } }
@@ -71,11 +71,11 @@ const authController = {
 
       const accessToken = generateToken(user);
 
-      await logAction({ 
-        userId: user.id, 
-        action: "USER_REGISTER", 
-        tenantId, 
-        metadata: { mobile: user.mobile } 
+      await logAction({
+        userId: user.id,
+        action: "USER_REGISTER",
+        tenantId,
+        metadata: { mobile: user.mobile }
       });
 
       res.status(201).json({ success: true, user: { id: user.id, identity: user.identity }, accessToken });
@@ -103,11 +103,11 @@ const authController = {
 
       const accessToken = generateToken(user);
 
-      await logAction({ 
-        userId: user.id, 
-        action: "USER_LOGIN", 
-        tenantId, 
-        metadata: { ip: req.ip } 
+      await logAction({
+        userId: user.id,
+        action: "USER_LOGIN",
+        tenantId,
+        metadata: { ip: req.ip }
       });
 
       res.json({ success: true, accessToken });
@@ -124,11 +124,12 @@ const authController = {
 
   forgotPassword: async (req, res) => {
     const { mobile } = req.body;
+    const tenantId = req.tenant_id;
     if (!mobile) return res.status(400).json({ message: "mobile required" });
 
     try {
-      const user = await prisma.user.findFirst({ 
-        where: { mobile, tenantId } 
+      const user = await prisma.user.findFirst({
+        where: { mobile, tenantId }
       });
       if (!user) return res.status(404).json({ message: "user not found" });
 
@@ -144,14 +145,15 @@ const authController = {
 
   resetPassword: async (req, res) => {
     const { mobile, otp, newPassword } = req.body;
+    const tenantId = req.tenant_id;
     if (!mobile || !otp || !newPassword) return res.status(400).json({ message: "fields missing" });
 
     try {
       const result = await verifyOtp(mobile, otp);
       if (!result.success) return res.status(400).json({ message: result.message });
 
-      const user = await prisma.user.findFirst({ 
-        where: { mobile, tenantId } 
+      const user = await prisma.user.findFirst({
+        where: { mobile, tenantId }
       });
       if (!user) return res.status(404).json({ message: "user not found" });
 
