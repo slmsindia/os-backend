@@ -6,6 +6,9 @@ const { checkRole } = require("../middleware/role.middleware");
 const router = express.Router();
 
 router.get("/profile", authMiddleware, userController.getProfile);
-router.patch("/:id/role", authMiddleware, checkRole(["ADMIN"]), userController.changeRole);
+router.get("/approvals/pending", authMiddleware, checkRole(["ADMIN", "SUPER_ADMIN"]), userController.listPendingApprovals);
+router.patch("/:id/role", authMiddleware, checkRole(["ADMIN", "SUPER_ADMIN"]), userController.changeRole);
+router.patch("/:id/user-type", authMiddleware, checkRole(["ADMIN", "SUPER_ADMIN"]), userController.setUserType);
+router.patch("/:id/approval", authMiddleware, checkRole(["ADMIN", "SUPER_ADMIN"]), userController.approveUser);
 
 module.exports = router;

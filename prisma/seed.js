@@ -24,7 +24,20 @@ async function main() {
   });
 
   // initial roles
-  const roles = ["ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT", "USER"];
+  const roles = [
+    "ADMIN",
+    "SUPER_ADMIN",
+    "SUB_ADMIN",
+    "SUPPORT_TEAM",
+    "COUNTRY_HEAD",
+    "STATE_PARTNER",
+    "DISTRICT_PARTNER",
+    "BUSINESS_PARTNER",
+    "SAATHI",
+    "MEMBER",
+    "AGENT",
+    "USER"
+  ];
   for (const name of roles) {
     await prisma.role.upsert({
       where: { name },
