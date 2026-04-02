@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
+const prabhuRoutes = require("./routes/prabhu.routes");
 
 const app = express();
 
@@ -28,6 +29,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/Prabhu", prabhuRoutes);
+app.use("/Prabhu", prabhuRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
