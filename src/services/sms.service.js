@@ -3,9 +3,9 @@ const axios = require("axios");
 const sendOtpSMS = async (mobile, otp) => {
   const { SMS_API_URL, SMS_API_KEY, SENDER_ID, DLT_TEMPLATE_ID, SMS_PEID } = process.env;
 
-  // Skip SMS sending in development mode
-  if (process.env.NODE_ENV === 'development' || !SMS_API_URL || !SMS_API_KEY) {
-    console.log(`Development mode: Skipping SMS send to ${mobile}, OTP: ${otp}`);
+  // Skip SMS sending if API details are missing
+  if (!SMS_API_URL || !SMS_API_KEY) {
+    console.log(`SMS API not configured: Skipping SMS send to ${mobile}, OTP: ${otp}`);
     return true;
   }
 
