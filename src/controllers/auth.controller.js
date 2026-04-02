@@ -7,6 +7,21 @@ const { logAction } = require("../utils/audit");
 const prisma = new PrismaClient();
 
 const authController = {
+  checkMobile: async (req, res) => {
+    const { mobile } = req.body;
+    if (!mobile) return res.status(400).json({ success: false, message: "Mobile required" });
+    try {
+      const user = await prisma.user.findUnique({ where: { mobile } });
+      if (user) {
+        return res.json({ success: true, exists: true });
+      } else {
+        return res.json({ success: true, exists: false });
+      }
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
   sendOtp: async (req, res) => {
     const { mobile } = req.body;
 

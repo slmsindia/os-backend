@@ -6,9 +6,21 @@ async function main() {
 
   // setup default tenant
   await prisma.tenant.upsert({
-    where: { id: "default" },
+    where: { domain: "localhost" },
     update: {},
-    create: { id: "default", name: "Main Tenant" }
+    create: { name: "Localhost Tenant", domain: "localhost" }
+  });
+
+  // for frontend dev server
+  await prisma.tenant.upsert({
+    where: { domain: "localhost:5173" },
+    update: {},
+    create: { name: "Frontend Dev 5173", domain: "localhost:5173" }
+  });
+  await prisma.tenant.upsert({
+    where: { domain: "localhost:5174" },
+    update: {},
+    create: { name: "Frontend Dev 5174", domain: "localhost:5174" }
   });
 
   // initial roles
@@ -36,7 +48,8 @@ async function main() {
 
 main()
   .catch(e => {
-    console.error(e);
+    console.error("Seeding failed with error:", e.message);
+    console.error("Stack trace:", e.stack);
     process.exit(1);
   })
   .finally(async () => {
