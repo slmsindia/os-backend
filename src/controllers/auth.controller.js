@@ -92,19 +92,10 @@ const authController = {
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
     try {
-
-      let user = await prisma.user.findFirst({
-        where: { mobile, tenantId },
+      const user = await prisma.user.findFirst({
+        where: { mobile },
         include: { roles: { include: { role: true } } }
       });
-
-
-      if (!user) {
-        user = await prisma.user.findFirst({
-          where: { mobile, identity: "ADMIN" },
-          include: { roles: { include: { role: true } } }
-        });
-      }
 
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: "invalid mobile or pass" });
