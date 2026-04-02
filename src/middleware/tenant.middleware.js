@@ -13,8 +13,11 @@ module.exports = async (req, res, next) => {
     });
 
     if (!tenant) {
-      // Fallback: If no tenant matches the domain, try to use the first available tenant
-      const fallbackTenant = await prisma.tenant.findFirst();
+      // Fallback: Prefer the Main Organization if the domain lookup fails
+      const fallbackTenant = await prisma.tenant.findFirst({
+        where: { domain: "os.dpinfoserver.co.in" }
+      }) || await prisma.tenant.findFirst();
+
       if (fallbackTenant) {
         req.tenant_id = fallbackTenant.id;
         return next();
