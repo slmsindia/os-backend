@@ -1,31 +1,53 @@
 const axios = require("axios");
 const crypto = require("crypto");
+const soap = require("soap");
 
-const ENDPOINTS = {
-  GetStateDistrict: "/Send/GetStateDistrict",
-  GetStaticData: "/Send/GetStaticData",
-  GetEcho: "/Send/getEcho",
-  GetCashPayLocationList: "/Send/GetCashPayLocationList",
-  GetAcPayBankBranchList: "/Send/GetAcPayBankBranchList",
-  GetBalance: "/Send/GetBalance",
-  SendOTP: "/Send/SendOTP",
-  GetServiceCharge: "/Send/GetServiceCharge",
-  GetServiceChargeByCollection: "/api/Send/GetServiceChargeByCollection",
-  CancelTransaction: "/api/Send/CancelTransaction",
-  UnverifiedTransactions: "/Send/UnverifiedTransactions",
-  ComplianceTransactions: "/api/Send/ComplianceTransactions",
-  UploadDocument: "/Send/UploadDocument",
-  SendTransaction: "/Send/SendTransaction",
-  ConfirmTransaction: "/Send/ConfirmTransaction",
-  GetCustomerById: "/Send/GetCustomerById",
-  SearchTransaction: "/Send/SearchTransaction",
-  ValidateBankAccount: "/api/Send/ValidateBankAccount",
-  CreateReceiver: "/Send/CreateReceiver",
-  CreateCustomer: "/Send/CreateCustomer",
-  GetUnverifiedCustomers: "/api/Send/GetUnverifiedCustomers",
-  GetCustomerByMobile: "/Send/GetCustomerByMobile",
-  RegisterComplaint: "/Send/RegisterComplaint",
-  TrackComplaint: "/Send/TrackComplaint"
+// SOAP operations for Prabhu Send Service
+const SOAP_OPERATIONS = {
+  GetStateDistrict: "GetStateDistrict",
+  GetStaticData: "GetStaticData",
+  GetEcho: "GetEcho",
+  GetCashPayLocationList: "GetCashPayLocationList",
+  GetAcPayBankBranchList: "GetAcPayBankBranchList",
+  GetBalance: "GetBalance",
+  SendOTP: "SendOTP",
+  GetServiceCharge: "GetServiceCharge",
+  GetServiceChargeByCollection: "GetServiceChargeByCollection",
+  CancelTransaction: "CancelTransaction",
+  UnverifiedTransactions: "UnverifiedTransactions",
+  ComplianceTransactions: "ComplianceTransactions",
+  UploadDocument: "UploadDocument",
+  SendTransaction: "SendTransaction",
+  ConfirmTransaction: "ConfirmTransaction",
+  GetCustomerById: "GetCustomerById",
+  SearchTransaction: "SearchTransaction",
+  ValidateBankAccount: "ValidateBankAccount",
+  CreateReceiver: "CreateReceiver",
+  CreateCustomer: "CreateCustomer",
+  GetUnverifiedCustomers: "GetUnverifiedCustomers",
+  GetCustomerByMobile: "GetCustomerByMobile",
+  RegisterComplaint: "RegisterComplaint",
+  TrackComplaint: "TrackComplaint"
+};
+
+// Store for SOAP client (cached)
+let soapClient = null;
+
+const EKYC_ENDPOINTS = {
+  GenerateToken: { path: "/auth/generatetoken", routeKey: "baseRoute2" },
+  EkycInitiate: { path: "/customer/ekycinitiate", routeKey: "baseRoute2" },
+  EkycUniqueRefStatus: { path: "/customer/ekycuniquerefstatus", routeKey: "baseRoute2" },
+  EkycEnrollment: { path: "/customer/ekycenrollment", routeKey: "baseRoute2" },
+  CustomerOnboarding: { path: "/customer/customeronboarding", routeKey: "baseRoute2" },
+  CspInitiate: { path: "/csp/Initiate", routeKey: "baseRoute" },
+  CspUniqueRefStatus: { path: "/csp/Uniquerefstatus", routeKey: "baseRoute" },
+  CspEnrollment: { path: "/csp/Enrollment", routeKey: "baseRoute" },
+  CspOnboarding: { path: "/csp/onboarding", routeKey: "baseRoute" },
+  SearchCsp: { path: "/csp/searchcsp", routeKey: "baseRoute" },
+  CreateCsp: { path: "/csp/Createcsp", routeKey: "baseRoute" },
+  AgentConsent: { path: "/csp/AgentConsent", routeKey: "baseRoute" },
+  CspMapping: { path: "/csp/CSPMapping", routeKey: "baseRoute" },
+  BioKycRequery: { path: "/csp/BioKYCRequery", routeKey: "baseRoute" }
 };
 
 const isHexString = (value = "") => /^[0-9A-Fa-f]+$/.test(value) && value.length % 2 === 0;
@@ -52,15 +74,40 @@ const getSecretKeyBuffer = (secret) => {
 const getConfig = () => {
   const active = String(process.env.PRABHU_ACTIVE || "false").toLowerCase() === "true";
   const baseUrl = (process.env.PRABHU_BASE_URL || "").trim();
+  const wsdlUrl = (process.env.PRABHU_SEND_WSDL || "").trim();
   const apiKey = (process.env.PRABHU_API_KEY || "").trim();
   const apiSecret = (process.env.PRABHU_API_SECRET || "").trim();
 
   return {
     active,
     baseUrl,
+    wsdlUrl,
     apiKey,
     apiSecret,
     timeoutMs: Number(process.env.PRABHU_TIMEOUT_MS || 30000)
+  };
+};
+
+const getEkycConfig = () => {
+  const active = String(process.env.PRABHU_EKYC_ACTIVE || process.env.PRABHU_ACTIVE || "false").toLowerCase() === "true";
+  const userName = (process.env.PRABHU_EKYC_USERNAME || "").trim();
+  const password = (process.env.PRABHU_EKYC_PASSWORD || "").trim();
+  const apiKey = (process.env.PRABHU_EKYC_API_KEY || "").trim();
+  const baseUrl = (process.env.PRABHU_EKYC_BASE_URL || "").trim();
+  const baseRoute = (process.env.PRABHU_EKYC_BASE_ROUTE || "").trim();
+  const baseRoute2 = (process.env.PRABHU_EKYC_BASE_ROUTE2 || "").trim();
+  const agentCodeRaw = (process.env.PRABHU_EKYC_AGENT_CODE || "").trim();
+
+  return {
+    active,
+    userName,
+    password,
+    apiKey,
+    baseUrl,
+    baseRoute,
+    baseRoute2,
+    agentCode: agentCodeRaw ? Number(agentCodeRaw) : undefined,
+    timeoutMs: Number(process.env.PRABHU_EKYC_TIMEOUT_MS || process.env.PRABHU_TIMEOUT_MS || 30000)
   };
 };
 
@@ -69,10 +116,87 @@ const ensureConfigured = () => {
   if (!config.active) {
     throw new Error("PRABHU is disabled. Set PRABHU_ACTIVE=true to enable it.");
   }
-  if (!config.baseUrl || !config.apiKey || !config.apiSecret) {
-    throw new Error("PRABHU credentials missing. Set PRABHU_BASE_URL, PRABHU_API_KEY, PRABHU_API_SECRET.");
+  if (!config.wsdlUrl || !config.apiKey || !config.apiSecret) {
+    throw new Error("PRABHU Send credentials missing. Set PRABHU_SEND_WSDL, PRABHU_API_KEY, PRABHU_API_SECRET.");
   }
   return config;
+};
+
+const ensureEkycConfigured = () => {
+  const config = getEkycConfig();
+  if (!config.active) {
+    throw new Error("PRABHU E-KYC is disabled. Set PRABHU_EKYC_ACTIVE=true to enable it.");
+  }
+
+  if (!config.userName || !config.password || !config.apiKey || !config.baseUrl) {
+    throw new Error("PRABHU E-KYC credentials missing. Set PRABHU_EKYC_USERNAME, PRABHU_EKYC_PASSWORD, PRABHU_EKYC_API_KEY, PRABHU_EKYC_BASE_URL.");
+  }
+
+  return config;
+};
+
+const joinPath = (...parts) => {
+  const normalized = parts
+    .filter(Boolean)
+    .map((part) => String(part).trim())
+    .filter(Boolean)
+    .map((part, idx) => {
+      if (idx === 0) return part.replace(/\/+$/, "");
+      return part.replace(/^\/+/, "").replace(/\/+$/, "");
+    });
+
+  return normalized.join("/");
+};
+
+const withEkycDefaults = (payload, config) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+
+  return {
+    UserName: payload.UserName || config.userName,
+    Password: payload.Password || config.password,
+    APIKey: payload.APIKey || config.apiKey,
+    AgentCode: payload.AgentCode || config.agentCode,
+    ...payload
+  };
+};
+
+const callEkycEndpoint = async (operation, payload = {}, options = {}) => {
+  const endpoint = EKYC_ENDPOINTS[operation];
+  if (!endpoint) {
+    throw new Error(`Unsupported PRABHU E-KYC operation: ${operation}`);
+  }
+
+  const config = ensureEkycConfigured();
+  const route = endpoint.routeKey === "baseRoute2" ? config.baseRoute2 : config.baseRoute;
+  const url = joinPath(config.baseUrl, route, endpoint.path);
+  const requestBody = withEkycDefaults(payload, config);
+
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-api-key": config.apiKey
+  };
+
+  if (options.authorization) {
+    headers.Authorization = options.authorization;
+  }
+
+  const response = await axios({
+    method: "POST",
+    url,
+    data: requestBody,
+    timeout: config.timeoutMs,
+    headers
+  });
+
+  return {
+    operation,
+    url,
+    status: response.status,
+    data: response.data
+  };
 };
 
 const buildSignature = ({ apiKey, apiSecret, method, baseUrl, endpointPath, bodyString }) => {
@@ -100,28 +224,40 @@ const buildSignature = ({ apiKey, apiSecret, method, baseUrl, endpointPath, body
   };
 };
 
-const withAuthDefaults = (payload, apiKey, apiSecret) => {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return payload;
-  }
-
-  return {
-    userName: payload.userName || apiKey,
-    password: payload.password || apiSecret,
-    ...payload
-  };
-};
-
-const callEndpoint = async (operation, payload = {}) => {
-  const endpointPath = ENDPOINTS[operation];
-  if (!endpointPath) {
-    throw new Error(`Unsupported PRABHU operation: ${operation}`);
+// Initialize SOAP client for Prabhu Send Service
+const initializeSoapClient = async () => {
+  if (soapClient) {
+    return soapClient;
   }
 
   const config = ensureConfigured();
+  
+  return new Promise((resolve, reject) => {
+    soap.createClient(config.wsdlUrl, {
+      timeout: config.timeoutMs,
+      disableCache: true,
+      options: {
+        timeout: config.timeoutMs,
+        stream: false
+      }
+    }, (err, client) => {
+      if (err) {
+        reject(new Error(`Failed to initialize SOAP client: ${err.message}`));
+      } else {
+        soapClient = client;
+        resolve(client);
+      }
+    });
+  });
+};
+
+const callSendRestEndpoint = async (operation, payload = {}) => {
+  const config = ensureConfigured();
+  const endpointPath = "/Send/getEcho";
   const method = "POST";
-  const url = `${config.baseUrl.replace(/\/$/, "")}${endpointPath}`;
-  const requestBody = withAuthDefaults(payload, config.apiKey, config.apiSecret);
+  const requestBody = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? payload
+    : {};
   const bodyString = requestBody ? JSON.stringify(requestBody) : "";
 
   const signed = buildSignature({
@@ -135,11 +271,12 @@ const callEndpoint = async (operation, payload = {}) => {
 
   const response = await axios({
     method,
-    url,
+    url: `${config.baseUrl.replace(/\/$/, "")}${endpointPath}`,
     data: requestBody,
     timeout: config.timeoutMs,
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/octet-stream",
       Authorization: signed.authorization
     }
   });
@@ -152,8 +289,59 @@ const callEndpoint = async (operation, payload = {}) => {
   };
 };
 
+// Call Prabhu Send API operation via SOAP/WSDL
+const callEndpoint = async (operation, payload = {}) => {
+  if (operation === "GetEcho") {
+    return callSendRestEndpoint(operation, payload);
+  }
+
+  if (!SOAP_OPERATIONS[operation]) {
+    throw new Error(`Unsupported PRABHU Send operation: ${operation}`);
+  }
+
+  const config = ensureConfigured();
+  
+  // SOAP request body with PascalCase fields for .NET WSDL
+  const requestBody = {
+    UserName: payload.UserName || payload.userName || config.apiKey,
+    Password: payload.Password || payload.password || config.apiSecret,
+    ...payload
+  };
+
+  try {
+    const client = await initializeSoapClient();
+    
+    // Map operation name to SOAP method (handle both direct and camelCase variants)
+    const soapMethod = SOAP_OPERATIONS[operation];
+    if (!client[soapMethod] || typeof client[soapMethod] !== 'function') {
+      throw new Error(`SOAP method '${soapMethod}' not found in WSDL`);
+    }
+
+    return new Promise((resolve, reject) => {
+      client[soapMethod](requestBody, (err, result) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({
+            operation,
+            status: 200,
+            data: result
+          });
+        }
+      });
+    });
+  } catch (error) {
+    throw new Error(`PRABHU Send API error (${operation}): ${error.message}`);
+  }
+};
+
 module.exports = {
-  ENDPOINTS,
+  SOAP_OPERATIONS,
+  EKYC_ENDPOINTS,
   callEndpoint,
-  getConfig
+  callEkycEndpoint,
+  getConfig,
+  getEkycConfig,
+  initializeSoapClient,
+  resetSoapClient: () => { soapClient = null; }
 };

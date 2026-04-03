@@ -72,8 +72,6 @@ DATABASE_URL=postgresql://...
 - **Status:** FAILED
 - **Reason:** Connection timeout (ETIMEDOUT) to IME server
 - **URL:** https://api.imeforex-txn.net/SendWsApi/IMEForexSendService.asmx?wsdl
-- **Public IP:** 122.173.72.96
-- **Solution:** IP whitelisting required by IME support
 
 ## Next Steps
 - Contact IME support to whitelist IP 122.173.72.96 for UAT access

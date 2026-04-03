@@ -9,10 +9,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "seed": "node prisma/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "test:ime": "node test_ime.js",
-    "test:prabhu": "node test_prabhu.js",
-    "test:prabhu:matrix": "node test_prabhu_matrix.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",

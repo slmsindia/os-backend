@@ -30,4 +30,24 @@ router.get("/GetCustomerByIdNumber/:customerIdNo", prabhuController.getCustomerB
 router.get("/GetCustomerByMobile/:mobile", prabhuController.getCustomerByMobile);
 router.post("/VerifyTransaction/:pinNo", prabhuController.verifyTransaction);
 
+// E-KYC
+router.post("/ekyc/generate-token", prabhuController.ekycGenerateToken);
+router.get("/ekyc/health-auth", prabhuController.ekycAuthHealth);
+router.post("/ekyc/health-auth", prabhuController.ekycAuthHealth);
+router.post("/ekyc/initiate", prabhuController.ekycInitiate);
+router.post("/ekyc/unique-ref-status", prabhuController.ekycUniqueRefStatus);
+router.post("/ekyc/enrollment", prabhuController.ekycEnrollment);
+router.post("/ekyc/customer-onboarding", prabhuController.ekycCustomerOnboarding);
+
+// CSP Onboarding
+router.post("/csp/initiate", prabhuController.cspInitiate);
+router.post("/csp/unique-ref-status", prabhuController.cspUniqueRefStatus);
+router.post("/csp/enrollment", prabhuController.cspEnrollment);
+router.post("/csp/onboarding", prabhuController.cspOnboarding);
+router.post("/csp/search", prabhuController.cspSearch);
+router.post("/csp/create", prabhuController.cspCreate);
+router.post("/csp/agent-consent", prabhuController.cspAgentConsent);
+router.post("/csp/mapping", prabhuController.cspMapping);
+router.post("/csp/bio-kyc-requery", prabhuController.cspBioKycRequery);
+
 module.exports = router;

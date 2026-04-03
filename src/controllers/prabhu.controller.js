@@ -27,6 +27,17 @@ const proxyOperation = (operation, message) => async (req, res) => {
   }
 };
 
+const proxyEkycOperation = (operation, message) => async (req, res) => {
+  try {
+    const result = await prabhuService.callEkycEndpoint(operation, req.body || {}, {
+      authorization: req.headers.authorization
+    });
+    return ok(res, message || `${operation} success`, { data: result.data });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 const getCustomerByIdNumber = async (req, res) => {
   try {
     const customer_IdNo = req.params.customerIdNo;
@@ -79,6 +90,47 @@ const verifyTransaction = async (req, res) => {
   }
 };
 
+const ekycAuthHealth = async (req, res) => {
+  const failPattern = /(invalid|fail|unauthor|denied|forbidden|blocked|error)/i;
+
+  try {
+    const result = await prabhuService.callEkycEndpoint("GenerateToken", req.body || {}, {
+      authorization: req.headers.authorization
+    });
+
+    const data = result?.data || {};
+    const statusCode = String(data.StatusCode ?? data.statusCode ?? "").trim();
+    const responseMessage = String(data.ResponseMessage ?? data.message ?? "").trim();
+    const token = data.Token || data.token || data.AccessToken || data.accessToken || "";
+    const explicitFailCode = ["0", "-1", "401", "403"].includes(statusCode);
+    const pass = Boolean(token) || (!explicitFailCode && !failPattern.test(responseMessage));
+
+    return res.json({
+      success: true,
+      message: "E-KYC auth health check completed",
+      data: {
+        pass,
+        statusCode,
+        responseMessage,
+        checkedAt: new Date().toISOString(),
+        raw: data
+      }
+    });
+  } catch (error) {
+    return res.json({
+      success: true,
+      message: "E-KYC auth health check completed",
+      data: {
+        pass: false,
+        statusCode: String(error.response?.status || ""),
+        responseMessage: error.response?.data?.ResponseMessage || error.response?.data?.message || error.message,
+        checkedAt: new Date().toISOString(),
+        raw: error.response?.data || null
+      }
+    });
+  }
+};
+
 module.exports = {
   getStateDistrict: proxyOperation("GetStateDistrict", "Get state/district success"),
   getStaticData: proxyOperation("GetStaticData", "Get static data success"),
@@ -104,5 +156,22 @@ module.exports = {
   getCustomerByMobile,
   registerComplaint: proxyOperation("RegisterComplaint", "Register complaint success"),
   trackComplaint: proxyOperation("TrackComplaint", "Track complaint success"),
-  verifyTransaction
+  verifyTransaction,
+
+  // Prabhu E-KYC
+  ekycGenerateToken: proxyEkycOperation("GenerateToken", "E-KYC token generated"),
+  ekycAuthHealth,
+  ekycInitiate: proxyEkycOperation("EkycInitiate", "E-KYC initiate success"),
+  ekycUniqueRefStatus: proxyEkycOperation("EkycUniqueRefStatus", "E-KYC status success"),
+  ekycEnrollment: proxyEkycOperation("EkycEnrollment", "E-KYC enrollment success"),
+  ekycCustomerOnboarding: proxyEkycOperation("CustomerOnboarding", "E-KYC customer onboarding success"),
+  cspInitiate: proxyEkycOperation("CspInitiate", "CSP initiate success"),
+  cspUniqueRefStatus: proxyEkycOperation("CspUniqueRefStatus", "CSP status success"),
+  cspEnrollment: proxyEkycOperation("CspEnrollment", "CSP enrollment success"),
+  cspOnboarding: proxyEkycOperation("CspOnboarding", "CSP onboarding success"),
+  cspSearch: proxyEkycOperation("SearchCsp", "CSP search success"),
+  cspCreate: proxyEkycOperation("CreateCsp", "CSP create success"),
+  cspAgentConsent: proxyEkycOperation("AgentConsent", "CSP agent consent success"),
+  cspMapping: proxyEkycOperation("CspMapping", "CSP mapping success"),
+  cspBioKycRequery: proxyEkycOperation("BioKycRequery", "CSP BioKYC requery success")
 };
