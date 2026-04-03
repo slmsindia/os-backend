@@ -13,6 +13,260 @@ const jsonBody = {
   },
 };
 
+const imeCreateCustomerBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "FirstName",
+          "LastName",
+          "Gender",
+          "DateOfBirth",
+          "IDType",
+          "IDNumber",
+          "PhoneNumber"
+        ],
+        properties: {
+          FirstName: { type: "string", example: "Ram" },
+          LastName: { type: "string", example: "Bahadur" },
+          Gender: { type: "string", enum: ["M", "F"], example: "M" },
+          DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+          IDNumber: { type: "string", example: "504XXXXXXXX" },
+          PhoneNumber: { type: "string", example: "9841234567" },
+          CountryCode: { type: "string", example: "NP" }
+        }
+      }
+    }
+  }
+};
+
+const imeValidateCustomerBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["CustomerId"],
+        properties: {
+          CustomerId: { type: "string", example: "CUST123" },
+          IDType: { type: "string", example: "NP_ID" },
+          IDNumber: { type: "string", example: "504XXXXXXXX" }
+        }
+      }
+    }
+  }
+};
+
+const imeSendMoneyBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "SenderCustomerId",
+          "ReceiverCustomerId",
+          "Amount",
+          "SourceCurrency",
+          "DestinationCurrency",
+          "PaymentMode"
+        ],
+        properties: {
+          SenderCustomerId: { type: "string", example: "CUST001" },
+          ReceiverCustomerId: { type: "string", example: "RCV001" },
+          Amount: { type: "number", example: 500 },
+          SourceCurrency: { type: "string", enum: ["AUD", "USD", "NZD", "CAD", "GBP"], example: "AUD" },
+          DestinationCurrency: { type: "string", enum: ["NPR"], example: "NPR" },
+          PaymentMode: { type: "string", enum: ["CASH", "BANK"], example: "BANK" },
+          Purpose: { type: "string", example: "Family support" },
+          Notes: { type: "string", example: "Monthly transfer" }
+        }
+      }
+    }
+  }
+};
+
+const imeCancelTransactionBody = {
+  required: false,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        properties: {
+          reason: { type: "string", example: "Customer requested cancellation" }
+        }
+      }
+    }
+  }
+};
+
+const imeCreateReceiverBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["CustomerId", "FirstName", "LastName", "IDType", "IDNumber", "PhoneNumber"],
+        properties: {
+          CustomerId: { type: "string", example: "CUST001" },
+          FirstName: { type: "string", example: "Hari" },
+          LastName: { type: "string", example: "Shrestha" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+          IDNumber: { type: "string", example: "509XXXXXXXX" },
+          PhoneNumber: { type: "string", example: "9801234567" },
+          BankCode: { type: "string", example: "NABIL" },
+          AccountNumber: { type: "string", example: "1234567890" },
+          CountryCode: { type: "string", example: "NP" }
+        }
+      }
+    }
+  }
+};
+
+const imeValidateBankAccountBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["BankCode", "AccountNumber"],
+        properties: {
+          BankCode: { type: "string", example: "NABIL" },
+          AccountNumber: { type: "string", example: "1234567890" },
+          CountryCode: { type: "string", example: "NP" }
+        }
+      }
+    }
+  }
+};
+
+const imeVerifyKycBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["CustomerId", "IDType", "IDNumber"],
+        properties: {
+          CustomerId: { type: "string", example: "CUST001" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+          IDNumber: { type: "string", example: "509XXXXXXXX" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuSendTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["senderName", "receiverName", "amount", "purpose", "sourceCountry", "destinationCountry"],
+        properties: {
+          senderName: { type: "string", example: "Ram Bahadur" },
+          receiverName: { type: "string", example: "Hari Shrestha" },
+          amount: { type: "number", example: 500 },
+          purpose: { type: "string", example: "Family support" },
+          sourceCountry: { type: "string", example: "IN" },
+          destinationCountry: { type: "string", example: "NP" },
+          receiverMobile: { type: "string", example: "9801234567" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuConfirmTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["pinNo", "otp"],
+        properties: {
+          pinNo: { type: "string", example: "PRB123456" },
+          otp: { type: "string", example: "123456" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuCreateCustomerBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["firstName", "lastName", "mobile", "idType", "idNumber"],
+        properties: {
+          firstName: { type: "string", example: "Ram" },
+          lastName: { type: "string", example: "Bahadur" },
+          mobile: { type: "string", example: "9801234567" },
+          idType: { type: "string", example: "NID" },
+          idNumber: { type: "string", example: "504XXXXXXXX" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuCreateReceiverBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["firstName", "lastName", "mobile", "bankCode", "accountNo"],
+        properties: {
+          firstName: { type: "string", example: "Hari" },
+          lastName: { type: "string", example: "Shrestha" },
+          mobile: { type: "string", example: "9801234567" },
+          bankCode: { type: "string", example: "NABIL" },
+          accountNo: { type: "string", example: "1234567890" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuValidateBankBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["bankCode", "accountNo"],
+        properties: {
+          bankCode: { type: "string", example: "NABIL" },
+          accountNo: { type: "string", example: "1234567890" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuSearchTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["pinNo"],
+        properties: {
+          pinNo: { type: "string", example: "PRB123456" },
+          referenceNo: { type: "string", example: "REF123" }
+        }
+      }
+    }
+  }
+};
+
 const bearerSecurity = [{ bearerAuth: [] }];
 
 const addPost = (paths, path, tag, summary, options = {}) => {
@@ -665,6 +919,22 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
     },
   });
 });
+
+paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
+paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
+paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
+paths["/api/ime/transactions/{transactionId}/cancel"].post.requestBody = imeCancelTransactionBody;
+paths["/api/ime/receivers"].post.requestBody = imeCreateReceiverBody;
+paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
+paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
+
+paths[`${prabhuPrefix}/SendTransaction`].post.requestBody = prabhuSendTransactionBody;
+paths[`${prabhuPrefix}/ConfirmTransaction`].post.requestBody = prabhuConfirmTransactionBody;
+paths[`${prabhuPrefix}/CreateCustomer`].post.requestBody = prabhuCreateCustomerBody;
+paths[`${prabhuPrefix}/CreateReceiver`].post.requestBody = prabhuCreateReceiverBody;
+paths[`${prabhuPrefix}/ValidateBankAccount`].post.requestBody = prabhuValidateBankBody;
+paths[`${prabhuPrefix}/SearchTransaction`].post.requestBody = prabhuSearchTransactionBody;
+paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`].post.requestBody = prabhuSearchTransactionBody;
 
 module.exports = {
   openapi: "3.0.3",
