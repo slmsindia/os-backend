@@ -24,10 +24,30 @@ app.use(cors({
 app.use(morgan("dev"));
 app.use(express.json());
 
+const buildSwaggerSpec = (req) => {
+  const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "http";
+  const host = req.get("host");
+  const requestServerUrl = `${protocol}://${host}`;
+
+  return {
+    ...openApiSpec,
+    servers: [{ url: requestServerUrl }, ...(openApiSpec.servers || []).filter((s) => s.url !== requestServerUrl)],
+  };
+};
+
 app.get("/api-docs.json", (req, res) => {
-  res.json(openApiSpec);
+  res.json(buildSwaggerSpec(req));
 });
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(null, {
+    swaggerOptions: {
+      url: "/api-docs.json",
+    },
+  })
+);
 
 
 app.use(tenantMiddleware);
