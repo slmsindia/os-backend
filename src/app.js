@@ -2,7 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const swaggerUi = require("swagger-ui-express");
 require("dotenv").config();
+const openApiSpec = require("./docs/openapi");
 
 const tenantMiddleware = require("./middleware/tenant.middleware");
 const authRoutes = require("./routes/auth.routes");
@@ -10,6 +12,7 @@ const userRoutes = require("./routes/user.routes");
 const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./routes/prabhu.routes");
+const imeRoutes = require("./routes/ime.routes");
 
 const app = express();
 
@@ -21,6 +24,11 @@ app.use(cors({
 app.use(morgan("dev"));
 app.use(express.json());
 
+app.get("/api-docs.json", (req, res) => {
+  res.json(openApiSpec);
+});
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+
 
 app.use(tenantMiddleware);
 
@@ -30,7 +38,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/Prabhu", prabhuRoutes);
-app.use("/Prabhu", prabhuRoutes);
+app.use("/api/ime", imeRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
