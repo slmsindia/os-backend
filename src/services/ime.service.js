@@ -82,6 +82,7 @@ const METHOD_ALIASES = {
   Login: 'BalanceInquiry',
   ValidateCustomer: 'CheckCustomer',
   GetCustomer: 'CheckCustomer',
+  SearchCustomerByMobile: 'CheckCustomer',
   SendMoney: 'SendTransaction',
   GetTransactionStatus: 'TransactionInquiry',
   CancelTransaction: 'CancelTransaction',
@@ -143,7 +144,8 @@ const buildRequestPayload = (methodName, config, params = {}) => {
       return {
         CheckCustomerRequest: {
           Credentials: credentials,
-          CustomerId: params.CustomerId || params.customerId || params.CustomerIdNo || params.customerIdNo || ''
+          CustomerId: params.CustomerId || params.customerId || params.CustomerIdNo || params.customerIdNo || '',
+          MobileNumber: params.MobileNumber || params.mobileNumber || params.Mobile || params.mobile || params.PhoneNumber || params.phoneNumber || ''
         }
       };
     case 'GetCalculation':
@@ -280,6 +282,10 @@ const getCustomer = async (customerId) => {
   return await callIMEMethod('GetCustomer', { CustomerId: customerId });
 };
 
+const searchCustomerByMobile = async (mobile) => {
+  return await callIMEMethod('SearchCustomerByMobile', { MobileNumber: mobile });
+};
+
 const validateCustomer = async (customerData) => {
   return await callIMEMethod('ValidateCustomer', customerData);
 };
@@ -379,6 +385,7 @@ module.exports = {
 
   // Customer
   createCustomer,
+  searchCustomerByMobile,
   getCustomer,
   validateCustomer,
 

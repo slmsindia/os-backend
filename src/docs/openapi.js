@@ -160,21 +160,243 @@ const imeVerifyKycBody = {
   }
 };
 
+const prabhuCredentialsBody = {
+  required: false,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "Credentials are auto-filled from server env (PRABHU_API_KEY/PRABHU_API_SECRET).",
+        additionalProperties: true,
+        properties: {}
+      }
+    }
+  }
+};
+
+const prabhuGetStateDistrictBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          country: { type: "string", example: "Nepal" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetStaticDataBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          type: { type: "string", example: "paymentMode" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetEchoBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["agentSessionId"],
+        properties: {
+          agentSessionId: { type: "string", example: "1712213374" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetCashPayLocationListBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          country: { type: "string", example: "Nepal" },
+          state: { type: "string", example: "Bagmati" },
+          district: { type: "string", example: "Kathmandu" },
+          city: { type: "string", example: "Kathmandu" },
+          locationName: { type: "string", example: "New Road" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetAcPayBankBranchListBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          country: { type: "string", example: "Nepal" },
+          state: { type: "string", example: "Bagmati" },
+          district: { type: "string", example: "Kathmandu" },
+          city: { type: "string", example: "Kathmandu" },
+          bankName: { type: "string", example: "Nabil" },
+          branchName: { type: "string", example: "Putalisadak" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuSendOtpBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["operation"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          operation: { type: "string", example: "CreateCustomer" },
+          mobile: { type: "string", example: "7041897207" },
+          customerId: { type: "string", example: "1001" },
+          receiverId: { type: "string", example: "2001" },
+          pinNo: { type: "string", example: "PRB12345" },
+          paymentMode: { type: "string", example: "Bank" },
+          customerFullName: { type: "string", example: "Ram Bahadur" },
+          sendAmount: { type: "string", example: "10000" },
+          cspMobile: { type: "string", example: "9876543210" },
+          cspName: { type: "string", example: "Subhalaxmi CSP" },
+          idType: { type: "string", example: "12" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetServiceChargeBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          country: { type: "string", example: "Nepal" },
+          paymentMode: { type: "string", example: "Bank" },
+          transferAmount: { type: "string", example: "10000" },
+          payoutAmount: { type: "string", example: "16000" },
+          bankBranchId: { type: "string", example: "123" },
+          isNewAccount: { type: "string", example: "false" },
+          customerId: { type: "string", example: "1" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetServiceChargeByCollectionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          country: { type: "string", example: "Nepal" },
+          paymentMode: { type: "string", example: "Bank" },
+          collectionAmount: { type: "string", example: "11000" },
+          payoutAmount: { type: "string", example: "16000" },
+          bankBranchId: { type: "string", example: "123" },
+          isNewAccount: { type: "string", example: "false" },
+          customerId: { type: "string", example: "1" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuCancelTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["pinNo"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          pinNo: { type: "string", example: "PRB12345" },
+          reasonForCancellation: { type: "string", example: "Customer request" },
+          otpProcessId: { type: "string", example: "OTP12345" },
+          otp: { type: "string", example: "123456" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuUploadDocumentBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["customerId", "idType", "frontImgFileBase64"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          customerId: { type: "string", example: "1001" },
+          idType: { type: "string", example: "12" },
+          frontImgFileBase64: { type: "string", example: "iVBORw0KGgoAAAANSUhEUg..." },
+          backImgFileBase64: { type: "string", example: "iVBORw0KGgoAAAANSUhEUg..." },
+          additionalImgFileBase64: { type: "string", example: "iVBORw0KGgoAAAANSUhEUg..." }
+        }
+      }
+    }
+  }
+};
+
 const prabhuSendTransactionBody = {
   required: true,
   content: {
     "application/json": {
       schema: {
         type: "object",
-        required: ["senderName", "receiverName", "amount", "purpose", "sourceCountry", "destinationCountry"],
+        required: ["customerId", "receiverId", "paymentMode", "sendAmount", "otpProcessId", "otp"],
+        description: "userName/password are auto-filled from env.",
         properties: {
+          customerId: { type: "number", example: 1001 },
           senderName: { type: "string", example: "Ram Bahadur" },
+          senderMobile: { type: "string", example: "7041897207" },
+          senderIDType: { type: "string", example: "12" },
+          receiverId: { type: "number", example: 2001 },
           receiverName: { type: "string", example: "Hari Shrestha" },
-          amount: { type: "number", example: 500 },
-          purpose: { type: "string", example: "Family support" },
-          sourceCountry: { type: "string", example: "IN" },
-          destinationCountry: { type: "string", example: "NP" },
-          receiverMobile: { type: "string", example: "9801234567" }
+          sendCountry: { type: "string", example: "India" },
+          payoutCountry: { type: "string", example: "Nepal" },
+          paymentMode: { type: "string", example: "Bank" },
+          collectedAmount: { type: "string", example: "11000" },
+          serviceCharge: { type: "string", example: "100" },
+          sendAmount: { type: "string", example: "10900" },
+          sendCurrency: { type: "string", example: "INR" },
+          payAmount: { type: "string", example: "17440" },
+          payCurrency: { type: "string", example: "NPR" },
+          exchangeRate: { type: "string", example: "1.6" },
+          accountNumber: { type: "string", example: "001100220033" },
+          partnerPinNo: { type: "string", example: "PARTNER123" },
+          remittanceReason: { type: "string", example: "Family support" },
+          SourceOfFund: { type: "string", example: "Salary" },
+          cspCode: { type: "string", example: "CSP001" },
+          otpProcessId: { type: "string", example: "OTP12345" },
+          otp: { type: "string", example: "123456" }
         }
       }
     }
@@ -187,29 +409,42 @@ const prabhuConfirmTransactionBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["pinNo", "otp"],
+        required: ["pinNo"],
+        description: "userName/password are auto-filled from env.",
         properties: {
-          pinNo: { type: "string", example: "PRB123456" },
-          otp: { type: "string", example: "123456" }
+          pinNo: { type: "string", example: "PRB123456" }
         }
       }
     }
   }
 };
 
-const prabhuCreateCustomerBody = {
+const prabhuGetCustomerByIdBody = {
   required: true,
   content: {
     "application/json": {
       schema: {
         type: "object",
-        required: ["firstName", "lastName", "mobile", "idType", "idNumber"],
+        required: ["customerIdNo"],
+        description: "userName/password are auto-filled from env.",
         properties: {
-          firstName: { type: "string", example: "Ram" },
-          lastName: { type: "string", example: "Bahadur" },
-          mobile: { type: "string", example: "9801234567" },
-          idType: { type: "string", example: "NID" },
-          idNumber: { type: "string", example: "504XXXXXXXX" }
+          customerIdNo: { type: "string", example: "A12345678" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuGetCustomerByMobileBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["customerMobile"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          customerMobile: { type: "string", example: "7041897207" }
         }
       }
     }
@@ -222,13 +457,77 @@ const prabhuCreateReceiverBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["firstName", "lastName", "mobile", "bankCode", "accountNo"],
+        required: ["customerId", "firstName", "lastName", "mobile", "paymentMode"],
+        description: "userName/password are auto-filled from env.",
         properties: {
+          customerId: { type: "string", example: "1001" },
           firstName: { type: "string", example: "Hari" },
+          middleName: { type: "string", example: "Bahadur" },
           lastName: { type: "string", example: "Shrestha" },
+          gender: { type: "string", example: "Male" },
           mobile: { type: "string", example: "9801234567" },
-          bankCode: { type: "string", example: "NABIL" },
-          accountNo: { type: "string", example: "1234567890" }
+          relationship: { type: "string", example: "Brother" },
+          address: { type: "string", example: "Kathmandu" },
+          state: { type: "string", example: "Bagmati" },
+          district: { type: "string", example: "Kathmandu" },
+          localLevel: { type: "string", example: "KMC" },
+          country: { type: "string", example: "Nepal" },
+          paymentMode: { type: "string", example: "Bank" },
+          bankBranchId: { type: "string", example: "123" },
+          accountNumber: { type: "string", example: "001100220033" },
+          nepaleseIdType: { type: "string", example: "Citizenship" },
+          nepaleseIdNumber: { type: "string", example: "11-01-76-12345" },
+          nepaleseIdIssueDistrict: { type: "string", example: "Kathmandu" },
+          nepaleseIdIssueDate: { type: "string", example: "2020-01-01" },
+          nepaleseIdExpiryDate: { type: "string", example: "2030-01-01" },
+          nepaleseIdIssueCountry: { type: "string", example: "Nepal" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuCreateCustomerBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["firstName", "lastName", "gender", "dobAD", "mobile", "idType", "idNumber", "otpProcessId", "otp"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          firstName: { type: "string", example: "Ram" },
+          middleName: { type: "string", example: "Bahadur" },
+          lastName: { type: "string", example: "Karki" },
+          gender: { type: "string", example: "Male" },
+          dobAD: { type: "string", example: "1995-05-15" },
+          mobile: { type: "string", example: "7041897207" },
+          temporaryAddress: { type: "string", example: "Delhi" },
+          temporaryState: { type: "string", example: "Delhi" },
+          temporaryDistrict: { type: "string", example: "New Delhi" },
+          temporaryCity: { type: "string", example: "New Delhi" },
+          temporaryPINCode: { type: "string", example: "110001" },
+          nationality: { type: "string", example: "NPL" },
+          permanentAddress: { type: "string", example: "Kathmandu" },
+          permanentState: { type: "string", example: "Bagmati" },
+          permanentDistrict: { type: "string", example: "Kathmandu" },
+          permanentLocalLevel: { type: "string", example: "KMC" },
+          permanentWardNo: { type: "string", example: "10" },
+          fatherName: { type: "string", example: "Shyam Karki" },
+          email: { type: "string", example: "ram@example.com" },
+          employer: { type: "string", example: "ABC Pvt Ltd" },
+          idType: { type: "string", example: "12" },
+          idNumber: { type: "string", example: "A12345678" },
+          citizenshipNo: { type: "string", example: "01-01-76-12345" },
+          idIssuedDateAD: { type: "string", example: "2019-01-01" },
+          idExpiryDate: { type: "string", example: "2029-01-01" },
+          idIssuedPlace: { type: "string", example: "Kathmandu" },
+          otpProcessId: { type: "string", example: "OTP12345" },
+          otp: { type: "string", example: "123456" },
+          customerType: { type: "string", example: "Retail" },
+          sourceIncomeType: { type: "string", example: "Salary" },
+          annualIncome: { type: "string", example: "500000" },
+          cspCode: { type: "string", example: "CSP001" }
         }
       }
     }
@@ -241,10 +540,11 @@ const prabhuValidateBankBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["bankCode", "accountNo"],
+        required: ["bankCode", "accountNumber"],
+        description: "userName/password are auto-filled from env.",
         properties: {
           bankCode: { type: "string", example: "NABIL" },
-          accountNo: { type: "string", example: "1234567890" }
+          accountNumber: { type: "string", example: "1234567890" }
         }
       }
     }
@@ -257,10 +557,49 @@ const prabhuSearchTransactionBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["pinNo"],
+        description: "userName/password are auto-filled from env.",
         properties: {
           pinNo: { type: "string", example: "PRB123456" },
-          referenceNo: { type: "string", example: "REF123" }
+          partnerPinNo: { type: "string", example: "PARTNER123" },
+          fromDate: { type: "string", example: "2026-01-01" },
+          toDate: { type: "string", example: "2026-01-31" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuRegisterComplaintBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["complainType", "mobileNumber"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          complainType: { type: "string", example: "Transaction" },
+          mobileNumber: { type: "string", example: "7041897207" },
+          referenceNumber: { type: "string", example: "PRB123456" },
+          ticketType: { type: "string", example: "Support" },
+          category: { type: "string", example: "Delay" },
+          remarks: { type: "string", example: "Transaction pending for more than 24 hours" }
+        }
+      }
+    }
+  }
+};
+
+const prabhuTrackComplaintBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["complainId"],
+        description: "userName/password are auto-filled from env.",
+        properties: {
+          complainId: { type: "string", example: "CMP12345" }
         }
       }
     }
@@ -660,6 +999,20 @@ const paths = {
     },
   },
 
+  "/api/ime/customers/search/mobile/{mobile}": {
+    get: {
+      tags: ["IME"],
+      summary: "Search IME Customer By Mobile",
+      parameters: [
+        { name: "mobile", in: "path", required: true, schema: { type: "string", example: "9841234567" } },
+      ],
+      responses: {
+        200: { description: "Customer search result" },
+        400: { description: "Invalid mobile" },
+      },
+    },
+  },
+
   "/api/ime/customers/{customerId}": {
     get: {
       tags: ["IME"],
@@ -849,7 +1202,7 @@ const paths = {
 paths[`${prabhuPrefix}/GetCustomerByIdNumber/{customerIdNo}`] = {
   get: {
     tags: ["Prabhu"],
-    summary: "Get customer by ID number",
+    summary: "Get customer by ID number (legacy)",
     parameters: [
       { name: "customerIdNo", in: "path", required: true, schema: { type: "string" } },
     ],
@@ -862,10 +1215,32 @@ paths[`${prabhuPrefix}/GetCustomerByIdNumber/{customerIdNo}`] = {
 paths[`${prabhuPrefix}/GetCustomerByMobile/{mobile}`] = {
   get: {
     tags: ["Prabhu"],
-    summary: "Get customer by mobile",
+    summary: "Get customer by mobile (legacy)",
     parameters: [
       { name: "mobile", in: "path", required: true, schema: { type: "string" } },
     ],
+    responses: {
+      200: { description: "Customer details" },
+    },
+  },
+};
+
+paths[`${prabhuPrefix}/GetCustomerById`] = {
+  post: {
+    tags: ["Prabhu"],
+    summary: "Get customer by ID number",
+    requestBody: prabhuGetCustomerByIdBody,
+    responses: {
+      200: { description: "Customer details" },
+    },
+  },
+};
+
+paths[`${prabhuPrefix}/GetCustomerByMobile`] = {
+  post: {
+    tags: ["Prabhu"],
+    summary: "Get customer by mobile",
+    requestBody: prabhuGetCustomerByMobileBody,
     responses: {
       200: { description: "Customer details" },
     },
@@ -879,7 +1254,7 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
     parameters: [
       { name: "pinNo", in: "path", required: true, schema: { type: "string" } },
     ],
-    requestBody: jsonBody,
+    requestBody: prabhuSearchTransactionBody,
     responses: {
       200: { description: "Verification result" },
     },
@@ -935,6 +1310,22 @@ paths[`${prabhuPrefix}/CreateReceiver`].post.requestBody = prabhuCreateReceiverB
 paths[`${prabhuPrefix}/ValidateBankAccount`].post.requestBody = prabhuValidateBankBody;
 paths[`${prabhuPrefix}/SearchTransaction`].post.requestBody = prabhuSearchTransactionBody;
 paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`].post.requestBody = prabhuSearchTransactionBody;
+paths[`${prabhuPrefix}/GetStateDistrict`].post.requestBody = prabhuGetStateDistrictBody;
+paths[`${prabhuPrefix}/GetStaticData`].post.requestBody = prabhuGetStaticDataBody;
+paths[`${prabhuPrefix}/GetEcho`].post.requestBody = prabhuGetEchoBody;
+paths[`${prabhuPrefix}/GetCashPayLocationList`].post.requestBody = prabhuGetCashPayLocationListBody;
+paths[`${prabhuPrefix}/GetAcPayBankBranchList`].post.requestBody = prabhuGetAcPayBankBranchListBody;
+paths[`${prabhuPrefix}/GetBalance`].post.requestBody = prabhuCredentialsBody;
+paths[`${prabhuPrefix}/SendOTP`].post.requestBody = prabhuSendOtpBody;
+paths[`${prabhuPrefix}/GetServiceCharge`].post.requestBody = prabhuGetServiceChargeBody;
+paths[`${prabhuPrefix}/GetServiceChargeByCollection`].post.requestBody = prabhuGetServiceChargeByCollectionBody;
+paths[`${prabhuPrefix}/CancelTransaction`].post.requestBody = prabhuCancelTransactionBody;
+paths[`${prabhuPrefix}/UnverifiedTransactions`].post.requestBody = prabhuCredentialsBody;
+paths[`${prabhuPrefix}/ComplianceTransactions`].post.requestBody = prabhuCredentialsBody;
+paths[`${prabhuPrefix}/UploadDocument`].post.requestBody = prabhuUploadDocumentBody;
+paths[`${prabhuPrefix}/GetUnverifiedCustomers`].post.requestBody = prabhuCredentialsBody;
+paths[`${prabhuPrefix}/RegisterComplaint`].post.requestBody = prabhuRegisterComplaintBody;
+paths[`${prabhuPrefix}/TrackComplaint`].post.requestBody = prabhuTrackComplaintBody;
 
 module.exports = {
   openapi: "3.0.3",

@@ -23,9 +23,12 @@ router.post("/ValidateBankAccount", prabhuController.validateBankAccount);
 router.post("/CreateReceiver", prabhuController.createReceiver);
 router.post("/CreateCustomer", prabhuController.createCustomer);
 router.post("/GetUnverifiedCustomers", prabhuController.getUnverifiedCustomers);
+router.post("/GetCustomerById", prabhuController.getCustomerByIdNumber);
+router.post("/GetCustomerByMobile", prabhuController.getCustomerByMobile);
 router.post("/RegisterComplaint", prabhuController.registerComplaint);
 router.post("/TrackComplaint", prabhuController.trackComplaint);
 
+// Legacy routes kept for backward compatibility.
 router.get("/GetCustomerByIdNumber/:customerIdNo", prabhuController.getCustomerByIdNumber);
 router.get("/GetCustomerByMobile/:mobile", prabhuController.getCustomerByMobile);
 router.post("/VerifyTransaction/:pinNo", prabhuController.verifyTransaction);

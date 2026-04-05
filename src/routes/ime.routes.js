@@ -13,6 +13,7 @@ router.post('/login', imeController.login);
  * Customer Operations
  */
 router.post('/customers', imeController.createCustomer);
+router.get('/customers/search/mobile/:mobile', imeController.searchCustomerByMobile);
 router.get('/customers/:customerId', imeController.getCustomer);
 router.post('/customers/validate', imeController.validateCustomer);
 

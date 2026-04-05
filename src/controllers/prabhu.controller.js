@@ -8,6 +8,13 @@ const ok = (res, message, payload) => {
   });
 };
 
+const getRequestContext = (req) => ({
+  userId: req.user?.user_id || req.user?.id || null,
+  tenantId: req.tenant_id || req.user?.tenant_id || null,
+  ipAddress: req.ip,
+  userAgent: req.get("user-agent") || null
+});
+
 const fail = (res, error) => {
   const status = error.response?.status || 500;
   const details = error.response?.data || { message: error.message };
@@ -20,7 +27,7 @@ const fail = (res, error) => {
 
 const proxyOperation = (operation, message) => async (req, res) => {
   try {
-    const result = await prabhuService.callEndpoint(operation, req.body || {});
+    const result = await prabhuService.callEndpoint(operation, req.body || {}, getRequestContext(req));
     return ok(res, message || `${operation} success`, { data: result.data });
   } catch (error) {
     return fail(res, error);
@@ -31,7 +38,7 @@ const proxyEkycOperation = (operation, message) => async (req, res) => {
   try {
     const result = await prabhuService.callEkycEndpoint(operation, req.body || {}, {
       authorization: req.headers.authorization
-    });
+    }, getRequestContext(req));
     return ok(res, message || `${operation} success`, { data: result.data });
   } catch (error) {
     return fail(res, error);
@@ -40,14 +47,18 @@ const proxyEkycOperation = (operation, message) => async (req, res) => {
 
 const getCustomerByIdNumber = async (req, res) => {
   try {
-    const customer_IdNo = req.params.customerIdNo;
-    if (!customer_IdNo) {
+    const customerIdNo =
+      req.body?.customerIdNo ||
+      req.body?.customer_IdNo ||
+      req.params?.customerIdNo;
+
+    if (!customerIdNo) {
       return res.status(400).json({ success: false, message: "customerIdNo is required" });
     }
 
     const result = await prabhuService.callEndpoint("GetCustomerById", {
-      customer_IdNo
-    });
+      customerIdNo
+    }, getRequestContext(req));
 
     return ok(res, "Get customer by ID number success", { data: result.data });
   } catch (error) {
@@ -57,14 +68,18 @@ const getCustomerByIdNumber = async (req, res) => {
 
 const getCustomerByMobile = async (req, res) => {
   try {
-    const customer_Mobile = req.params.mobile;
-    if (!customer_Mobile) {
+    const customerMobile =
+      req.body?.customerMobile ||
+      req.body?.customer_Mobile ||
+      req.params?.mobile;
+
+    if (!customerMobile) {
       return res.status(400).json({ success: false, message: "mobile is required" });
     }
 
     const result = await prabhuService.callEndpoint("GetCustomerByMobile", {
-      customer_Mobile
-    });
+      customerMobile
+    }, getRequestContext(req));
 
     return ok(res, "Get customer by mobile success", { data: result.data });
   } catch (error) {
@@ -82,7 +97,7 @@ const verifyTransaction = async (req, res) => {
     const result = await prabhuService.callEndpoint("SearchTransaction", {
       pinNo,
       ...(req.body || {})
-    });
+    }, getRequestContext(req));
 
     return ok(res, "Verify transaction success", { data: result.data });
   } catch (error) {
@@ -96,7 +111,7 @@ const ekycAuthHealth = async (req, res) => {
   try {
     const result = await prabhuService.callEkycEndpoint("GenerateToken", req.body || {}, {
       authorization: req.headers.authorization
-    });
+    }, getRequestContext(req));
 
     const data = result?.data || {};
     const statusCode = String(data.StatusCode ?? data.statusCode ?? "").trim();

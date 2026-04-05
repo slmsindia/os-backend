@@ -1,6 +1,9 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const soap = require("soap");
+const { PrismaClient } = require("@prisma/client");
+
+const prisma = new PrismaClient();
 
 // SOAP operations for Prabhu Send Service
 const SOAP_OPERATIONS = {
@@ -32,6 +35,76 @@ const SOAP_OPERATIONS = {
 
 // Store for SOAP client (cached)
 let soapClient = null;
+
+const SENSITIVE_KEYS = new Set([
+  "password",
+  "api-secret",
+  "apiSecret",
+  "api_key",
+  "apiKey",
+  "authorization",
+  "Authorization"
+]);
+
+const sanitizeForLog = (value, parentKey = "") => {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForLog(item, parentKey));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value).reduce((acc, [key, currentValue]) => {
+      acc[key] = SENSITIVE_KEYS.has(key) || SENSITIVE_KEYS.has(parentKey)
+        ? "[redacted]"
+        : sanitizeForLog(currentValue, key);
+      return acc;
+    }, {});
+  }
+
+  return value;
+};
+
+const buildLogContext = (context = {}) => ({
+  userId: context.userId || null,
+  tenantId: context.tenantId || null,
+  ipAddress: context.ipAddress || null,
+  userAgent: context.userAgent || null
+});
+
+const recordPrabhuApiLog = async ({
+  operation,
+  integration,
+  endpointPath,
+  requestMethod,
+  requestPayload,
+  responsePayload,
+  statusCode,
+  success,
+  errorMessage,
+  errorPayload,
+  durationMs,
+  context = {}
+}) => {
+  try {
+    await prisma.prabhuApiLog.create({
+      data: {
+        operation,
+        integration,
+        endpointPath,
+        requestMethod,
+        requestPayload: requestPayload ? sanitizeForLog(requestPayload) : null,
+        responsePayload: responsePayload ? sanitizeForLog(responsePayload) : null,
+        statusCode: typeof statusCode === "number" ? statusCode : null,
+        success: Boolean(success),
+        errorMessage: errorMessage || null,
+        errorPayload: errorPayload ? sanitizeForLog(errorPayload) : null,
+        durationMs: typeof durationMs === "number" ? durationMs : null,
+        ...buildLogContext(context)
+      }
+    });
+  } catch (err) {
+    console.error("Prabhu API log failed:", err.message);
+  }
+};
 
 const EKYC_ENDPOINTS = {
   GenerateToken: { path: "/auth/generatetoken", routeKey: "baseRoute2" },
@@ -162,7 +235,7 @@ const withEkycDefaults = (payload, config) => {
   };
 };
 
-const callEkycEndpoint = async (operation, payload = {}, options = {}) => {
+const callEkycEndpoint = async (operation, payload = {}, options = {}, context = {}) => {
   const endpoint = EKYC_ENDPOINTS[operation];
   if (!endpoint) {
     throw new Error(`Unsupported PRABHU E-KYC operation: ${operation}`);
@@ -172,6 +245,7 @@ const callEkycEndpoint = async (operation, payload = {}, options = {}) => {
   const route = endpoint.routeKey === "baseRoute2" ? config.baseRoute2 : config.baseRoute;
   const url = joinPath(config.baseUrl, route, endpoint.path);
   const requestBody = withEkycDefaults(payload, config);
+  const startedAt = Date.now();
 
   const headers = {
     "Content-Type": "application/json",
@@ -183,20 +257,52 @@ const callEkycEndpoint = async (operation, payload = {}, options = {}) => {
     headers.Authorization = options.authorization;
   }
 
-  const response = await axios({
-    method: "POST",
-    url,
-    data: requestBody,
-    timeout: config.timeoutMs,
-    headers
-  });
+  try {
+    const response = await axios({
+      method: "POST",
+      url,
+      data: requestBody,
+      timeout: config.timeoutMs,
+      headers
+    });
 
-  return {
-    operation,
-    url,
-    status: response.status,
-    data: response.data
-  };
+    await recordPrabhuApiLog({
+      operation,
+      integration: "EKYC",
+      endpointPath: url,
+      requestMethod: "POST",
+      requestPayload: requestBody,
+      responsePayload: response.data,
+      statusCode: response.status,
+      success: true,
+      durationMs: Date.now() - startedAt,
+      context
+    });
+
+    return {
+      operation,
+      url,
+      status: response.status,
+      data: response.data
+    };
+  } catch (error) {
+    await recordPrabhuApiLog({
+      operation,
+      integration: "EKYC",
+      endpointPath: url,
+      requestMethod: "POST",
+      requestPayload: requestBody,
+      responsePayload: error.response?.data || null,
+      statusCode: error.response?.status,
+      success: false,
+      errorMessage: error.message,
+      errorPayload: error.response?.data || { message: error.message },
+      durationMs: Date.now() - startedAt,
+      context
+    });
+
+    throw error;
+  }
 };
 
 const buildSignature = ({ apiKey, apiSecret, method, baseUrl, endpointPath, bodyString }) => {
@@ -251,7 +357,7 @@ const initializeSoapClient = async () => {
   });
 };
 
-const callSendRestEndpoint = async (operation, payload = {}) => {
+const callSendRestEndpoint = async (operation, payload = {}, context = {}) => {
   const config = ensureConfigured();
   const endpointPath = "/Send/getEcho";
   const method = "POST";
@@ -259,6 +365,7 @@ const callSendRestEndpoint = async (operation, payload = {}) => {
     ? payload
     : {};
   const bodyString = requestBody ? JSON.stringify(requestBody) : "";
+  const startedAt = Date.now();
 
   const signed = buildSignature({
     apiKey: config.apiKey,
@@ -269,30 +376,62 @@ const callSendRestEndpoint = async (operation, payload = {}) => {
     bodyString
   });
 
-  const response = await axios({
-    method,
-    url: `${config.baseUrl.replace(/\/$/, "")}${endpointPath}`,
-    data: requestBody,
-    timeout: config.timeoutMs,
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/octet-stream",
-      Authorization: signed.authorization
-    }
-  });
+  try {
+    const response = await axios({
+      method,
+      url: `${config.baseUrl.replace(/\/$/, "")}${endpointPath}`,
+      data: requestBody,
+      timeout: config.timeoutMs,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/octet-stream",
+        Authorization: signed.authorization
+      }
+    });
 
-  return {
-    operation,
-    endpointPath,
-    status: response.status,
-    data: response.data
-  };
+    await recordPrabhuApiLog({
+      operation,
+      integration: "SEND",
+      endpointPath,
+      requestMethod: method,
+      requestPayload: requestBody,
+      responsePayload: response.data,
+      statusCode: response.status,
+      success: true,
+      durationMs: Date.now() - startedAt,
+      context
+    });
+
+    return {
+      operation,
+      endpointPath,
+      status: response.status,
+      data: response.data
+    };
+  } catch (error) {
+    await recordPrabhuApiLog({
+      operation,
+      integration: "SEND",
+      endpointPath,
+      requestMethod: method,
+      requestPayload: requestBody,
+      responsePayload: error.response?.data || null,
+      statusCode: error.response?.status,
+      success: false,
+      errorMessage: error.message,
+      errorPayload: error.response?.data || { message: error.message },
+      durationMs: Date.now() - startedAt,
+      context
+    });
+
+    throw error;
+  }
 };
 
 // Call Prabhu Send API operation via SOAP/WSDL
-const callEndpoint = async (operation, payload = {}) => {
+const callEndpoint = async (operation, payload = {}, context = {}) => {
   if (operation === "GetEcho") {
-    return callSendRestEndpoint(operation, payload);
+    return callSendRestEndpoint(operation, payload, context);
   }
 
   if (!SOAP_OPERATIONS[operation]) {
@@ -307,6 +446,8 @@ const callEndpoint = async (operation, payload = {}) => {
     Password: payload.Password || payload.password || config.apiSecret,
     ...payload
   };
+  const startedAt = Date.now();
+  const endpointPath = `SOAP:${operation}`;
 
   try {
     const client = await initializeSoapClient();
@@ -320,13 +461,37 @@ const callEndpoint = async (operation, payload = {}) => {
     return new Promise((resolve, reject) => {
       client[soapMethod](requestBody, (err, result) => {
         if (err) {
-          reject(err);
+          recordPrabhuApiLog({
+            operation,
+            integration: "SEND",
+            endpointPath,
+            requestMethod: "SOAP",
+            requestPayload: requestBody,
+            responsePayload: err.response?.data || null,
+            statusCode: err.response?.status,
+            success: false,
+            errorMessage: err.message,
+            errorPayload: err.response?.data || { message: err.message },
+            durationMs: Date.now() - startedAt,
+            context
+          }).finally(() => reject(err));
         } else {
-          resolve({
+          recordPrabhuApiLog({
+            operation,
+            integration: "SEND",
+            endpointPath,
+            requestMethod: "SOAP",
+            requestPayload: requestBody,
+            responsePayload: result,
+            statusCode: 200,
+            success: true,
+            durationMs: Date.now() - startedAt,
+            context
+          }).finally(() => resolve({
             operation,
             status: 200,
             data: result
-          });
+          }));
         }
       });
     });

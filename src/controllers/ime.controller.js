@@ -95,6 +95,25 @@ const getCustomer = async (req, res) => {
   }
 };
 
+const searchCustomerByMobile = async (req, res) => {
+  try {
+    const { mobile } = req.params;
+    if (!mobile) {
+      return badRequest(res, 'mobile is required');
+    }
+
+    const normalizedMobile = String(mobile).trim();
+    if (normalizedMobile.length < 7) {
+      return badRequest(res, 'mobile must be at least 7 digits');
+    }
+
+    const result = await imeService.searchCustomerByMobile(normalizedMobile);
+    return ok(res, 'Customer search by mobile completed', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 const validateCustomer = async (req, res) => {
   try {
     const missing = requiredFields(req.body || {}, ['CustomerId']);
@@ -341,6 +360,7 @@ module.exports = {
 
   // Customer
   createCustomer,
+  searchCustomerByMobile,
   getCustomer,
   validateCustomer,
 

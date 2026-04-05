@@ -79,3 +79,35 @@ DATABASE_URL=postgresql://...
 - Add IME UAT credentials to env
 - Test SMS sending in development
 - Deploy to production
+
+## IME Endpoint Mapping
+
+All IME requests exposed in Swagger go through the backend route prefix `/api/ime`, then the service layer converts them into SOAP calls against `IME_BASE_URL`.
+
+| Swagger Path | Backend Route | Controller | IME Service Method | Upstream SOAP Operation |
+| --- | --- | --- | --- | --- |
+| `/api/ime/authenticate` | `POST /api/ime/authenticate` | `authenticate` | `authenticate()` | `BalanceInquiry` |
+| `/api/ime/login` | `POST /api/ime/login` | `login` | `login()` | `BalanceInquiry` |
+| `/api/ime/customers` | `POST /api/ime/customers` | `createCustomer` | `createCustomer()` | `CustomerRegistration` |
+| `/api/ime/customers/{customerId}` | `GET /api/ime/customers/:customerId` | `getCustomer` | `getCustomer()` | `CheckCustomer` |
+| `/api/ime/customers/search/mobile/{mobile}` | `GET /api/ime/customers/search/mobile/:mobile` | `searchCustomerByMobile` | `searchCustomerByMobile()` | `CheckCustomer` |
+| `/api/ime/customers/validate` | `POST /api/ime/customers/validate` | `validateCustomer` | `validateCustomer()` | `CheckCustomer` |
+| `/api/ime/transactions/send` | `POST /api/ime/transactions/send` | `sendMoney` | `sendMoney()` | `SendTransaction` |
+| `/api/ime/transactions/{transactionId}/status` | `GET /api/ime/transactions/:transactionId/status` | `getTransactionStatus` | `getTransactionStatus()` | `TransactionInquiry` |
+| `/api/ime/transactions/{transactionId}/cancel` | `POST /api/ime/transactions/:transactionId/cancel` | `cancelTransaction` | `cancelTransaction()` | `CancelTransaction` |
+| `/api/ime/receivers` | `POST /api/ime/receivers` | `createReceiver` | `createReceiver()` | `CustomerRegistration` |
+| `/api/ime/receivers/{receiverId}` | `GET /api/ime/receivers/:receiverId` | `getReceiver` | `getReceiver()` | `CheckCustomer` |
+| `/api/ime/receivers/{receiverId}` | `PATCH /api/ime/receivers/:receiverId` | `updateReceiver` | `updateReceiver()` | `CustomerMobileAmendment` |
+| `/api/ime/payment-modes` | `GET /api/ime/payment-modes` | `getPaymentModes` | `getPaymentModes()` | `GetStaticData` |
+| `/api/ime/bank-accounts/validate` | `POST /api/ime/bank-accounts/validate` | `validateBankAccount` | `validateBankAccount()` | `GetCalculation_V2` |
+| `/api/ime/banks` | `GET /api/ime/banks` | `getBankList` | `getBankList()` | `GetStaticData` |
+| `/api/ime/kyc/verify` | `POST /api/ime/kyc/verify` | `verifyKYC` | `verifyKYC()` | `CheckCustomer` |
+| `/api/ime/compliance/{customerId}/status` | `GET /api/ime/compliance/:customerId/status` | `getComplianceStatus` | `getComplianceStatus()` | `CheckCSP` |
+| `/api/ime/customers/{customerId}/transactions` | `GET /api/ime/customers/:customerId/transactions` | `getTransactionHistory` | `getTransactionHistory()` | `ReconcileReport` |
+| `/api/ime/exchange-rate` | `GET /api/ime/exchange-rate?from=USD&to=NPR` | `getExchangeRate` | `getExchangeRate()` | `GetCalculation_V2` |
+
+### Notes
+- The Swagger route is the public API your frontend should call.
+- The backend service then calls the IME SOAP provider using `IME_BASE_URL` from `.env`.
+- For customer mobile lookup, use `GET /api/ime/customers/search/mobile/{mobile}`.
+- Current live IME UAT responses are returning `Code: 101` until the provider unlocks the account.
