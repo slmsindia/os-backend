@@ -28,6 +28,24 @@ const badRequest = (res, message, missing = []) => {
   });
 };
 
+const getImeResponseMeta = (result = {}) => {
+  const dataArray = Array.isArray(result?.data) ? result.data : [];
+  const envelopeObject = dataArray.find((item) => item && typeof item === 'object' && !Array.isArray(item));
+
+  if (!envelopeObject) {
+    return { code: '', message: '' };
+  }
+
+  const firstKey = Object.keys(envelopeObject)[0];
+  const body = firstKey ? envelopeObject[firstKey] : null;
+  const response = body?.Response || {};
+
+  return {
+    code: String(response.Code || ''),
+    message: response.Message || ''
+  };
+};
+
 /**
  * Authentication & Session Management
  */
@@ -209,6 +227,17 @@ const createReceiver = async (req, res) => {
     }
 
     const result = await imeService.createReceiver(req.body);
+
+    const imeMeta = getImeResponseMeta(result);
+    if (imeMeta.code && imeMeta.code !== '0') {
+      return res.status(400).json({
+        success: false,
+        message: imeMeta.message || 'Receiver creation failed in IME',
+        imeCode: imeMeta.code,
+        ...result
+      });
+    }
+
     return ok(res, 'Receiver created successfully', result);
   } catch (error) {
     return fail(res, error);
