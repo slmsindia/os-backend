@@ -1,4 +1,7 @@
 const soap = require('soap');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 
 const getConfig = () => {
   const active = String(process.env.IME_ACTIVE || 'false').toLowerCase() === 'true';
@@ -9,6 +12,7 @@ const getConfig = () => {
   const username = (process.env.IME_USERNAME || '').trim();
   const password = (process.env.IME_PASSWORD || '').trim();
   const timeoutMs = Number(process.env.IME_TIMEOUT_MS || 20000);
+  const caBundlePath = (process.env.IME_CA_BUNDLE_PATH || path.join(process.cwd(), 'certs', 'ime-ca-bundle.pem')).trim();
 
   return {
     active,
@@ -18,8 +22,58 @@ const getConfig = () => {
     agentSessionId,
     username,
     password,
-    timeoutMs
+    timeoutMs,
+    caBundlePath
   };
+};
+
+const getTrustedCABundle = (caBundlePath) => {
+  try {
+    const resolvedPath = path.isAbsolute(caBundlePath)
+      ? caBundlePath
+      : path.resolve(process.cwd(), caBundlePath);
+
+    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+      return null;
+    }
+
+    const certBuffer = fs.readFileSync(resolvedPath);
+    return certBuffer.length ? certBuffer : null;
+  } catch {
+    return null;
+  }
+};
+
+const fetchWsdlWithTrustedCa = (wsdlUrl, trustedCa, timeoutMs) => {
+  return new Promise((resolve, reject) => {
+    const req = https.get(wsdlUrl, {
+      ca: trustedCa,
+      rejectUnauthorized: true,
+      timeout: timeoutMs
+    }, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`WSDL download failed with status ${res.statusCode}`));
+        return;
+      }
+
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        resolve(body);
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy(new Error(`WSDL download timed out after ${timeoutMs}ms`));
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+  });
 };
 
 const ensureConfigured = () => {
@@ -42,11 +96,33 @@ const createSoapClient = async () => {
 
   const config = ensureConfigured();
   const wsdlUrl = config.baseUrl + '?wsdl';
+  const trustedCa = getTrustedCABundle(config.caBundlePath);
 
   try {
-    const client = await soap.createClientAsync(wsdlUrl, {
-      wsdl_options: { timeout: config.timeoutMs }
-    });
+    let client;
+
+    if (trustedCa) {
+      const wsdlXml = await fetchWsdlWithTrustedCa(wsdlUrl, trustedCa, config.timeoutMs);
+      const wsdlCachePath = path.join(process.cwd(), 'certs', 'ime-runtime.wsdl');
+      fs.mkdirSync(path.dirname(wsdlCachePath), { recursive: true });
+      fs.writeFileSync(wsdlCachePath, wsdlXml, 'utf8');
+
+      client = await soap.createClientAsync(wsdlCachePath, {
+        wsdl_options: { timeout: config.timeoutMs }
+      });
+
+      client.setEndpoint(config.baseUrl);
+      client.setSecurity(
+        new soap.ClientSSLSecurity(undefined, undefined, [trustedCa], {
+          rejectUnauthorized: true
+        })
+      );
+    } else {
+      client = await soap.createClientAsync(wsdlUrl, {
+        wsdl_options: { timeout: config.timeoutMs }
+      });
+    }
+
     cachedClient = client;
     return client;
   } catch (error) {
@@ -141,13 +217,17 @@ const buildRequestPayload = (methodName, config, params = {}) => {
         }
       };
     case 'CheckCustomer':
+      {
+        const mobile = params.MobileNo || params.mobileNo || params.MobileNumber || params.mobileNumber || params.Mobile || params.mobile || params.PhoneNumber || params.phoneNumber || '';
       return {
         CheckCustomerRequest: {
           Credentials: credentials,
           CustomerId: params.CustomerId || params.customerId || params.CustomerIdNo || params.customerIdNo || '',
-          MobileNumber: params.MobileNumber || params.mobileNumber || params.Mobile || params.mobile || params.PhoneNumber || params.phoneNumber || ''
+          MobileNo: mobile,
+          MobileNumber: mobile
         }
       };
+      }
     case 'GetCalculation':
     case 'GetCalculation_V2':
       return {
