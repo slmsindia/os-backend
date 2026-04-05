@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Tenant {
@@ -107,6 +107,32 @@ model AuditLog {
 
   @@index([tenantId])
   @@index([userId])
+}
+
+model PrabhuApiLog {
+  id             String   @id @default(uuid())
+  operation      String
+  integration    String
+  endpointPath   String
+  requestMethod  String
+  requestPayload Json?
+  responsePayload Json?
+  statusCode     Int?
+  success        Boolean  @default(false)
+  errorMessage   String?
+  errorPayload   Json?
+  userId         String?
+  tenantId       String?
+  ipAddress      String?
+  userAgent      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model OtpCode {
