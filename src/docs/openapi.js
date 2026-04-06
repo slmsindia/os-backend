@@ -26,7 +26,17 @@ const imeCreateCustomerBody = {
           "DateOfBirth",
           "IDType",
           "IDNumber",
-          "PhoneNumber"
+          "PhoneNumber",
+          "Nationality",
+          "MaritalStatus",
+          "FatherOrMotherName",
+          "Occupation",
+          "State",
+          "District",
+          "Municipality",
+          "Address",
+          "IDIssueDate",
+          "IdData"
         ],
         properties: {
           FirstName: { type: "string", example: "Ram" },
@@ -34,9 +44,23 @@ const imeCreateCustomerBody = {
           Gender: { type: "string", enum: ["M", "F"], example: "M" },
           DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
           IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
-          IDNumber: { type: "string", example: "504XXXXXXXX" },
+          IDNumber: { type: "string", example: "29383-239334-2" },
+          IDIssueDate: { type: "string", example: "2018-02-15" },
           PhoneNumber: { type: "string", example: "9841234567" },
-          CountryCode: { type: "string", example: "NP" }
+          CountryCode: { type: "string", example: "NP" },
+          Nationality: { type: "string", example: "NPL" },
+          MaritalStatus: { type: "string", example: "Single" },
+          FatherOrMotherName: { type: "string", example: "Dhan Bahadur Thapa" },
+          Occupation: { type: "string", example: "Service" },
+          SourceOfFund: { type: "string", example: "Salary" },
+          State: { type: "string", example: "Bagmati" },
+          District: { type: "string", example: "Kathmandu" },
+          Municipality: { type: "string", example: "Kathmandu" },
+          Address: { type: "string", example: "Baneshwor" }
+          ,IdData: { type: "string", example: "<base64-id-document>" }
+          ,IdDataType: { type: "string", example: "image/jpeg" }
+          ,OTPToken: { type: "string", example: "IME-OTP-TOKEN" }
+          ,OTP: { type: "string", example: "123456" }
         }
       }
     }
@@ -154,6 +178,25 @@ const imeVerifyKycBody = {
           CustomerId: { type: "string", example: "CUST001" },
           IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
           IDNumber: { type: "string", example: "509XXXXXXXX" }
+        }
+      }
+    }
+  }
+};
+
+const imeDataBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["name", "mobile", "relationship"],
+        properties: {
+          name: { type: "string", example: "Sita Sharma" },
+          mobile: { type: "string", example: "9801234567" },
+          relationship: { type: "string", example: "Self" },
+          sendAmountInr: { type: "number", example: 1000 },
+          receiveAmountNpr: { type: "number", example: 1600 }
         }
       }
     }
@@ -999,6 +1042,59 @@ const paths = {
     },
   },
 
+  "/api/ime/customers/send-otp": {
+    post: {
+      tags: ["IME"],
+      summary: "Send OTP for IME Customer Registration",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["PhoneNumber"],
+              properties: {
+                PhoneNumber: { type: "string", example: "9812474750" },
+                Module: { type: "string", example: "CustomerRegistration" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "OTP sent" },
+        400: { description: "Invalid input" },
+      },
+    },
+  },
+
+  "/api/ime/customers/confirm": {
+    post: {
+      tags: ["IME"],
+      summary: "Confirm IME Customer Registration with OTP",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["CustomerToken", "OTPToken", "OTP"],
+              properties: {
+                CustomerToken: { type: "string", example: "IME-CUSTOMER-TOKEN" },
+                OTPToken: { type: "string", example: "IME-OTP-TOKEN" },
+                OTP: { type: "string", example: "123456" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Customer confirmed" },
+        400: { description: "Invalid OTP/Token" },
+      },
+    },
+  },
+
   "/api/ime/customers/search/mobile/{mobile}": {
     get: {
       tags: ["IME"],
@@ -1108,6 +1204,48 @@ const paths = {
       requestBody: jsonBody,
       responses: {
         200: { description: "Receiver updated" },
+      },
+    },
+  },
+
+  "/api/ime/data": {
+    get: {
+      tags: ["IME"],
+      summary: "List persisted IME data",
+      responses: {
+        200: { description: "IME data list" },
+      },
+    },
+    post: {
+      tags: ["IME"],
+      summary: "Create persisted IME data",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "IME data created" },
+      },
+    },
+  },
+
+  "/api/ime/data/{id}": {
+    patch: {
+      tags: ["IME"],
+      summary: "Update persisted IME data",
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "IME data updated" },
+      },
+    },
+    delete: {
+      tags: ["IME"],
+      summary: "Delete persisted IME data",
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "IME data deleted" },
       },
     },
   },
@@ -1300,6 +1438,8 @@ paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
 paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
 paths["/api/ime/transactions/{transactionId}/cancel"].post.requestBody = imeCancelTransactionBody;
 paths["/api/ime/receivers"].post.requestBody = imeCreateReceiverBody;
+paths["/api/ime/data"].post.requestBody = imeDataBody;
+paths["/api/ime/data/{id}"].patch.requestBody = imeDataBody;
 paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
 paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
 

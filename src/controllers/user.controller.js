@@ -1,5 +1,6 @@
 const { logAction } = require("../utils/audit");
 const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("../utils/id");
 const prisma = new PrismaClient();
 
 const VALID_USER_TYPES = [
@@ -21,7 +22,7 @@ const normalizeUserType = (value) => {
 const getOrCreateRole = async (roleName) => {
   let role = await prisma.role.findUnique({ where: { name: roleName } });
   if (!role) {
-    role = await prisma.role.create({ data: { name: roleName } });
+    role = await prisma.role.create({ data: { id: generateUuid(), name: roleName } });
   }
   return role;
 };
@@ -78,7 +79,7 @@ const userController = {
           roles: {
             upsert: {
               where: { userId_roleId: { userId: id, roleId: role.id } },
-              create: { roleId: role.id },
+              create: { id: generateUuid(), roleId: role.id },
               update: {}
             }
           }

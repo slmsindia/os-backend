@@ -2,6 +2,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const soap = require("soap");
 const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("../utils/id");
 
 const prisma = new PrismaClient();
 
@@ -87,6 +88,7 @@ const recordPrabhuApiLog = async ({
   try {
     await prisma.prabhuApiLog.create({
       data: {
+        id: generateUuid(),
         operation,
         integration,
         endpointPath,

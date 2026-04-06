@@ -1,4 +1,5 @@
-const imeService = require('../services/ime.service');
+const imeService = require('./ime.service');
+const imeDataService = require('./ime-data.service');
 
 const ok = (res, message, data = {}) => {
   return res.json({
@@ -46,6 +47,17 @@ const getImeResponseMeta = (result = {}) => {
   };
 };
 
+const getImePayload = (result = {}) => {
+  const dataArray = Array.isArray(result?.data) ? result.data : [];
+  const envelopeObject = dataArray.find((item) => item && typeof item === 'object' && !Array.isArray(item));
+  if (!envelopeObject) {
+    return {};
+  }
+
+  const firstKey = Object.keys(envelopeObject)[0];
+  return firstKey ? envelopeObject[firstKey] || {} : {};
+};
+
 /**
  * Authentication & Session Management
  */
@@ -79,7 +91,17 @@ const createCustomer = async (req, res) => {
       'DateOfBirth',
       'IDType',
       'IDNumber',
-      'PhoneNumber'
+      'PhoneNumber',
+      'Nationality',
+      'MaritalStatus',
+      'FatherOrMotherName',
+      'Occupation',
+      'State',
+      'District',
+      'Municipality',
+      'Address',
+      'IDIssueDate',
+      'IdData'
     ]);
     if (missing.length) {
       return badRequest(res, 'Missing required customer fields', missing);
@@ -93,8 +115,142 @@ const createCustomer = async (req, res) => {
       return badRequest(res, 'IDType must be one of PP, DL, NP_ID');
     }
 
+    const normalizedDob = String(req.body.DateOfBirth || '').trim();
+    const normalizedIssueDate = String(req.body.IDIssueDate || '').trim();
+    const idType = String(req.body.IDType || '').trim();
+    const idNumber = String(req.body.IDNumber || '').trim();
+
+    if (!/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(normalizedDob)) {
+      return badRequest(res, 'DateOfBirth must be in YYYY-MM-DD or YYYY/MM/DD format');
+    }
+
+    if (!/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(normalizedIssueDate)) {
+      return badRequest(res, 'IDIssueDate must be in YYYY-MM-DD or YYYY/MM/DD format');
+    }
+
+    if (idType === 'NP_ID') {
+      if (!/^[0-9\-/]+$/.test(idNumber)) {
+        return badRequest(res, 'For NP_ID, IDNumber must contain digits with optional - or /');
+      }
+
+      const compactId = idNumber.replace(/[^0-9]/g, '');
+      if (compactId.length < 8) {
+        return badRequest(res, 'For NP_ID, IDNumber must have at least 8 digits');
+      }
+    }
+
+    const nationality = String(req.body.Nationality || '').trim().toUpperCase();
+    if (!['NPL', 'NP', 'NEPAL', 'IND', 'IN', 'INDIA'].includes(nationality)) {
+      return badRequest(res, 'Nationality should be NPL (or NP/NEPAL) for Nepal profile');
+    }
+
     const result = await imeService.createCustomer(req.body);
-    return ok(res, 'Customer created successfully', result);
+
+    const registrationMeta = getImeResponseMeta(result);
+    if (registrationMeta.code && registrationMeta.code !== '0') {
+      return res.status(400).json({
+        success: false,
+        message: registrationMeta.message || 'Customer registration failed in IME',
+        imeCode: registrationMeta.code,
+        ...result
+      });
+    }
+
+    const otp = String(req.body.OTP || '').trim();
+    const otpToken = String(req.body.OTPToken || '').trim();
+    const shouldAutoConfirm = Boolean(otp || otpToken);
+
+    if (!shouldAutoConfirm) {
+      return ok(res, 'Customer created successfully. Confirm with OTP to activate.', result);
+    }
+
+    if (!otp || !otpToken) {
+      return badRequest(res, 'Both OTP and OTPToken are required for auto-confirm');
+    }
+
+    const registrationPayload = getImePayload(result);
+    const customerToken = String(registrationPayload.CustomerToken || '').trim();
+    if (!customerToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer created but CustomerToken missing for OTP confirmation',
+        registration: result
+      });
+    }
+
+    const confirmation = await imeService.confirmCustomerRegistration({
+      OTP: otp,
+      OTPToken: otpToken,
+      CustomerToken: customerToken
+    });
+
+    const confirmationMeta = getImeResponseMeta(confirmation);
+    if (confirmationMeta.code && confirmationMeta.code !== '0') {
+      return res.status(400).json({
+        success: false,
+        message: confirmationMeta.message || 'Customer OTP confirmation failed in IME',
+        imeCode: confirmationMeta.code,
+        registration: result,
+        confirmation
+      });
+    }
+
+    return ok(res, 'Customer created and confirmed successfully', {
+      registration: result,
+      confirmation
+    });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const sendCustomerOtp = async (req, res) => {
+  try {
+    const missing = requiredFields(req.body || {}, ['PhoneNumber']);
+    if (missing.length) {
+      return badRequest(res, 'Missing required OTP fields', missing);
+    }
+
+    const result = await imeService.sendCustomerOtp(
+      req.body.PhoneNumber,
+      req.body.Module || process.env.IME_SEND_OTP_MODULE || 'CustomerRegistration'
+    );
+
+    const imeMeta = getImeResponseMeta(result);
+    if (imeMeta.code && imeMeta.code !== '0') {
+      return res.status(400).json({
+        success: false,
+        message: imeMeta.message || 'Failed to send IME OTP',
+        imeCode: imeMeta.code,
+        ...result
+      });
+    }
+
+    return ok(res, 'Customer OTP sent successfully', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const confirmCustomer = async (req, res) => {
+  try {
+    const missing = requiredFields(req.body || {}, ['CustomerToken', 'OTPToken', 'OTP']);
+    if (missing.length) {
+      return badRequest(res, 'Missing required confirmation fields', missing);
+    }
+
+    const result = await imeService.confirmCustomerRegistration(req.body);
+    const imeMeta = getImeResponseMeta(result);
+    if (imeMeta.code && imeMeta.code !== '0') {
+      return res.status(400).json({
+        success: false,
+        message: imeMeta.message || 'Customer confirmation failed in IME',
+        imeCode: imeMeta.code,
+        ...result
+      });
+    }
+
+    return ok(res, 'Customer confirmed successfully', result);
   } catch (error) {
     return fail(res, error);
   }
@@ -382,6 +538,65 @@ const getExchangeRate = async (req, res) => {
   }
 };
 
+/**
+ * IME Data Storage Operations
+ */
+const listImeData = async (req, res) => {
+  try {
+    const data = await imeDataService.list();
+    return ok(res, 'IME data fetched successfully', { data });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const createImeData = async (req, res) => {
+  try {
+    const missing = requiredFields(req.body || {}, ['name', 'mobile', 'relationship']);
+    if (missing.length) {
+      return badRequest(res, 'Missing required IME data fields', missing);
+    }
+
+    const data = await imeDataService.create(req.body);
+    return ok(res, 'IME data saved successfully', { data });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const updateImeData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return badRequest(res, 'id is required');
+    }
+
+    const missing = requiredFields(req.body || {}, ['name', 'mobile', 'relationship']);
+    if (missing.length) {
+      return badRequest(res, 'Missing required IME data fields', missing);
+    }
+
+    const data = await imeDataService.update(id, req.body);
+    return ok(res, 'IME data updated successfully', { data });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const deleteImeData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return badRequest(res, 'id is required');
+    }
+
+    await imeDataService.remove(id);
+    return ok(res, 'IME data deleted successfully');
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 module.exports = {
   // Auth
   authenticate,
@@ -389,6 +604,8 @@ module.exports = {
 
   // Customer
   createCustomer,
+  sendCustomerOtp,
+  confirmCustomer,
   searchCustomerByMobile,
   getCustomer,
   validateCustomer,
@@ -414,5 +631,11 @@ module.exports = {
 
   // Reporting
   getTransactionHistory,
-  getExchangeRate
+  getExchangeRate,
+
+  // IME Data
+  listImeData,
+  createImeData,
+  updateImeData,
+  deleteImeData
 };

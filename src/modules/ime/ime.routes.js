@@ -1,5 +1,5 @@
 const express = require('express');
-const imeController = require('../controllers/ime.controller');
+const imeController = require('./ime.controller');
 
 const router = express.Router();
 
@@ -12,6 +12,8 @@ router.post('/login', imeController.login);
 /**
  * Customer Operations
  */
+router.post('/customers/send-otp', imeController.sendCustomerOtp);
+router.post('/customers/confirm', imeController.confirmCustomer);
 router.post('/customers', imeController.createCustomer);
 router.get('/customers/search/mobile/:mobile', imeController.searchCustomerByMobile);
 router.get('/customers/:customerId', imeController.getCustomer);
@@ -30,6 +32,14 @@ router.post('/transactions/:transactionId/cancel', imeController.cancelTransacti
 router.post('/receivers', imeController.createReceiver);
 router.get('/receivers/:receiverId', imeController.getReceiver);
 router.patch('/receivers/:receiverId', imeController.updateReceiver);
+
+/**
+ * IME Data Storage Operations
+ */
+router.get('/data', imeController.listImeData);
+router.post('/data', imeController.createImeData);
+router.patch('/data/:id', imeController.updateImeData);
+router.delete('/data/:id', imeController.deleteImeData);
 
 /**
  * Bank & Payment Operations

@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("../src/utils/id");
 const prisma = new PrismaClient();
 
 async function main() {
@@ -8,19 +9,19 @@ async function main() {
   await prisma.tenant.upsert({
     where: { domain: "localhost" },
     update: {},
-    create: { name: "Localhost Tenant", domain: "localhost" }
+    create: { id: generateUuid(), name: "Localhost Tenant", domain: "localhost" }
   });
 
   // for frontend dev server
   await prisma.tenant.upsert({
     where: { domain: "localhost:5173" },
     update: {},
-    create: { name: "Frontend Dev 5173", domain: "localhost:5173" }
+    create: { id: generateUuid(), name: "Frontend Dev 5173", domain: "localhost:5173" }
   });
   await prisma.tenant.upsert({
     where: { domain: "localhost:5174" },
     update: {},
-    create: { name: "Frontend Dev 5174", domain: "localhost:5174" }
+    create: { id: generateUuid(), name: "Frontend Dev 5174", domain: "localhost:5174" }
   });
 
   // initial roles
@@ -42,7 +43,7 @@ async function main() {
     await prisma.role.upsert({
       where: { name },
       update: {},
-      create: { name }
+      create: { id: generateUuid(), name }
     });
   }
 
@@ -52,7 +53,7 @@ async function main() {
     await prisma.permission.upsert({
       where: { name },
       update: {},
-      create: { name }
+      create: { id: generateUuid(), name }
     });
   }
 

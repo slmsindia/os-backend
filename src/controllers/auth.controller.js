@@ -3,6 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
 const { generateToken } = require("../utils/jwt");
 const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
 
 const prisma = new PrismaClient();
 
@@ -18,7 +19,7 @@ const isStrongPassword = (password) => {
 const getOrCreateRole = async (roleName) => {
   let role = await prisma.role.findUnique({ where: { name: roleName } });
   if (!role) {
-    role = await prisma.role.create({ data: { name: roleName } });
+    role = await prisma.role.create({ data: { id: generateUuid(), name: roleName } });
   }
   return role;
 };
@@ -189,6 +190,7 @@ const authController = {
 
       const user = await prisma.user.create({
         data: {
+          id: generateUuid(),
           mobile,
           fullName,
           gender,
@@ -199,6 +201,7 @@ const authController = {
           referredBy: referredBy || null,
           roles: {
             create: {
+              id: generateUuid(),
               roleId: defaultRole.id
             }
           }
