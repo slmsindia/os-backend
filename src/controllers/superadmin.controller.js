@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
 
 const superAdminController = {
   createTenant: async (req, res) => {
@@ -15,12 +16,13 @@ const superAdminController = {
       // Use a transaction to ensure both tenant and admin are created
       const result = await prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
-          data: { name, domain }
+          data: { id: generateUuid(), name, domain }
         });
 
         const hash = await bcrypt.hash(adminPassword, 10);
         const admin = await tx.user.create({
           data: {
+            id: generateUuid(),
             mobile: adminMobile,
             fullName: adminName,
             password: hash,

@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
 
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
@@ -30,6 +31,7 @@ const adminController = {
       const hash = await bcrypt.hash(password, 10);
       const user = await prisma.user.create({
         data: {
+          id: generateUuid(),
           mobile,
           fullName,
           password: hash,

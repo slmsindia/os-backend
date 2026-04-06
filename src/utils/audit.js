@@ -1,10 +1,12 @@
 const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("./id");
 const prisma = new PrismaClient();
 
 const logAction = async ({ userId, action, targetId, metadata, tenantId }) => {
   try {
     await prisma.auditLog.create({
       data: {
+        id: generateUuid(),
         userId,
         action,
         targetId,

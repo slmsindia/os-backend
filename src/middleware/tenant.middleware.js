@@ -5,28 +5,33 @@ module.exports = async (req, res, next) => {
   const host = req.get("host");
   if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
 
-  const domain = host.split(":")[0];
+  // Try both 'localhost' and 'localhost:port' for dev
+  let domain = host;
+  // Try exact match first
+  let tenant = await prisma.tenant.findUnique({ where: { domain } });
+  // If not found, try without port (for localhost)
+  if (!tenant && domain.includes(':')) {
+    domain = domain.split(":")[0];
+    tenant = await prisma.tenant.findUnique({ where: { domain } });
+  }
 
   try {
-    const tenant = await prisma.tenant.findUnique({
-      where: { domain }
-    });
-
     if (!tenant) {
-      // Fallback to the main organization if the domain lookup fails
       const fallbackTenant = await prisma.tenant.findFirst({
         where: { domain: "os.dpinfoserver.co.in" }
       }) || await prisma.tenant.findFirst();
 
-      if (fallbackTenant) {
+      if (process.env.NODE_ENV !== "production" && fallbackTenant) {
         req.tenant_id = fallbackTenant.id;
         return next();
       }
 
-      console.warn(`No tenant found for: ${domain}. Check your Tenant table.`);
-      return next();
+      console.warn(`Tenant not found for: ${host}`);
+      return res.status(403).json({
+        success: false,
+        message: "Invalid domain"
+      });
     }
-
     req.tenant_id = tenant.id;
     next();
   } catch (err) {

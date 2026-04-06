@@ -7,17 +7,25 @@ const OTP_EXPIRY = 600; // 10 minutes
 const MAX_ATTEMPTS = 3;
 
 const sendOtp = async (mobile) => {
+  console.log("Generating OTP for", mobile);
   const code = generateOtp();
+  console.log("OTP code:", code);
   const hash = await bcrypt.hash(code, 10);
+  console.log("Hash generated");
 
   const key = `otp:${mobile}`;
+  console.log("Storing in Redis key:", key);
   // store hash + tries
   await redis.set(key, JSON.stringify({
     hash,
     attempts: 0
   }), "EX", OTP_EXPIRY);
+  console.log("Stored in Redis");
 
-  return await sendOtpSMS(mobile, code);
+  console.log("Sending SMS");
+  const result = await sendOtpSMS(mobile, code);
+  console.log("SMS result:", result);
+  return result;
 };
 
 const verifyOtp = async (mobile, otp) => {

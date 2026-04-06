@@ -20,3 +20,8 @@ build
 *.njsproj
 *.sln
 *.sw?
+
+# Local runtime artifacts
+prisma/dev.db
+certs/ime-runtime.wsdl
+certs/ime-temp.wsdl
