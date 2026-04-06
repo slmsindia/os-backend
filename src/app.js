@@ -11,7 +11,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
-const prabhuRoutes = require("./routes/prabhu.routes");
+const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
 
 const app = express();
