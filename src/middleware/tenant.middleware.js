@@ -16,6 +16,9 @@ module.exports = async (req, res, next) => {
       domain = origin.replace(/^https?:\/\//, "").split("/")[0];
     } else if (referer) {
       domain = referer.replace(/^https?:\/\//, "").split("/")[0];
+    } else {
+      // Fallback for direct backend access
+      domain = "os.dpinfoserver.co.in";
     }
   }
 
