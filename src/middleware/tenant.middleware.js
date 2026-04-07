@@ -6,8 +6,17 @@ module.exports = async (req, res, next) => {
   if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
 
   const backendDomain = "osapi.dpinfoserver.co.in";
-  let domain = host;
+  const frontendDomain = "os.dpinfoserver.co.in";
+  const productionTenantId = "8adbcbe8-92d7-4c4b-96b5-20be7005b1a9";
+  
+  // FAIL-SAFE: Hardcode production domains to their tenant ID
+  if (host === backendDomain || host === frontendDomain || host.includes("dpinfoserver.co.in")) {
+    req.tenant_id = productionTenantId;
+    return next();
+  }
 
+  let domain = host;
+  // If host is the backend domain (but not the hardcoded one somehow), try to identify tenant from Origin or Referer
   if (host === backendDomain || host.startsWith(backendDomain + ":")) {
     const origin = req.get("origin");
     const referer = req.get("referer");
@@ -17,8 +26,7 @@ module.exports = async (req, res, next) => {
     } else if (referer) {
       domain = referer.replace(/^https?:\/\//, "").split("/")[0];
     } else {
-      // Fallback for direct backend access
-      domain = "os.dpinfoserver.co.in";
+      domain = frontendDomain;
     }
   }
 
@@ -31,20 +39,9 @@ module.exports = async (req, res, next) => {
 
   try {
     if (!tenant) {
-      const fallbackTenant = await prisma.tenant.findFirst({
-        where: { domain: "os.dpinfoserver.co.in" }
-      }) || await prisma.tenant.findFirst();
-
-      if (process.env.NODE_ENV !== "production" && fallbackTenant) {
-        req.tenant_id = fallbackTenant.id;
-        return next();
-      }
-
-      console.warn(`Tenant not found for: ${host}`);
-      return res.status(403).json({
-        success: false,
-        message: "Invalid domain"
-      });
+      console.warn(`Tenant not found for: ${host} - Falling back to default production tenant.`);
+      req.tenant_id = productionTenantId;
+      return next();
     }
     req.tenant_id = tenant.id;
     next();
