@@ -156,8 +156,8 @@ const buildCredentials = (config) => ({
 const METHOD_ALIASES = {
   Authenticate: 'BalanceInquiry',
   Login: 'BalanceInquiry',
-  ValidateCustomer: 'CheckCustomer',
-  GetCustomer: 'CheckCustomer',
+  ValidateCustomer: 'CheckEntityStatus',
+  GetCustomer: 'CustomerRequery',
   SearchCustomerByMobile: 'CheckCustomer',
   SendMoney: 'SendTransaction',
   GetTransactionStatus: 'TransactionInquiry',
@@ -165,12 +165,12 @@ const METHOD_ALIASES = {
   CreateCustomer: 'CustomerRegistration',
   ConfirmCustomerRegistration: 'ConfirmCustomerRegistration',
   CreateReceiver: 'CustomerRegistration',
-  GetReceiver: 'CheckCustomer',
+  GetReceiver: 'CustomerRequery',
   UpdateReceiver: 'CustomerMobileAmendment',
   GetPaymentModes: 'GetStaticData',
   ValidateBankAccount: 'GetCalculation',
   GetBankList: 'GetStaticData',
-  VerifyKYC: 'CheckCustomer',
+  VerifyKYC: 'CheckEntityStatus',
   GetComplianceStatus: 'CheckCSP',
   GetTransactionHistory: 'ReconcileReport',
   GetExchangeRate: 'GetCalculation'
@@ -542,6 +542,29 @@ const buildRequestPayload = (methodName, config, params = {}) => {
         }
       };
       }
+    case 'GetUniqueId':
+      return {
+        GetUniqueIdRequest: {
+          Credentials: credentials,
+          EntityType: asString(params.EntityType, params.entityType, 'Customer'),
+          EntityId: asString(params.EntityId, params.entityId, params.CustomerId, params.customerId, params.MobileNo, params.mobileNo)
+        }
+      };
+    case 'CheckEntityStatus':
+      return {
+        CheckEntityStatusRequest: {
+          Credentials: credentials,
+          EntityType: asString(params.EntityType, params.entityType, 'Customer'),
+          EntityId: asString(params.EntityId, params.entityId, params.CustomerId, params.customerId, params.MobileNo, params.mobileNo)
+        }
+      };
+    case 'CustomerRequery':
+      return {
+        CustomerRequeryRequest: {
+          Credentials: credentials,
+          EntityId: asString(params.EntityId, params.entityId, params.CustomerId, params.customerId, params.MobileNo, params.mobileNo)
+        }
+      };
     case 'GetCalculation':
       return {
         GetCalculationRequest: {
@@ -755,7 +778,10 @@ const confirmCustomerRegistration = async (confirmData) => {
 };
 
 const getCustomer = async (customerId) => {
-  return await callIMEMethod('GetCustomer', { CustomerId: customerId });
+  return await callIMEMethod('GetCustomer', {
+    EntityType: 'Customer',
+    EntityId: customerId
+  });
 };
 
 const searchCustomerByMobile = async (mobile) => {
@@ -763,7 +789,23 @@ const searchCustomerByMobile = async (mobile) => {
 };
 
 const validateCustomer = async (customerData) => {
-  return await callIMEMethod('ValidateCustomer', customerData);
+  return await callIMEMethod('ValidateCustomer', {
+    EntityType: asString(customerData?.EntityType, customerData?.entityType, 'Customer'),
+    EntityId: asString(customerData?.EntityId, customerData?.entityId, customerData?.CustomerId, customerData?.customerId, customerData?.MobileNo, customerData?.mobileNo)
+  });
+};
+
+const getUniqueId = async (entityType = 'Customer', entityId = '') => {
+  return await callIMEMethod('GetUniqueId', {
+    EntityType: entityType,
+    EntityId: entityId
+  });
+};
+
+const customerRequery = async (entityId = '') => {
+  return await callIMEMethod('CustomerRequery', {
+    EntityId: entityId
+  });
 };
 
 /**
@@ -794,7 +836,10 @@ const createReceiver = async (receiverData) => {
 };
 
 const getReceiver = async (receiverId) => {
-  return await callIMEMethod('GetReceiver', { ReceiverId: receiverId });
+  return await callIMEMethod('GetReceiver', {
+    EntityType: 'Receiver',
+    EntityId: receiverId
+  });
 };
 
 const updateReceiver = async (receiverId, receiverData) => {
@@ -827,11 +872,86 @@ const getBankList = async (countryCode = 'NP') => {
   return await callIMEMethod('GetBankList', { TypeCode: 'Bank', CountryCode: countryCode });
 };
 
+const getBankBranches = async (countryCode = 'NP', bankValue = '') => {
+  const normalizedCountry = asString(countryCode, 'NP').trim();
+  const normalizedBank = asString(bankValue).trim();
+
+  const typeCandidates = [
+    'BankBranch',
+    'Branch',
+    'BankBranches',
+    'BankBranchList',
+    'PayoutAgentBranch'
+  ];
+
+  const referenceCandidates = [
+    normalizedBank && normalizedCountry ? `${normalizedBank}:${normalizedCountry}` : '',
+    normalizedBank,
+    normalizedCountry
+  ].filter((value, index, arr) => value && arr.indexOf(value) === index);
+
+  let lastResult = null;
+  for (const typeCode of typeCandidates) {
+    for (const referenceValue of referenceCandidates) {
+      const response = await callIMEMethod('GetStaticData', {
+        TypeCode: typeCode,
+        ReferenceValue: referenceValue
+      });
+
+      const rows = response?.data?.[0]?.GetStaticDataResult?.DataList;
+      if (Array.isArray(rows) && rows.length > 0) {
+        return response;
+      }
+
+      lastResult = response;
+    }
+  }
+
+  return lastResult;
+};
+
+const getStaticData = async (typeCode, referenceValue = '') => {
+  return await callIMEMethod('GetStaticData', {
+    TypeCode: asString(typeCode, 'PaymentType'),
+    ReferenceValue: asString(referenceValue)
+  });
+};
+
+const getIssuePlaces = async (countryCode = 'NP', idType = '') => {
+  const typeCandidates = [
+    'IssuePlace',
+    'IDIssuePlace',
+    'IdIssuePlace',
+    'PlaceOfIssue',
+    'District'
+  ];
+
+  let lastResult = null;
+  for (const typeCode of typeCandidates) {
+    const response = await callIMEMethod('GetStaticData', {
+      TypeCode: typeCode,
+      ReferenceValue: idType ? `${countryCode}:${idType}` : countryCode
+    });
+
+    const rows = response?.data?.[0]?.GetStaticDataResult?.DataList;
+    if (Array.isArray(rows) && rows.length > 0) {
+      return response;
+    }
+
+    lastResult = response;
+  }
+
+  return lastResult;
+};
+
 /**
  * Compliance & Verification
  */
 const verifyKYC = async (kycData) => {
-  return await callIMEMethod('VerifyKYC', kycData);
+  return await callIMEMethod('VerifyKYC', {
+    EntityType: asString(kycData?.EntityType, kycData?.entityType, 'Customer'),
+    EntityId: asString(kycData?.EntityId, kycData?.entityId, kycData?.CustomerId, kycData?.customerId, kycData?.MobileNo, kycData?.mobileNo)
+  });
 };
 
 const getComplianceStatus = async (customerId) => {
@@ -876,6 +996,8 @@ module.exports = {
   searchCustomerByMobile,
   getCustomer,
   validateCustomer,
+  getUniqueId,
+  customerRequery,
 
   // Remittance
   sendMoney,
@@ -891,6 +1013,9 @@ module.exports = {
   getPaymentModes,
   validateBankAccount,
   getBankList,
+  getBankBranches,
+  getStaticData,
+  getIssuePlaces,
 
   // Compliance
   verifyKYC,
