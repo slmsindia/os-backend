@@ -5,11 +5,22 @@ module.exports = async (req, res, next) => {
   const host = req.get("host");
   if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
 
-  // Try both 'localhost' and 'localhost:port' for dev
+  const backendDomain = "osapi.dpinfoserver.co.in";
   let domain = host;
-  // Try exact match first
+
+  if (host === backendDomain || host.startsWith(backendDomain + ":")) {
+    const origin = req.get("origin");
+    const referer = req.get("referer");
+
+    if (origin) {
+      domain = origin.replace(/^https?:\/\//, "").split("/")[0];
+    } else if (referer) {
+      domain = referer.replace(/^https?:\/\//, "").split("/")[0];
+    }
+  }
+
   let tenant = await prisma.tenant.findUnique({ where: { domain } });
-  // If not found, try without port (for localhost)
+
   if (!tenant && domain.includes(':')) {
     domain = domain.split(":")[0];
     tenant = await prisma.tenant.findUnique({ where: { domain } });
