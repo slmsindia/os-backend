@@ -422,6 +422,15 @@ const initializeSoapClient = async () => {
   });
 };
 
+const isRetryableSendError = (error) => {
+  const retryableCodes = new Set(['ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT', 'EAI_AGAIN']);
+  const errorCode = String(error?.code || '').trim().toUpperCase();
+  if (retryableCodes.has(errorCode)) return true;
+
+  const status = Number(error?.response?.status || 0);
+  return status === 502 || status === 503 || status === 504;
+};
+
 const callSendRestEndpoint = async (operation, payload = {}, context = {}) => {
   const config = ensureConfigured();
   const endpointPath = SEND_ENDPOINT_PATHS[operation];
@@ -432,6 +441,7 @@ const callSendRestEndpoint = async (operation, payload = {}, context = {}) => {
   const requestBody = withSendDefaults(payload, config);
   const bodyString = requestBody ? JSON.stringify(requestBody) : '';
   const startedAt = Date.now();
+  const sendRetryAttempts = Math.max(1, Number(process.env.PRABHU_SEND_RETRY_ATTEMPTS || 2));
 
   const candidates = buildSendPathCandidates(endpointPath);
   let lastError;
@@ -446,58 +456,67 @@ const callSendRestEndpoint = async (operation, payload = {}, context = {}) => {
       bodyString
     });
 
-    try {
-      const response = await axios({
-        method,
-        url: `${config.baseUrl.replace(/\/$/, '')}${candidatePath}`,
-        data: requestBody,
-        timeout: config.timeoutMs,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: signed.authorization
-        }
-      });
+    for (let attempt = 1; attempt <= sendRetryAttempts; attempt += 1) {
+      try {
+        const response = await axios({
+          method,
+          url: `${config.baseUrl.replace(/\/$/, '')}${candidatePath}`,
+          data: requestBody,
+          timeout: config.timeoutMs,
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: signed.authorization
+          }
+        });
 
-      await recordPrabhuApiLog({
-        operation,
-        integration: 'SEND',
-        endpointPath: candidatePath,
-        requestMethod: method,
-        requestPayload: requestBody,
-        responsePayload: response.data,
-        statusCode: response.status,
-        success: true,
-        durationMs: Date.now() - startedAt,
-        context
-      });
-
-      return {
-        operation,
-        endpointPath: candidatePath,
-        status: response.status,
-        data: response.data
-      };
-    } catch (error) {
-      lastError = error;
-      const status = Number(error.response?.status || 0);
-      const shouldTryNext = status === 404 || status === 405;
-
-      if (!shouldTryNext || candidatePath === candidates[candidates.length - 1]) {
         await recordPrabhuApiLog({
           operation,
           integration: 'SEND',
           endpointPath: candidatePath,
           requestMethod: method,
           requestPayload: requestBody,
-          responsePayload: error.response?.data || null,
-          statusCode: error.response?.status,
-          success: false,
-          errorMessage: error.message,
-          errorPayload: error.response?.data || { message: error.message },
+          responsePayload: response.data,
+          statusCode: response.status,
+          success: true,
           durationMs: Date.now() - startedAt,
           context
         });
+
+        return {
+          operation,
+          endpointPath: candidatePath,
+          status: response.status,
+          data: response.data
+        };
+      } catch (error) {
+        lastError = error;
+        const status = Number(error.response?.status || 0);
+        const shouldTryNextPath = status === 404 || status === 405;
+        const canRetrySamePath = attempt < sendRetryAttempts && isRetryableSendError(error);
+
+        if (canRetrySamePath) {
+          continue;
+        }
+
+        if (!shouldTryNextPath || candidatePath === candidates[candidates.length - 1]) {
+          await recordPrabhuApiLog({
+            operation,
+            integration: 'SEND',
+            endpointPath: candidatePath,
+            requestMethod: method,
+            requestPayload: requestBody,
+            responsePayload: error.response?.data || null,
+            statusCode: error.response?.status,
+            success: false,
+            errorMessage: error.message,
+            errorPayload: error.response?.data || { message: error.message },
+            durationMs: Date.now() - startedAt,
+            context
+          });
+        }
+
+        break;
       }
     }
   }

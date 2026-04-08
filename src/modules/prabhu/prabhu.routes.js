@@ -25,6 +25,8 @@ router.post('/CreateCustomer', prabhuController.createCustomer);
 router.post('/GetUnverifiedCustomers', prabhuController.getUnverifiedCustomers);
 router.post('/GetCustomerById', prabhuController.getCustomerByIdNumber);
 router.post('/GetCustomerByMobile', prabhuController.getCustomerByMobile);
+router.post('/workflow/step1-customer', prabhuController.workflowStep1Customer);
+router.post('/workflow/step2-receiver', prabhuController.workflowStep2Receiver);
 router.get('/customers/search/mobile/:mobile', prabhuController.searchCustomerByMobile);
 router.post('/customers/search/mobile', prabhuController.searchCustomerByMobile);
 router.post('/RegisterComplaint', prabhuController.registerComplaint);
@@ -56,5 +58,9 @@ router.get('/data', prabhuController.listPrabhuData);
 router.post('/data', prabhuController.createPrabhuData);
 router.patch('/data/:id', prabhuController.updatePrabhuData);
 router.delete('/data/:id', prabhuController.deletePrabhuData);
+router.get('/receivers', prabhuController.listPrabhuReceivers);
+router.post('/receivers/upsert', prabhuController.upsertPrabhuReceiver);
+router.get('/senders', prabhuController.listPrabhuSenders);
+router.post('/senders/upsert', prabhuController.upsertPrabhuSender);
 
 module.exports = router;
