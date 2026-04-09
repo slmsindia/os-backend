@@ -45,6 +45,7 @@ router.post('/ekyc/enrollment', prabhuController.ekycEnrollment);
 router.post('/ekyc/customer-onboarding', prabhuController.ekycCustomerOnboarding);
 
 router.post('/csp/initiate', prabhuController.cspInitiate);
+router.post('/csp/send-otp', prabhuController.cspSendOtp);
 router.post('/csp/unique-ref-status', prabhuController.cspUniqueRefStatus);
 router.post('/csp/enrollment', prabhuController.cspEnrollment);
 router.post('/csp/onboarding', prabhuController.cspOnboarding);

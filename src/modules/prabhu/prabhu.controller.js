@@ -567,6 +567,40 @@ const upsertPrabhuSender = async (req, res) => {
   }
 };
 
+const cspSendOtp = async (req, res) => {
+  try {
+    const { cspMobile, cspName } = req.body || {};
+    const missing = requiredFields(req.body || {}, ['cspMobile', 'cspName']);
+    if (missing.length) {
+      return badRequest(res, 'Missing required CSP OTP fields', missing);
+    }
+
+    const result = await prabhuService.callEndpoint('SendOTP', {
+      operation: 'CreateCSP',
+      mobile: cspMobile,
+      customerId: 'CSP_' + Date.now(),
+      customerFullName: cspName
+    }, getRequestContext(req));
+
+    // Extract processId from response
+    const processId = result?.data?.processId || 
+                      result?.data?.ProcessId || 
+                      result?.data?.process_id ||
+                      '';
+
+    return ok(res, 'CSP OTP send response received', {
+      data: {
+        code: result?.data?.code || result?.data?.Code || '',
+        message: result?.data?.message || result?.data?.Message || '',
+        processId: processId,
+        raw: result?.data || {}
+      }
+    });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 module.exports = {
   getStateDistrict: proxyOperation('GetStateDistrict', 'Get state/district success'),
   getStaticData: proxyOperation('GetStaticData', 'Get static data success'),
@@ -604,6 +638,7 @@ module.exports = {
   ekycEnrollment: proxyEkycOperation('EkycEnrollment', 'E-KYC enrollment success'),
   ekycCustomerOnboarding: proxyEkycOperation('CustomerOnboarding', 'E-KYC customer onboarding success'),
   cspInitiate: proxyEkycOperation('CspInitiate', 'CSP initiate success'),
+  cspSendOtp,
   cspUniqueRefStatus: proxyEkycOperation('CspUniqueRefStatus', 'CSP status success'),
   cspEnrollment: proxyEkycOperation('CspEnrollment', 'CSP enrollment success'),
   cspOnboarding: proxyEkycOperation('CspOnboarding', 'CSP onboarding success'),

@@ -587,23 +587,87 @@ const callSoapEndpoint = async (operation, payload = {}, context = {}) => {
   }
 };
 
+const extractCustomerIdFromLookupData = (data) => {
+  const payload = data && typeof data === 'object' ? data : {};
+  const customers = Array.isArray(payload.customers) ? payload.customers : [];
+  const customer = customers[0] || payload.customer || null;
+
+  if (!customer || typeof customer !== 'object') {
+    return '';
+  }
+
+  return String(
+    customer.customerId ||
+    customer.CustomerId ||
+    customer.customerID ||
+    customer.id ||
+    ''
+  ).trim();
+};
+
+const shouldResolveCustomerIdFromMobile = (operation, payload) => {
+  if (operation !== 'SendOTP') return false;
+  const normalizedOperation = String(payload?.operation || '').trim();
+  if (normalizedOperation.toLowerCase() !== 'sendtransaction') return false;
+
+  const customerId = String(payload?.customerId || '').trim();
+  if (!customerId) return true;
+
+  // In our flows, real customer IDs are short numeric strings (e.g. 6853),
+  // while 10+ digit values are typically mobile numbers passed by mistake.
+  return /^\d{10,15}$/.test(customerId);
+};
+
+const enrichSendOtpPayload = async (payload = {}, context = {}) => {
+  const normalized = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? { ...payload }
+    : {};
+
+  if (!shouldResolveCustomerIdFromMobile('SendOTP', normalized)) {
+    return normalized;
+  }
+
+  const customerMobile = String(
+    normalized.mobile || normalized.customerMobile || normalized.customer_Mobile || ''
+  ).trim();
+
+  if (!customerMobile) {
+    return normalized;
+  }
+
+  try {
+    const lookup = await callSendRestEndpoint('GetCustomerByMobile', { customerMobile }, context);
+    const resolvedCustomerId = extractCustomerIdFromLookupData(lookup?.data);
+    if (resolvedCustomerId) {
+      normalized.customerId = resolvedCustomerId;
+    }
+  } catch {
+    // Keep original payload if lookup fails; upstream call will surface real error.
+  }
+
+  return normalized;
+};
+
 const callEndpoint = async (operation, payload = {}, context = {}) => {
   const config = ensureConfigured();
   const mode = config.sendMode;
+  const normalizedPayload = operation === 'SendOTP'
+    ? await enrichSendOtpPayload(payload, context)
+    : payload;
 
   if (mode === 'soap') {
-    return callSoapEndpoint(operation, payload, context);
+    return callSoapEndpoint(operation, normalizedPayload, context);
   }
 
   if (mode === 'hybrid') {
     try {
-      return await callSendRestEndpoint(operation, payload, context);
+      return await callSendRestEndpoint(operation, normalizedPayload, context);
     } catch (restError) {
-      return await callSoapEndpoint(operation, payload, context);
+      return await callSoapEndpoint(operation, normalizedPayload, context);
     }
   }
 
-  return callSendRestEndpoint(operation, payload, context);
+  return callSendRestEndpoint(operation, normalizedPayload, context);
 };
 
 module.exports = {
