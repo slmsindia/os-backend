@@ -9,10 +9,12 @@ const openApiSpec = require("./docs/openapi");
 const tenantMiddleware = require("./middleware/tenant.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
+const deviceRoutes = require("./routes/device.routes");
 const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
-const prabhuRoutes = require("./routes/prabhu.routes");
+const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
+const cspRoutes = require("./modules/csp/csp.routes");
 
 const app = express();
 
@@ -55,10 +57,12 @@ app.use(tenantMiddleware);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/Prabhu", prabhuRoutes);
 app.use("/api/ime", imeRoutes);
+app.use("/api", cspRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 

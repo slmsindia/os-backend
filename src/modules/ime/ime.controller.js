@@ -29,6 +29,26 @@ const badRequest = (res, message, missing = []) => {
   });
 };
 
+const proxyImeMethod = (methodName, successMessage, buildParams) => async (req, res) => {
+  try {
+    const params = typeof buildParams === 'function' ? buildParams(req) : (req.body || {});
+    const result = await imeService.callIMEMethod(methodName, params || {});
+    return ok(res, successMessage || `${methodName} completed`, result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const fetchStaticType = (typeCode, successMessage, buildReference) => async (req, res) => {
+  try {
+    const referenceValue = typeof buildReference === 'function' ? buildReference(req) : '';
+    const result = await imeService.getStaticData(typeCode, referenceValue || '');
+    return ok(res, successMessage || `${typeCode} retrieved`, result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 const getImeResponseMeta = (result = {}) => {
   const dataArray = Array.isArray(result?.data) ? result.data : [];
   const envelopeObject = dataArray.find((item) => item && typeof item === 'object' && !Array.isArray(item));
@@ -111,8 +131,8 @@ const createCustomer = async (req, res) => {
       return badRequest(res, 'Gender must be M or F');
     }
 
-    if (!['PP', 'DL', 'NP_ID'].includes(req.body.IDType)) {
-      return badRequest(res, 'IDType must be one of PP, DL, NP_ID');
+    if (!['PP', 'DL', 'NP_ID', 'AADHAR'].includes(req.body.IDType)) {
+      return badRequest(res, 'IDType must be one of PP, DL, NP_ID, AADHAR');
     }
 
     const normalizedDob = String(req.body.DateOfBirth || '').trim();
@@ -136,6 +156,13 @@ const createCustomer = async (req, res) => {
       const compactId = idNumber.replace(/[^0-9]/g, '');
       if (compactId.length < 8) {
         return badRequest(res, 'For NP_ID, IDNumber must have at least 8 digits');
+      }
+    }
+
+    if (idType === 'AADHAR') {
+      const compactId = idNumber.replace(/\D/g, '');
+      if (compactId.length !== 12) {
+        return badRequest(res, 'For AADHAR, IDNumber must be exactly 12 digits');
       }
     }
 
@@ -206,27 +233,66 @@ const createCustomer = async (req, res) => {
 
 const sendCustomerOtp = async (req, res) => {
   try {
-    const missing = requiredFields(req.body || {}, ['PhoneNumber']);
-    if (missing.length) {
-      return badRequest(res, 'Missing required OTP fields', missing);
+    const referenceValue = String(req.body?.ReferenceValue || req.body?.PhoneNumber || '').trim();
+    if (!referenceValue) {
+      return badRequest(res, 'Missing required OTP fields', ['ReferenceValue or PhoneNumber']);
     }
 
-    const result = await imeService.sendCustomerOtp(
-      req.body.PhoneNumber,
-      req.body.Module || process.env.IME_SEND_OTP_MODULE || 'CustomerRegistration'
-    );
+    const requestedModule = String(req.body.Module || process.env.IME_SEND_OTP_MODULE || 'CustomerRegistration').trim();
+    const fallbackModules = String(
+      process.env.IME_SEND_OTP_MODULE_FALLBACKS || 'CustomerRegistration,Customer,SenderRegistration,Registration'
+    )
+      .split(',')
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
 
-    const imeMeta = getImeResponseMeta(result);
-    if (imeMeta.code && imeMeta.code !== '0') {
+    const moduleCandidates = [...new Set([requestedModule, ...fallbackModules])];
+
+    let finalResult = null;
+    let finalMeta = null;
+    let moduleUsed = requestedModule;
+    const attempts = [];
+
+    for (const moduleName of moduleCandidates) {
+      const result = await imeService.sendCustomerOtp(referenceValue, moduleName);
+      const imeMeta = getImeResponseMeta(result);
+
+      attempts.push({
+        module: moduleName,
+        imeCode: imeMeta.code || '',
+        imeMessage: imeMeta.message || ''
+      });
+
+      finalResult = result;
+      finalMeta = imeMeta;
+      moduleUsed = moduleName;
+
+      if (!imeMeta.code || imeMeta.code === '0') {
+        break;
+      }
+
+      // Retry only when IME explicitly says module name is invalid.
+      if (imeMeta.code !== '704') {
+        break;
+      }
+    }
+
+    if (finalMeta?.code && finalMeta.code !== '0') {
       return res.status(400).json({
         success: false,
-        message: imeMeta.message || 'Failed to send IME OTP',
-        imeCode: imeMeta.code,
-        ...result
+        message: finalMeta.message || 'Failed to send IME OTP',
+        imeCode: finalMeta.code,
+        moduleUsed,
+        attempts,
+        ...finalResult
       });
     }
 
-    return ok(res, 'Customer OTP sent successfully', result);
+    return ok(res, 'Customer OTP sent successfully', {
+      ...finalResult,
+      moduleUsed,
+      attempts
+    });
   } catch (error) {
     return fail(res, error);
   }
@@ -283,6 +349,52 @@ const searchCustomerByMobile = async (req, res) => {
 
     const result = await imeService.searchCustomerByMobile(normalizedMobile);
     return ok(res, 'Customer search by mobile completed', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const customerRequery = async (req, res) => {
+  try {
+    const entityId = String(req.query.entityId || req.query.mobile || '').trim();
+    if (!entityId) {
+      return badRequest(res, 'entityId or mobile query is required');
+    }
+
+    const [requeryResult, uniqueIdResult] = await Promise.allSettled([
+      imeService.customerRequery(entityId),
+      imeService.getUniqueId('Customer', entityId)
+    ]);
+
+    if (requeryResult.status === 'rejected' && uniqueIdResult.status === 'rejected') {
+      throw requeryResult.reason || uniqueIdResult.reason;
+    }
+
+    const payload = {
+      entityId,
+      requery: requeryResult.status === 'fulfilled' ? requeryResult.value : null,
+      uniqueId: uniqueIdResult.status === 'fulfilled' ? uniqueIdResult.value : null,
+      warnings: {
+        requery:
+          requeryResult.status === 'rejected'
+            ? String(requeryResult.reason?.message || requeryResult.reason || 'CustomerRequery failed')
+            : null,
+        uniqueId:
+          uniqueIdResult.status === 'rejected'
+            ? String(uniqueIdResult.reason?.message || uniqueIdResult.reason || 'GetUniqueId failed')
+            : null
+      }
+    };
+
+    const partialFailure = Boolean(payload.warnings.requery || payload.warnings.uniqueId);
+
+    return ok(
+      res,
+      partialFailure
+        ? 'Customer requery completed with partial data'
+        : 'Customer requery completed',
+      payload
+    );
   } catch (error) {
     return fail(res, error);
   }
@@ -466,17 +578,55 @@ const getBankList = async (req, res) => {
   }
 };
 
+const getBankBranches = async (req, res) => {
+  try {
+    const { country, bank } = req.query;
+    const result = await imeService.getBankBranches(country || 'NP', bank || '');
+    return ok(res, 'Bank branches retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const getStaticData = async (req, res) => {
+  try {
+    const { type, reference } = req.query;
+    if (!String(type || '').trim()) {
+      return badRequest(res, 'type query parameter is required');
+    }
+
+    const result = await imeService.getStaticData(type, reference || '');
+    return ok(res, 'Static data retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const getIssuePlaces = async (req, res) => {
+  try {
+    const { country, idType } = req.query;
+    const result = await imeService.getIssuePlaces(country || 'NP', idType || '');
+    return ok(res, 'Issue places retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 /**
  * Compliance & Verification
  */
 const verifyKYC = async (req, res) => {
   try {
-    const missing = requiredFields(req.body || {}, ['CustomerId', 'IDType', 'IDNumber']);
-    if (missing.length) {
-      return badRequest(res, 'Missing required KYC fields', missing);
+    const entityId = String(req.body?.EntityId || req.body?.CustomerId || '').trim();
+    if (!entityId) {
+      return badRequest(res, 'Missing required KYC fields', ['CustomerId or EntityId']);
     }
 
-    const result = await imeService.verifyKYC(req.body);
+    const result = await imeService.verifyKYC({
+      ...req.body,
+      EntityId: entityId,
+      EntityType: String(req.body?.EntityType || 'Customer').trim()
+    });
     return ok(res, 'KYC verification completed', result);
   } catch (error) {
     return fail(res, error);
@@ -597,6 +747,100 @@ const deleteImeData = async (req, res) => {
   }
 };
 
+/**
+ * Legacy IME Contract Compatibility Endpoints (/api/IME/*)
+ */
+const amendTransactionLegacy = proxyImeMethod('AmendTransaction', 'Transaction amended successfully');
+const balanceInquiryLegacy = proxyImeMethod('BalanceInquiry', 'Balance inquiry fetched', () => ({}));
+const cspDocumentUploadLegacy = proxyImeMethod(
+  'CSPDocumentUpload',
+  'CSP document upload request submitted',
+  (req) => {
+    if (Array.isArray(req.body)) {
+      return { DocumentList: req.body };
+    }
+    return req.body || {};
+  }
+);
+const getAccountTypeLegacy = fetchStaticType('AccountType', 'Account type list retrieved');
+const countriesLegacy = fetchStaticType('Country', 'Countries retrieved');
+const statesLegacy = fetchStaticType('State', 'States retrieved', (req) => req.params.CountryId || '');
+const districtsLegacy = fetchStaticType('District', 'Districts retrieved', (req) => req.params.StateId || '');
+const gendersLegacy = fetchStaticType('Gender', 'Genders retrieved');
+const maritalStatusLegacy = fetchStaticType('MaritalStatus', 'Marital status list retrieved');
+const occupationLegacy = fetchStaticType('Occupation', 'Occupation list retrieved');
+const purposeOfRemittanceLegacy = fetchStaticType('PurposeOfRemittance', 'Purpose of remittance list retrieved');
+const transactionCancelReasonLegacy = fetchStaticType('TransactionCancelReason', 'Transaction cancel reasons retrieved');
+const getIdTypesLegacy = fetchStaticType('IdType', 'ID types retrieved', (req) => req.query.countrycode || req.query.countryCode || '');
+const getIdentityTypesLegacy = fetchStaticType('IdentityType', 'Identity types retrieved', (req) => req.query.countrycode || req.query.countryCode || '');
+const cspRegistrationTypeListLegacy = fetchStaticType('CSPRegistrationTypeList', 'CSP registration types retrieved');
+const cspAddressProofTypeListLegacy = fetchStaticType('CSPAddressProofTypeList', 'CSP address proof types retrieved');
+const cspOwnerAddressProofTypeListLegacy = fetchStaticType('CSPOwnerAddressProofTypeList', 'CSP owner address proof types retrieved');
+const cspBusinessTypeListLegacy = fetchStaticType('CSPBusinessTypeList', 'CSP business types retrieved');
+const cspDocumentTypeListLegacy = fetchStaticType('CSPDocumentTypeList', 'CSP document types retrieved');
+const ownerCategoryTypesLegacy = fetchStaticType('OwnerCategoryTypes', 'Owner category types retrieved');
+const educationalQualificationListLegacy = fetchStaticType('EducationalQualificationList', 'Educational qualification list retrieved');
+const municipalitiesLegacy = fetchStaticType('Municipality', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
+const relationshipListLegacy = fetchStaticType('Relationship', 'Relationship list retrieved');
+const idPlaceOfIssueLegacy = async (req, res) => {
+  try {
+    const countryCode = req.query.countrycode || req.query.countryCode || 'NP';
+    const idType = req.query.idType || '';
+    const result = await imeService.getIssuePlaces(countryCode, idType);
+    return ok(res, 'ID place of issue list retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const sourceOfFundListLegacy = fetchStaticType('SourceOfFund', 'Source of fund list retrieved');
+const cspRegistrationLegacy = proxyImeMethod('CSPRegistration', 'CSP registration submitted');
+const cancelTransactionLegacy = proxyImeMethod('CancelTransaction', 'Transaction cancel request submitted', (req) => ({
+  RefNo: req.body?.refNo || req.body?.RefNo || req.body?.transactionId || '',
+  CancelReason: req.body?.cancelReason || req.body?.CancelReason || req.body?.reason || '',
+  OTPToken: req.body?.otpToken || req.body?.OTPToken || '',
+  OTP: req.body?.otp || req.body?.OTP || ''
+}));
+const checkCSPLegacy = proxyImeMethod('CheckCSP', 'CSP status fetched', (req) => ({
+  CSPCode: req.query.cspcode || req.query.CSPCode || req.query.cspCode || ''
+}));
+const checkCustomerLegacy = proxyImeMethod('CheckCustomer', 'Customer check completed', (req) => ({
+  MobileNo: req.params.mobileNo || ''
+}));
+const confirmCustomerRegistrationLegacy = proxyImeMethod('ConfirmCustomerRegistration', 'Customer registration confirmed', (req) => ({
+  OTP: req.body?.otp || req.body?.OTP || '',
+  CustomerToken: req.body?.customerToken || req.body?.CustomerToken || '',
+  OTPToken: req.body?.otpToken || req.body?.OTPToken || ''
+}));
+const confirmSendTransactionLegacy = proxyImeMethod('ConfirmSendTransaction', 'Send transaction confirmed', (req) => ({
+  RefNo: req.body?.refNo || req.body?.RefNo || '',
+  OTPToken: req.body?.otpToken || req.body?.OTPToken || '',
+  OTP: req.body?.otp || req.body?.OTP || ''
+}));
+const customerMobileAmendmentLegacy = proxyImeMethod('CustomerMobileAmendment', 'Customer mobile amendment submitted');
+const customerRegistrationLegacy = proxyImeMethod('CustomerRegistration', 'Customer registration submitted');
+const getCalculationLegacy = proxyImeMethod('GetCalculation', 'Calculation fetched');
+const sendOtpLegacy = proxyImeMethod('SendOTP', 'OTP sent');
+const sendTransactionLegacy = proxyImeMethod('SendTransaction', 'Transaction send request submitted');
+const transactionInquiryLegacy = proxyImeMethod('TransactionInquiry', 'Transaction inquiry fetched');
+const transactionInquiryDefaultLegacy = proxyImeMethod('TransactionInquiryDefault', 'Transaction inquiry default fetched');
+const bankListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getBankList(req.params.CountryId || 'NP');
+    return ok(res, 'Bank list retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const bankBranchListLegacy = async (req, res) => {
+  try {
+    const countryCode = req.query.countrycode || req.query.countryCode || 'NP';
+    const result = await imeService.getBankBranches(countryCode, req.params.BankId || '');
+    return ok(res, 'Bank branch list retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 module.exports = {
   // Auth
   authenticate,
@@ -607,6 +851,7 @@ module.exports = {
   sendCustomerOtp,
   confirmCustomer,
   searchCustomerByMobile,
+  customerRequery,
   getCustomer,
   validateCustomer,
 
@@ -624,6 +869,9 @@ module.exports = {
   getPaymentModes,
   validateBankAccount,
   getBankList,
+  getBankBranches,
+  getStaticData,
+  getIssuePlaces,
 
   // Compliance
   verifyKYC,
@@ -637,5 +885,47 @@ module.exports = {
   listImeData,
   createImeData,
   updateImeData,
-  deleteImeData
+  deleteImeData,
+
+  // Legacy IME endpoints
+  amendTransactionLegacy,
+  balanceInquiryLegacy,
+  cspDocumentUploadLegacy,
+  getAccountTypeLegacy,
+  countriesLegacy,
+  statesLegacy,
+  districtsLegacy,
+  gendersLegacy,
+  maritalStatusLegacy,
+  occupationLegacy,
+  purposeOfRemittanceLegacy,
+  transactionCancelReasonLegacy,
+  getIdTypesLegacy,
+  getIdentityTypesLegacy,
+  bankListLegacy,
+  bankBranchListLegacy,
+  cspRegistrationTypeListLegacy,
+  cspAddressProofTypeListLegacy,
+  cspOwnerAddressProofTypeListLegacy,
+  cspBusinessTypeListLegacy,
+  cspDocumentTypeListLegacy,
+  ownerCategoryTypesLegacy,
+  educationalQualificationListLegacy,
+  municipalitiesLegacy,
+  relationshipListLegacy,
+  idPlaceOfIssueLegacy,
+  sourceOfFundListLegacy,
+  cspRegistrationLegacy,
+  cancelTransactionLegacy,
+  checkCSPLegacy,
+  checkCustomerLegacy,
+  confirmCustomerRegistrationLegacy,
+  confirmSendTransactionLegacy,
+  customerMobileAmendmentLegacy,
+  customerRegistrationLegacy,
+  getCalculationLegacy,
+  sendOtpLegacy,
+  sendTransactionLegacy,
+  transactionInquiryLegacy,
+  transactionInquiryDefaultLegacy
 };

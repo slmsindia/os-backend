@@ -43,7 +43,7 @@ const imeCreateCustomerBody = {
           LastName: { type: "string", example: "Bahadur" },
           Gender: { type: "string", enum: ["M", "F"], example: "M" },
           DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
-          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID", "AADHAR"], example: "NP_ID" },
           IDNumber: { type: "string", example: "29383-239334-2" },
           IDIssueDate: { type: "string", example: "2018-02-15" },
           PhoneNumber: { type: "string", example: "9841234567" },
@@ -73,11 +73,12 @@ const imeValidateCustomerBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["CustomerId"],
+        required: ["EntityId"],
         properties: {
-          CustomerId: { type: "string", example: "CUST123" },
-          IDType: { type: "string", example: "NP_ID" },
-          IDNumber: { type: "string", example: "504XXXXXXXX" }
+          EntityType: { type: "string", example: "Customer" },
+          EntityId: { type: "string", example: "CUST123" },
+          CustomerId: { type: "string", example: "CUST123", description: "Backward-compatible alias for EntityId" },
+          MobileNo: { type: "string", example: "9800000000", description: "Optional alias source when CustomerId is unavailable" }
         }
       }
     }
@@ -173,11 +174,11 @@ const imeVerifyKycBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["CustomerId", "IDType", "IDNumber"],
+        required: ["EntityId"],
         properties: {
-          CustomerId: { type: "string", example: "CUST001" },
-          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
-          IDNumber: { type: "string", example: "509XXXXXXXX" }
+          EntityType: { type: "string", example: "Customer" },
+          EntityId: { type: "string", example: "CUST001" },
+          CustomerId: { type: "string", example: "CUST001", description: "Backward-compatible alias for EntityId" }
         }
       }
     }
@@ -1055,6 +1056,7 @@ const paths = {
               required: ["PhoneNumber"],
               properties: {
                 PhoneNumber: { type: "string", example: "9812474750" },
+                ReferenceValue: { type: "string", example: "9812474750", description: "Optional explicit IME reference (customer token/id/mobile)" },
                 Module: { type: "string", example: "CustomerRegistration" }
               }
             }
@@ -1112,12 +1114,12 @@ const paths = {
   "/api/ime/customers/{customerId}": {
     get: {
       tags: ["IME"],
-      summary: "Get IME Customer Details",
+      summary: "Get IME Customer Requery Status By EntityId",
       parameters: [
         { name: "customerId", in: "path", required: true, schema: { type: "string" } },
       ],
       responses: {
-        200: { description: "Customer details" },
+        200: { description: "Customer requery result" },
         404: { description: "Customer not found" },
       },
     },
@@ -1126,10 +1128,10 @@ const paths = {
   "/api/ime/customers/validate": {
     post: {
       tags: ["IME"],
-      summary: "Validate IME Customer",
+      summary: "Check IME Entity Status",
       requestBody: jsonBody,
       responses: {
-        200: { description: "Validation result" },
+        200: { description: "Entity status result" },
       },
     },
   },
@@ -1176,7 +1178,7 @@ const paths = {
   "/api/ime/receivers": {
     post: {
       tags: ["IME"],
-      summary: "Create IME Receiver",
+      summary: "Create IME Receiver (mapped via CustomerRegistration)",
       requestBody: jsonBody,
       responses: {
         201: { description: "Receiver created" },
@@ -1287,10 +1289,10 @@ const paths = {
   "/api/ime/kyc/verify": {
     post: {
       tags: ["IME"],
-      summary: "Verify IME KYC",
+      summary: "Check IME Entity Status for KYC",
       requestBody: jsonBody,
       responses: {
-        200: { description: "KYC verification result" },
+        200: { description: "Entity status/KYC result" },
       },
     },
   },

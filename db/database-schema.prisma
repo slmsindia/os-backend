@@ -1,4 +1,4 @@
-generator client {
+﻿generator client {
   provider = "prisma-client-js"
 }
 
@@ -91,6 +91,32 @@ model AuditLog {
   @@index([userId])
 }
 
+model PrabhuApiLog {
+  id              String   @id @default(uuid())
+  operation       String
+  integration     String
+  endpointPath    String
+  requestMethod   String
+  requestPayload  Json?
+  responsePayload Json?
+  statusCode      Int?
+  success         Boolean  @default(false)
+  errorMessage    String?
+  errorPayload    Json?
+  userId          String?
+  tenantId        String?
+  ipAddress       String?
+  userAgent       String?
+  durationMs      Int?
+  createdAt       DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model OtpCode {
   id        String   @id @default(uuid())
   mobile    String
@@ -102,7 +128,6 @@ model OtpCode {
 
   @@index([mobile])
 }
-
 
 model ImeData {
   id               String   @id @default(uuid())
@@ -118,68 +143,4 @@ model ImeData {
   @@index([createdAt])
 }
 
-model PrabhuData {
-  id                   String   @id @default(uuid())
-  name                 String
-  mobile               String
-  relationship         String
-  purposeOfTransaction String?
-  paymentMode          String?
-  bankName             String?
-  bankBranch           String?
-  sendAmountInr        Float?
-  receiveAmountNpr     Float?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
 
-  @@index([mobile])
-  @@index([createdAt])
-}
-
-model PrabhuReceiver {
-  id           String   @id @default(uuid())
-  customerId   String?
-  receiverId   String?  @unique
-  name         String
-  mobile       String
-  relationship String?
-  gender       String?
-  paymentMode  String?
-  bankCode     String?
-  bankBranchId String?
-  accountNumber String?
-  address      String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@index([customerId])
-  @@index([mobile])
-  @@index([createdAt])
-}
-
-model PrabhuSender {
-  id             String   @id @default(uuid())
-  customerId     String?  @unique
-  name           String
-  mobile         String
-  gender         String?
-  dateOfBirth    String?
-  address        String?
-  city           String?
-  district       String?
-  state          String?
-  nationality    String?
-  email          String?
-  idType         String?
-  idNumber       String?
-  idExpiryDate   String?
-  idIssuedPlace  String?
-  sourceIncomeType String?
-  customerType   String?
-  status         String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([mobile])
-  @@index([createdAt])
-}
