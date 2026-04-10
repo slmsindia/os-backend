@@ -170,7 +170,7 @@ const authController = {
   },
 
   register: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, otp, referredBy } = req.body;
     const tenantId = req.tenant_id;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
@@ -178,8 +178,21 @@ const authController = {
     }
 
     try {
-      if (!(await isMobileVerified(mobile))) {
-        return res.status(403).json({ message: "verify mobile first" });
+      // If OTP is provided, verify it
+      if (otp) {
+        const otpResult = await verifyOtp(mobile, otp);
+        if (!otpResult.success) {
+          return res.status(403).json({ 
+            message: "OTP verification failed", 
+            error: otpResult.message 
+          });
+        }
+      } else if (!(await isMobileVerified(mobile))) {
+        // If no OTP provided, check if mobile was already verified
+        return res.status(403).json({ 
+          message: "verify mobile first",
+          hint: "Send OTP and verify it before registration, or include 'otp' in registration request"
+        });
       }
 
       const existing = await prisma.user.findUnique({ where: { mobile } });
@@ -231,7 +244,12 @@ const authController = {
       console.error("Registration error:", err);
       res.status(500).json({ 
         message: "Registration failed",
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: err.stack,
+          code: err.code,
+          meta: err.meta
+        } : undefined
       });
     }
   },
