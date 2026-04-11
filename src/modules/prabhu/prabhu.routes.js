@@ -1,7 +1,10 @@
+
 const express = require('express');
 const prabhuController = require('./prabhu.controller');
-
 const router = express.Router();
+
+// UniqueRef Polling endpoint (for frontend polling)
+router.post('/csp/unique-ref-poll', prabhuController.cspUniqueRefPoll);
 
 router.post('/GetStateDistrict', prabhuController.getStateDistrict);
 router.post('/GetStaticData', prabhuController.getStaticData);

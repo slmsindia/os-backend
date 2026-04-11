@@ -14,7 +14,9 @@ const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
+const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
 const cspRoutes = require("./modules/csp/csp.routes");
+const rdRoutes = require('./routes/rd.routes');
 
 const app = express();
 
@@ -60,9 +62,12 @@ app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/super-admin", superAdminRoutes);
-app.use("/api/Prabhu", prabhuRoutes);
+app.use("/api/prabhu", prabhuRoutes);
+
 app.use("/api/ime", imeRoutes);
+app.use("/api/IME", imeLegacyRoutes);
 app.use("/api", cspRoutes);
+app.use('/api/rd', rdRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 

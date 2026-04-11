@@ -18,15 +18,7 @@ const toNumber = (value, fallback = 0) => {
 
 const trimSlash = (value = '') => String(value || '').trim().replace(/\/+$/, '');
 
-const resolveWithSource = (candidates = []) => {
-  for (const item of candidates) {
-    const value = String(process.env[item.key] || '').trim();
-    if (value) {
-      return { value, source: item.key };
-    }
-  }
-  return { value: '', source: 'unset' };
-};
+
 
 const maskValue = (value = '') => {
   const text = String(value || '').trim();
@@ -38,7 +30,7 @@ const maskValue = (value = '') => {
 const buildSendBaseCandidates = (primaryBase = '') => {
   const values = [
     primaryBase,
-    process.env.CSP_SEND_API_BASE_URL,
+    process.env.PRABHU_BASE_URL,
     process.env.PRABHU_BASE_URL,
     'https://sandbox.prabhuindia.com/IDFCSendAPI',
     'https://sandbox.prabhuindia.com/Sendapi'
@@ -74,49 +66,26 @@ const nextMidnightEpoch = () => {
 };
 
 const getConfig = () => {
-  const apiKeyEntry = resolveWithSource([
-    { key: 'CSP_API_KEY' },
-  ]);
-  const agentCodeEntry = resolveWithSource([
-    { key: 'CSP_AGENT_CODE' },
-  ]);
-  const userNameEntry = resolveWithSource([
-    { key: 'CSP_USERNAME' },
-    { key: 'PRABHU_EKYC_USERNAME' },
-    { key: 'CSP_API_KEY' },
-    { key: 'PRABHU_EKYC_API_KEY' }
-  ]);
-  const passwordEntry = resolveWithSource([
-    { key: 'CSP_PASSWORD' },
-    { key: 'PRABHU_EKYC_PASSWORD' }
-  ]);
-
-  const apiKey = apiKeyEntry.value;
-  const agentCode = agentCodeEntry.value;
-  const userName = userNameEntry.value;
-  const password = passwordEntry.value;
-  const requestBy = String(process.env.CSP_REQUEST_BY || userName || '').trim();
-
-  const sendApiKey = String(process.env.CSP_SEND_API_KEY || process.env.PRABHU_API_KEY || apiKey || '').trim();
-  const sendApiSecret = String(process.env.CSP_SEND_API_SECRET || process.env.PRABHU_API_SECRET || password || '').trim();
-
-  const cspApiBase = trimSlash(process.env.CSP_API_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com/testkya');
-  const sendApiBase = trimSlash(process.env.CSP_SEND_API_BASE_URL || process.env.PRABHU_BASE_URL || 'https://sandbox.prabhuindia.com/Sendapi');
-  const cspEkycPrefix = String(process.env.CSP_EKYC_PREFIX || '').trim();
-  const cspOnboardingPrefix = String(process.env.CSP_ONBOARDING_PREFIX || '').trim();
-
-  const sendUserName = String(process.env.CSP_SEND_USERNAME || process.env.PRABHU_API_KEY || '').trim();
-  const sendPassword = String(process.env.CSP_SEND_PASSWORD || process.env.PRABHU_API_SECRET || '').trim();
-
+  // For login/token/E-KYC: use PRABHU_API_USERNAME/PRABHU_API_PASSWORD only
+  // For remittance/send (GetCustomerByMobile): use PRABHU_API_KEY/PRABHU_API_PASSWORD/PRABHU_SEND_WSDL_URL
+  const apiKey = String(process.env.PRABHU_API_KEY || '').trim();
+  const agentCode = String(process.env.PRABHU_AGENT_CODE || '').trim();
+  const userName = apiKey; // For remittance/send, use PRABHU_API_KEY as username
+  const password = String(process.env.PRABHU_API_PASSWORD || '').trim();
+  const requestBy = userName;
+  const sendApiKey = apiKey;
+  const sendApiSecret = password;
+  const cspApiBase = trimSlash(process.env.PRABHU_CSP_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com/testkya');
+  const sendApiBase = trimSlash(process.env.PRABHU_SEND_WSDL_URL || 'https://sandbox.prabhuindia.com/Sendapi');
+  const cspEkycPrefix = String(process.env.PRABHU_EKYC_PREFIX || '').trim();
+  const cspOnboardingPrefix = String(process.env.PRABHU_ONBOARDING_PREFIX || '').trim();
+  const sendUserName = apiKey;
+  const sendPassword = password;
   return {
     apiKey,
-    apiKeySource: apiKeyEntry.source,
     agentCode,
-    agentCodeSource: agentCodeEntry.source,
     userName,
-    userNameSource: userNameEntry.source,
     password,
-    passwordSource: passwordEntry.source,
     requestBy,
     cspEkycPrefix,
     cspOnboardingPrefix,
@@ -126,7 +95,7 @@ const getConfig = () => {
     sendPassword,
     sendApiKey,
     sendApiSecret,
-    timeoutMs: toNumber(process.env.CSP_TIMEOUT_MS || process.env.PRABHU_EKYC_TIMEOUT_MS, 30000)
+    timeoutMs: toNumber(process.env.PRABHU_TIMEOUT_MS, 30000)
   };
 };
 
@@ -149,17 +118,14 @@ const getPublicConfigMeta = () => {
 const ensureConfigured = () => {
   const config = getConfig();
   if (!config.apiKey || !config.agentCode || !config.userName || !config.password) {
-    throw new Error('CSP credentials missing. Set CSP_API_KEY, CSP_AGENT_CODE, CSP_USERNAME, CSP_PASSWORD.');
+    throw new Error('CSP credentials missing. Set PRABHU_API_USERNAME, PRABHU_AGENT_CODE, PRABHU_API_USERNAME, PRABHU_API_PASSWORD.');
   }
-
   if (!config.sendUserName || !config.sendPassword) {
-    throw new Error('CSP send credentials missing. Set CSP_SEND_USERNAME/CSP_SEND_PASSWORD or PRABHU_API_KEY/PRABHU_API_SECRET.');
+    throw new Error('CSP send credentials missing. Set PRABHU_API_USERNAME/PRABHU_API_PASSWORD.');
   }
-
   if (!config.sendApiKey || !config.sendApiSecret) {
-    throw new Error('CSP send authorization missing. Set CSP_SEND_API_KEY/CSP_SEND_API_SECRET or PRABHU_API_KEY/PRABHU_API_SECRET.');
+    throw new Error('CSP send authorization missing. Set PRABHU_API_USERNAME/PRABHU_API_PASSWORD.');
   }
-
   return config;
 };
 
@@ -407,7 +373,7 @@ const sendCreateCspOtp = async ({ cspMobile = '', cspName = '' } = {}) => {
     cspName
   };
   const rawBody = JSON.stringify(requestBody);
-  const sendRetryAttempts = Math.max(1, Number(process.env.CSP_SEND_RETRY_ATTEMPTS || 3));
+  const sendRetryAttempts = Math.max(1, Number(process.env.PRABHU_CSP_SEND_RETRY_ATTEMPTS || 3));
 
   const baseCandidates = buildSendBaseCandidates(config.sendApiBase);
   const pathCandidates = buildSendPathCandidates();

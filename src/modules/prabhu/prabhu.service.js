@@ -191,33 +191,31 @@ const getSecretKeyBuffer = (secret) => {
 };
 
 const getConfig = () => {
-  const active = String(process.env.PRABHU_ACTIVE || 'false').toLowerCase() === 'true';
+  const active = true; // Always enabled with new env
   const baseUrl = (process.env.PRABHU_BASE_URL || '').trim();
-  const wsdlUrl = (process.env.PRABHU_SEND_WSDL || '').trim();
-  const apiKey = (process.env.PRABHU_API_KEY || '').trim();
-  const apiSecret = (process.env.PRABHU_API_SECRET || '').trim();
-
+  const wsdlUrl = (process.env.PRABHU_SEND_WSDL_URL || '').trim();
+  const apiKey = (process.env.PRABHU_API_USERNAME || '').trim();
+  const apiSecret = (process.env.PRABHU_API_PASSWORD || '').trim();
   return {
     active,
     baseUrl,
     wsdlUrl,
     apiKey,
     apiSecret,
-    sendMode: String(process.env.PRABHU_SEND_MODE || 'rest').toLowerCase(),
+    sendMode: 'rest',
     timeoutMs: Number(process.env.PRABHU_TIMEOUT_MS || 30000)
   };
 };
 
 const getEkycConfig = () => {
-  const active = String(process.env.PRABHU_EKYC_ACTIVE || process.env.PRABHU_ACTIVE || 'false').toLowerCase() === 'true';
-  const userName = (process.env.PRABHU_EKYC_USERNAME || process.env.PRABHU_API_KEY || '').trim();
-  const password = (process.env.PRABHU_EKYC_PASSWORD || process.env.PRABHU_API_SECRET || '').trim();
-  const apiKey = (process.env.PRABHU_EKYC_API_KEY || process.env.PRABHU_API_KEY || '').trim();
-  const baseUrl = (process.env.PRABHU_EKYC_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com').trim();
-  const baseRoute = (process.env.PRABHU_EKYC_BASE_ROUTE || '/testkya/v1').trim();
-  const baseRoute2 = (process.env.PRABHU_EKYC_BASE_ROUTE2 || '/test/v1').trim();
-  const agentCodeRaw = (process.env.PRABHU_EKYC_AGENT_CODE || '').trim();
-
+  const active = true;
+  const userName = (process.env.PRABHU_API_USERNAME || '').trim();
+  const password = (process.env.PRABHU_API_PASSWORD || '').trim();
+  const apiKey = (process.env.PRABHU_API_KEY || '').trim();
+  const baseUrl = (process.env.PRABHU_CSP_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com/testkya').trim();
+  const baseRoute = '/v1';
+  const baseRoute2 = '/v1';
+  const agentCodeRaw = (process.env.PRABHU_AGENT_CODE || '').trim();
   return {
     active,
     userName,
@@ -227,17 +225,17 @@ const getEkycConfig = () => {
     baseRoute,
     baseRoute2,
     agentCode: agentCodeRaw ? Number(agentCodeRaw) : undefined,
-    timeoutMs: Number(process.env.PRABHU_EKYC_TIMEOUT_MS || process.env.PRABHU_TIMEOUT_MS || 30000)
+    timeoutMs: Number(process.env.PRABHU_TIMEOUT_MS || 30000)
   };
 };
 
 const ensureConfigured = () => {
   const config = getConfig();
   if (!config.active) {
-    throw new Error('PRABHU is disabled. Set PRABHU_ACTIVE=true to enable it.');
+    throw new Error('PRABHU is disabled. Set PRABHU_ACTIVE to enable it.');
   }
   if (!config.apiKey || !config.apiSecret) {
-    throw new Error('PRABHU Send credentials missing. Set PRABHU_API_KEY and PRABHU_API_SECRET.');
+    throw new Error('PRABHU Send credentials missing. Set PRABHU_API_USERNAME and PRABHU_API_PASSWORD.');
   }
 
   if (config.sendMode === 'soap' && !config.wsdlUrl) {
@@ -253,7 +251,7 @@ const ensureEkycConfigured = () => {
   }
 
   if (!config.userName || !config.password || !config.apiKey || !config.baseUrl) {
-    throw new Error('PRABHU E-KYC credentials missing. Set PRABHU_EKYC_USERNAME, PRABHU_EKYC_PASSWORD, PRABHU_EKYC_API_KEY, PRABHU_EKYC_BASE_URL.');
+    throw new Error('PRABHU E-KYC credentials missing. Set PRABHU_API_USERNAME, PRABHU_API_PASSWORD, PRABHU_API_USERNAME, PRABHU_EKYC_BASE_URL.');
   }
 
   return config;
@@ -291,12 +289,9 @@ const withSendDefaults = (payload, config) => {
     ? payload
     : {};
 
-  const generatedSessionId = String(Math.round(Date.now() / 1000));
-
   return {
     userName: normalized.userName || normalized.UserName || config.apiKey,
     password: normalized.password || normalized.Password || config.apiSecret,
-    AgentSessionId: normalized.AgentSessionId || normalized.agentSessionId || generatedSessionId,
     ...normalized
   };
 };
@@ -461,7 +456,7 @@ const callSendRestEndpoint = async (operation, payload = {}, context = {}) => {
         const response = await axios({
           method,
           url: `${config.baseUrl.replace(/\/$/, '')}${candidatePath}`,
-          data: requestBody,
+          data: bodyString,
           timeout: config.timeoutMs,
           headers: {
             'Content-Type': 'application/json',

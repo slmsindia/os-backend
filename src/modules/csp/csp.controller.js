@@ -169,7 +169,7 @@ const initiate = async (req, res) => {
       BranchCode: req.body.branchCode
     });
 
-    const fallbackConsentUrl = String(process.env.CSP_OTP_CONSENT_URL || '').trim();
+    const fallbackConsentUrl = String(process.env.PRABHU_CSP_OTP_CONSENT_URL || '').trim();
     const normalizedData = {
       ...(data || {})
     };
