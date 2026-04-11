@@ -178,21 +178,33 @@ const authController = {
     }
 
     try {
-      // If OTP is provided, verify it
+      // If OTP is provided, verify it and use it for registration
       if (otp) {
+        console.log("OTP provided in registration request, verifying...");
         const otpResult = await verifyOtp(mobile, otp);
         if (!otpResult.success) {
           return res.status(403).json({ 
             message: "OTP verification failed", 
-            error: otpResult.message 
+            error: otpResult.message,
+            hint: otpResult.message === 'expired' 
+              ? "OTP already used or expired. Either register without 'otp' field (if you just verified it), or request a new OTP"
+              : "Please check your OTP and try again"
           });
         }
-      } else if (!(await isMobileVerified(mobile))) {
-        // If no OTP provided, check if mobile was already verified
-        return res.status(403).json({ 
-          message: "verify mobile first",
-          hint: "Send OTP and verify it before registration, or include 'otp' in registration request"
-        });
+        console.log("OTP verified successfully");
+      } else {
+        // No OTP provided, check if mobile was already verified recently
+        console.log("No OTP provided, checking isMobileVerified...");
+        const isVerified = await isMobileVerified(mobile);
+        console.log("isMobileVerified result:", isVerified);
+        
+        if (!isVerified) {
+          return res.status(403).json({ 
+            message: "verify mobile first",
+            hint: "Either: (1) Send OTP, verify it, then register within 10 minutes WITHOUT otp field, OR (2) Include 'otp' in registration request"
+          });
+        }
+        console.log("Mobile already verified");
       }
 
       const existing = await prisma.user.findUnique({ where: { mobile } });
