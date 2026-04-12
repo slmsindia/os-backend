@@ -202,7 +202,7 @@ const getCustomerByMobile = async (req, res) => {
 
 const createCustomer = async (req, res) => {
   try {
-    const configuredCspCode = (process.env.PRABHU_AGENT_CODE || '').trim();
+    const configuredCspCode = (process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
 
     const requestBody = {
       ...(req.body || {})
@@ -212,7 +212,7 @@ const createCustomer = async (req, res) => {
     const effectiveCspCode = incomingCspCode || configuredCspCode;
 
     if (!effectiveCspCode) {
-      return badRequest(res, 'CSPCode is required. Configure PRABHU_AGENT_CODE in .env');
+      return badRequest(res, 'CSPCode is required. Configure PRABHU_CSP_CODE in .env');
     }
 
     requestBody.cspCode = effectiveCspCode;
@@ -630,7 +630,18 @@ module.exports = {
   unverifiedTransactions: proxyOperation('UnverifiedTransactions', 'Get unverified transactions success'),
   complianceTransactions: proxyOperation('ComplianceTransactions', 'Compliance transactions success'),
   uploadDocument: proxyOperation('UploadDocument', 'Upload document success'),
-  sendTransaction: proxyOperation('SendTransaction', 'Send transaction success'),
+  sendTransaction: async (req, res) => {
+    try {
+      const payload = {
+        ...req.body,
+        cspCode: req.body.cspCode || process.env.PRABHU_CSP_CODE
+      };
+      const result = await prabhuService.callEndpoint('SendTransaction', payload, getRequestContext(req));
+      return ok(res, 'Send transaction success', { data: result.data });
+    } catch (error) {
+      return fail(res, error);
+    }
+  },
   confirmTransaction: proxyOperation('ConfirmTransaction', 'Confirm transaction success'),
   getCustomerByIdNumber,
   searchTransaction: proxyOperation('SearchTransaction', 'Search transaction success'),
