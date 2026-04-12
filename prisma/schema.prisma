@@ -15,28 +15,46 @@ model Tenant {
   users     User[]
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Identity {
+  ADMIN
+  STATE_PARTNER
+  DISTRICT_PARTNER
+  AGENT
+  USER
+}
+
 model User {
-  id           String     @id @default(uuid())
-  mobile       String     @unique
+  id           String   @id @default(uuid())
+  mobile       String   @unique
   password     String
   fullName     String
-  gender       String
+  gender       Gender
   dateOfBirth  DateTime
-  identity     String     @default("USER")
+  identity     Identity @default(USER)
   tenantId     String
   parentId     String?
   createdBy    String?
   referredBy   String?
-  referralCode String     @unique @default(uuid())
-  createdAt    DateTime   @default(now())
-  tenant       Tenant     @relation(fields: [tenantId], references: [id])
-  referrer     User?      @relation("UserReferral", fields: [referredBy], references: [id])
-  referrals    User[]     @relation("UserReferral")
-  creator      User?      @relation("UserCreation", fields: [createdBy], references: [id])
-  createdUsers User[]     @relation("UserCreation")
-  parent       User?      @relation("UserHierarchy", fields: [parentId], references: [id])
-  children     User[]     @relation("UserHierarchy")
+  referralCode String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
+
+  parent       User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children     User[]   @relation("UserHierarchy")
+
+  creator      User?    @relation("UserCreation", fields: [createdBy], references: [id])
+  createdUsers User[]   @relation("UserCreation")
+
+  referrer     User?    @relation("UserReferral", fields: [referredBy], references: [id])
+  referrals    User[]   @relation("UserReferral")
+
   roles        UserRole[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([parentId])
@@ -62,16 +80,16 @@ model RolePermission {
   id           String     @id @default(uuid())
   roleId       String
   permissionId String
-  role         Role       @relation(fields: [roleId], references: [id])
   permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
 }
 
 model UserRole {
   id     String @id @default(uuid())
   userId String
   roleId String
-  role   Role   @relation(fields: [roleId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
 
   @@unique([userId, roleId])
   @@index([userId])
@@ -91,6 +109,32 @@ model AuditLog {
   @@index([userId])
 }
 
+model PrabhuApiLog {
+  id             String   @id @default(uuid())
+  operation      String
+  integration    String
+  endpointPath   String
+  requestMethod  String
+  requestPayload Json?
+  responsePayload Json?
+  statusCode     Int?
+  success        Boolean  @default(false)
+  errorMessage   String?
+  errorPayload   Json?
+  userId         String?
+  tenantId       String?
+  ipAddress      String?
+  userAgent      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model OtpCode {
   id        String   @id @default(uuid())
   mobile    String
@@ -102,7 +146,6 @@ model OtpCode {
 
   @@index([mobile])
 }
-
 
 model ImeData {
   id               String   @id @default(uuid())

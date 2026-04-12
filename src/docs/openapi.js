@@ -210,7 +210,7 @@ const prabhuCredentialsBody = {
     "application/json": {
       schema: {
         type: "object",
-        description: "Credentials are auto-filled from server env (PRABHU_API_KEY/PRABHU_API_SECRET).",
+        description: "Credentials are auto-filled from server env (PRABHU_API_USERNAME/PRABHU_API_PASSWORD).",
         additionalProperties: true,
         properties: {}
       }
@@ -667,7 +667,7 @@ const addPost = (paths, path, tag, summary, options = {}) => {
   };
 };
 
-const prabhuPrefix = "/api/Prabhu";
+const prabhuPrefix = "/api/prabhu";
 
 const paths = {
   "/api/ping": {
@@ -1468,6 +1468,84 @@ paths[`${prabhuPrefix}/UploadDocument`].post.requestBody = prabhuUploadDocumentB
 paths[`${prabhuPrefix}/GetUnverifiedCustomers`].post.requestBody = prabhuCredentialsBody;
 paths[`${prabhuPrefix}/RegisterComplaint`].post.requestBody = prabhuRegisterComplaintBody;
 paths[`${prabhuPrefix}/TrackComplaint`].post.requestBody = prabhuTrackComplaintBody;
+const ekycPrefix = "/api/ekyc";
+const cspPrefix = "/api/csp";
+
+[
+  "initiate",
+  "unique-ref-status",
+  "enrollment",
+  "customer-onboarding",
+].forEach((name) => {
+  addPost(paths, `${ekycPrefix}/${name}`, "Prabhu E-KYC", name, {
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Success" },
+      400: { description: "Validation error" },
+      500: { description: "Upstream/Server error" },
+    },
+  });
+});
+
+paths[`${ekycPrefix}/generate-token`] = {
+  post: { tags: ["Prabhu E-KYC"], summary: "Generate token", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${ekycPrefix}/health-auth`] = {
+  get: { tags: ["Prabhu E-KYC"], summary: "Health auth", responses: { 200: { description: "Success" } } },
+  post: { tags: ["Prabhu E-KYC"], summary: "Health auth (POST)", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+
+[
+  "initiate",
+  "send-otp",
+  "unique-ref-status",
+  "enrollment",
+  "onboarding",
+  "search",
+  "create",
+  "agent-consent",
+  "mapping",
+  "bio-kyc-requery",
+  "unique-ref-poll",
+].forEach((name) => {
+  addPost(paths, `${cspPrefix}/${name}`, "Prabhu CSP", name, {
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Success" },
+      400: { description: "Validation error" },
+      500: { description: "Upstream/Server error" },
+    },
+  });
+});
+
+paths[`${prabhuPrefix}/data`] = {
+  get: { tags: ["Prabhu Data"], summary: "List Prabhu Data", responses: { 200: { description: "Success" } } },
+  post: { tags: ["Prabhu Data"], summary: "Create Prabhu Data", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/data/{id}`] = {
+  patch: { tags: ["Prabhu Data"], summary: "Update Prabhu Data", requestBody: jsonBody, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } },
+  delete: { tags: ["Prabhu Data"], summary: "Delete Prabhu Data", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } }
+};
+
+paths[`${prabhuPrefix}/receivers`] = { get: { tags: ["Prabhu Data"], summary: "List Receivers", responses: { 200: { description: "Success" } } } };
+paths[`${prabhuPrefix}/receivers/upsert`] = { post: { tags: ["Prabhu Data"], summary: "Upsert Receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } } };
+
+paths[`${prabhuPrefix}/senders`] = { get: { tags: ["Prabhu Data"], summary: "List Senders", responses: { 200: { description: "Success" } } } };
+paths[`${prabhuPrefix}/senders/upsert`] = { post: { tags: ["Prabhu Data"], summary: "Upsert Sender", requestBody: jsonBody, responses: { 200: { description: "Success" } } } };
+
+paths[`${prabhuPrefix}/customers/search/mobile/{mobile}`] = {
+  get: { tags: ["Prabhu Workflow"], summary: "Search customer by mobile", parameters: [{ name: "mobile", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/customers/search/mobile`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Search customer by mobile (POST)", requestBody: prabhuGetCustomerByMobileBody, responses: { 200: { description: "Success" } } }
+};
+
+paths[`${prabhuPrefix}/workflow/step1-customer`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Workflow step 1 customer", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Workflow step 2 receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
 
 module.exports = {
   openapi: "3.0.3",
@@ -1485,6 +1563,10 @@ module.exports = {
     { name: "Admin" },
     { name: "Super Admin" },
     { name: "Prabhu" },
+    { name: "Prabhu CSP" },
+    { name: "Prabhu E-KYC" },
+    { name: "Prabhu Workflow" },
+    { name: "Prabhu Data" },
     { name: "IME" },
   ],
   components: {

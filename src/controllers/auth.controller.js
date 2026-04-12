@@ -171,7 +171,7 @@ const authController = {
 
   register: async (req, res) => {
     const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
-    const tenantId = req.tenant_id || "8adbcbe8-92d7-4c4b-96b5-20be7005b1a9";
+    const tenantId = req.tenant_id;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ message: "fields missing" });

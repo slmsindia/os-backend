@@ -1,3 +1,14 @@
+// ...existing code...
+
+// POST /api/csp/unique-ref-poll
+const cspUniqueRefPoll = async (req, res) => {
+  const { partnerUniqueRefNo, branchCode } = req.body || {};
+  if (!partnerUniqueRefNo || !branchCode) {
+    return res.status(400).json({ success: false, message: 'Missing partnerUniqueRefNo or branchCode' });
+  }
+  return res.json({ success: true, status: 'POLL_OK', partnerUniqueRefNo, branchCode });
+};
+
 const prabhuService = require('./prabhu.service');
 const prabhuDataService = require('./prabhu-data.service');
 const prabhuReceiverService = require('./prabhu-receiver.service');
@@ -31,6 +42,12 @@ const getRequestContext = (req) => ({
 });
 
 const fail = (res, error) => {
+  console.error("PRABHU API FAILURE DETAILS:");
+  console.error(error);
+  if (error.response) {
+    console.error("Response body:", error.response.data);
+    console.error("Response headers:", error.response.headers);
+  }
   const status = error.response?.status || 500;
   const details = error.response?.data || { message: error.message };
   return res.status(status).json({
@@ -185,9 +202,7 @@ const getCustomerByMobile = async (req, res) => {
 
 const createCustomer = async (req, res) => {
   try {
-    const configuredCspCode =
-      (process.env.PRABHU_CSP_CODE || '').trim() ||
-      (process.env.PRABHU_EKYC_AGENT_CODE || '').trim();
+    const configuredCspCode = (process.env.PRABHU_AGENT_CODE || '').trim();
 
     const requestBody = {
       ...(req.body || {})
@@ -197,7 +212,7 @@ const createCustomer = async (req, res) => {
     const effectiveCspCode = incomingCspCode || configuredCspCode;
 
     if (!effectiveCspCode) {
-      return badRequest(res, 'CSPCode is required. Configure PRABHU_CSP_CODE or PRABHU_EKYC_AGENT_CODE in .env');
+      return badRequest(res, 'CSPCode is required. Configure PRABHU_AGENT_CODE in .env');
     }
 
     requestBody.cspCode = effectiveCspCode;
@@ -655,5 +670,6 @@ module.exports = {
   listPrabhuReceivers,
   upsertPrabhuReceiver,
   listPrabhuSenders,
-  upsertPrabhuSender
+  upsertPrabhuSender,
+  cspUniqueRefPoll
 };
