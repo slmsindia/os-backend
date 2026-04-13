@@ -346,6 +346,74 @@ const authController = {
 
   logout: async (req, res) => {
     res.json({ success: true, message: "logged out" });
+  },
+
+  // Get current user's profile/registration data
+  getMe: async (req, res) => {
+    const { user_id: userId } = req.user;
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          mobile: true,
+          fullName: true,
+          gender: true,
+          dateOfBirth: true,
+          identity: true,
+          approvalStatus: true,
+          referralCode: true,
+          referredBy: true,
+          createdAt: true,
+          roles: {
+            include: {
+              role: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          },
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              domain: true
+            }
+          },
+          wallet: {
+            select: {
+              id: true,
+              balance: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      res.json({
+        success: true,
+        user: {
+          ...user,
+          roles: user.roles.map(ur => ur.role.name)
+        }
+      });
+    } catch (err) {
+      console.error("Get user profile error:", err);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch user profile",
+        error: err.message
+      });
+    }
   }
 };
 

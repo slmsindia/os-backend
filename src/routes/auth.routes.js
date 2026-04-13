@@ -16,4 +16,7 @@ router.post("/register", authController.register);
 router.post("/login", authController.login);
 router.post("/logout", authMiddleware, authController.logout);
 
+// Get current user profile (requires authentication)
+router.get("/me", authMiddleware, authController.getMe);
+
 module.exports = router;
