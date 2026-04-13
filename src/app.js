@@ -29,6 +29,7 @@ const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
 const setupRoutes = require("./routes/setup.routes");
 const locationRoutes = require("./routes/location.routes");
+const setupLocationRoutes = require("./routes/setup-location.routes");
 
 const app = express();
 
@@ -103,6 +104,7 @@ app.use("/api/Prabhu", prabhuRoutes);
 app.use("/api/ime", imeRoutes);
 app.use("/api/setup", setupRoutes);
 app.use("/api/location", locationRoutes);
+app.use("/api/setup-location", setupLocationRoutes);
 
 
 app.use((req, res) => res.status(404).json({ message: "not found" }));
