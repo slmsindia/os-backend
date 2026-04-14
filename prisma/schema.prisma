@@ -97,6 +97,7 @@ enum Identity {
   DISTRICT_PARTNER
   AGENT
   USER
+  BUSINESS_PARTNER
 }
 
 enum ApprovalStatus {
@@ -170,6 +171,8 @@ model User {
   profileVerifications ProfileVerification[]
   postedJobs   Job[] // Jobs posted by this user (Admin or Business Partner)
   jobCredits   BusinessJobCredit? // Job posting credits for Business Partners
+  bpApplication BusinessPartnerApplication? // Business partner application filed by this user
+  reviewedBPApplications BusinessPartnerApplication[] @relation("BPApplicationReviewer") // Applications reviewed by this admin
 
   @@index([tenantId])
   @@index([parentId])
@@ -422,6 +425,53 @@ model Business {
   @@index([city])
   @@index([industry])
   @@index([isVerified])
+}
+
+// Business Partner Applications (for Users/Members/Agents applying to become Business Partners)
+model BusinessPartnerApplication {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Business Details
+  companyName     String
+  registrationNo  String?
+  gstNumber       String?
+  
+  // Contact
+  email           String?
+  website         String?
+  
+  // Location
+  address         String
+  city            String
+  state           String
+  country         String @default("India")
+  pincode         String
+  
+  // Industry
+  industry        String?
+  companySize     String?
+  
+  // Business Plan/Description
+  businessPlan    String?  // Why they want to become a business partner
+  expectedJobs    Int      @default(0)  // Expected number of job postings per month
+  
+  // Status
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewNotes     String?  // Admin notes for rejection or approval
+  
+  // Admin who reviewed
+  reviewedBy      String?
+  reviewer        User?    @relation("BPApplicationReviewer", fields: [reviewedBy], references: [id])
+  reviewedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // Job Postings

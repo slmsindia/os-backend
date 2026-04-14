@@ -6,8 +6,9 @@ const prisma = new PrismaClient();
 
 // Role upgrade paths
 const UPGRADE_PATHS = {
-  USER: ["MEMBER", "AGENT"],
-  MEMBER: ["AGENT"]
+  USER: ["MEMBER", "AGENT", "BUSINESS_PARTNER"],
+  MEMBER: ["AGENT", "BUSINESS_PARTNER"],
+  AGENT: ["BUSINESS_PARTNER"]
 };
 
 const roleUpgradeController = {
@@ -62,7 +63,7 @@ const roleUpgradeController = {
   // Submit upgrade request
   requestUpgrade: async (req, res) => {
     const { user_id: userId, tenant_id: tenantId } = req.user;
-    const { targetRole, paymentId } = req.body;
+    const { targetRole, paymentId, businessDetails } = req.body;
 
     if (!targetRole) {
       return res.status(400).json({
@@ -96,6 +97,41 @@ const roleUpgradeController = {
           success: false,
           message: `Cannot upgrade from ${user.identity} to ${targetRole}. Available: ${availableUpgrades.join(", ")}`
         });
+      }
+
+      // For BUSINESS_PARTNER, validate and store business details
+      if (targetRole === "BUSINESS_PARTNER") {
+        if (!businessDetails || !businessDetails.companyName || !businessDetails.address || 
+            !businessDetails.city || !businessDetails.state || !businessDetails.pincode) {
+          return res.status(400).json({
+            success: false,
+            message: "Business details are required (companyName, address, city, state, pincode)"
+          });
+        }
+
+        // Check if user already has a business profile
+        const existingBusiness = await prisma.business.findUnique({
+          where: { userId }
+        });
+
+        if (existingBusiness) {
+          return res.status(400).json({
+            success: false,
+            message: "You already have a business profile"
+          });
+        }
+
+        // Check if user already has a pending business partner application
+        const existingApplication = await prisma.businessPartnerApplication.findUnique({
+          where: { userId }
+        });
+
+        if (existingApplication && existingApplication.status === "PENDING") {
+          return res.status(400).json({
+            success: false,
+            message: "You already have a pending business partner application"
+          });
+        }
       }
 
       // Get pricing
@@ -135,6 +171,29 @@ const roleUpgradeController = {
         }
       }
 
+      // For BUSINESS_PARTNER, create application record
+      if (targetRole === "BUSINESS_PARTNER") {
+        await prisma.businessPartnerApplication.create({
+          data: {
+            userId,
+            companyName: businessDetails.companyName,
+            registrationNo: businessDetails.registrationNo || null,
+            gstNumber: businessDetails.gstNumber || null,
+            email: businessDetails.email || null,
+            website: businessDetails.website || null,
+            address: businessDetails.address,
+            city: businessDetails.city,
+            state: businessDetails.state,
+            country: businessDetails.country || "India",
+            pincode: businessDetails.pincode,
+            industry: businessDetails.industry || null,
+            companySize: businessDetails.companySize || null,
+            businessPlan: businessDetails.businessPlan || null,
+            expectedJobs: businessDetails.expectedJobs || 0
+          }
+        });
+      }
+
       // Submit upgrade request
       await prisma.user.update({
         where: { id: userId },
@@ -152,7 +211,8 @@ const roleUpgradeController = {
           fromRole: user.identity,
           toRole: targetRole,
           paymentId: paymentId || null,
-          amount: requiredAmount
+          amount: requiredAmount,
+          hasBusinessDetails: targetRole === "BUSINESS_PARTNER"
         }
       });
 
@@ -227,36 +287,60 @@ const roleUpgradeController = {
   // Get pending upgrade requests (Admin)
   getPendingUpgrades: async (req, res) => {
     const { tenant_id: tenantId } = req.user;
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, targetRole } = req.query;
 
     try {
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
+      const where = {
+        tenantId,
+        approvalStatus: "PENDING",
+        requestedRole: { not: null }
+      };
+
+      // Filter by target role if specified
+      if (targetRole) {
+        where.requestedRole = targetRole;
+      }
+
       const [requests, total] = await Promise.all([
         prisma.user.findMany({
-          where: {
-            tenantId,
-            approvalStatus: "PENDING",
-            requestedRole: { not: null }
-          },
+          where,
           select: {
             id: true,
             mobile: true,
             fullName: true,
             identity: true,
             requestedRole: true,
-            createdAt: true
+            createdAt: true,
+            // Include business partner application details if applicable
+            bpApplication: targetRole === "BUSINESS_PARTNER" || !targetRole ? {
+              select: {
+                id: true,
+                companyName: true,
+                registrationNo: true,
+                gstNumber: true,
+                email: true,
+                website: true,
+                address: true,
+                city: true,
+                state: true,
+                country: true,
+                pincode: true,
+                industry: true,
+                companySize: true,
+                businessPlan: true,
+                expectedJobs: true,
+                createdAt: true
+              }
+            } : false
           },
           orderBy: { createdAt: "desc" },
           skip,
           take: parseInt(limit)
         }),
         prisma.user.count({
-          where: {
-            tenantId,
-            approvalStatus: "PENDING",
-            requestedRole: { not: null }
-          }
+          where
         })
       ]);
 
@@ -310,6 +394,52 @@ const roleUpgradeController = {
       const toRole = user.requestedRole;
 
       if (action === "APPROVE") {
+        // For BUSINESS_PARTNER, create Business profile and update application
+        if (toRole === "BUSINESS_PARTNER") {
+          const bpApplication = await prisma.businessPartnerApplication.findUnique({
+            where: { userId: targetUserId }
+          });
+
+          if (!bpApplication) {
+            return res.status(400).json({
+              success: false,
+              message: "Business partner application not found"
+            });
+          }
+
+          // Create Business profile
+          await prisma.business.create({
+            data: {
+              userId: targetUserId,
+              companyName: bpApplication.companyName,
+              registrationNo: bpApplication.registrationNo,
+              gstNumber: bpApplication.gstNumber,
+              email: bpApplication.email,
+              website: bpApplication.website,
+              address: bpApplication.address,
+              city: bpApplication.city,
+              state: bpApplication.state,
+              country: bpApplication.country,
+              pincode: bpApplication.pincode,
+              industry: bpApplication.industry,
+              companySize: bpApplication.companySize,
+              isVerified: true,
+              verifiedAt: new Date()
+            }
+          });
+
+          // Update business partner application
+          await prisma.businessPartnerApplication.update({
+            where: { userId: targetUserId },
+            data: {
+              status: "APPROVED",
+              reviewedBy: adminId,
+              reviewedAt: new Date(),
+              reviewNotes: reason || null
+            }
+          });
+        }
+
         // Approve upgrade
         await prisma.user.update({
           where: { id: targetUserId },
@@ -341,6 +471,19 @@ const roleUpgradeController = {
         });
       } else {
         // Reject upgrade
+        // For BUSINESS_PARTNER, also update the application
+        if (toRole === "BUSINESS_PARTNER") {
+          await prisma.businessPartnerApplication.update({
+            where: { userId: targetUserId },
+            data: {
+              status: "REJECTED",
+              reviewedBy: adminId,
+              reviewedAt: new Date(),
+              reviewNotes: reason || null
+            }
+          });
+        }
+
         await prisma.user.update({
           where: { id: targetUserId },
           data: {
@@ -394,12 +537,31 @@ const roleUpgradeController = {
         return res.status(404).json({ success: false, message: "User not found" });
       }
 
+      let businessApplication = null;
+      if (user.requestedRole === "BUSINESS_PARTNER") {
+        businessApplication = await prisma.businessPartnerApplication.findUnique({
+          where: { userId },
+          select: {
+            id: true,
+            companyName: true,
+            city: true,
+            state: true,
+            industry: true,
+            status: true,
+            reviewNotes: true,
+            reviewedAt: true,
+            createdAt: true
+          }
+        });
+      }
+
       return res.json({
         success: true,
         currentRole: user.identity,
         pendingRequest: user.requestedRole,
         approvalStatus: user.approvalStatus,
-        approvedAt: user.approvedAt
+        approvedAt: user.approvedAt,
+        businessApplication
       });
     } catch (err) {
       console.error(err);

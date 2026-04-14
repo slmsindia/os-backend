@@ -768,22 +768,140 @@ Content-Type: application/json
 
 ## PHASE 6: BUSINESS PARTNER FLOWS
 
-### 6.1 Register as Business Partner
+### 6.1 User/Member/Agent Apply to Become Business Partner
 ```http
-POST /auth/register
+POST /role-upgrade/request
+Authorization: Bearer <USER_OR_MEMBER_OR_AGENT_TOKEN>
 Content-Type: application/json
 
 {
-  "mobile": "9222222222",
-  "fullName": "Business Owner",
-  "gender": "MALE",
-  "dateOfBirth": "1985-01-01",
-  "password": "business123",
-  "identity": "BUSINESS_PARTNER"
+  "targetRole": "BUSINESS_PARTNER",
+  "paymentId": "pay_123456",  // Optional, if payment is required
+  "businessDetails": {
+    "companyName": "Tech Solutions Pvt Ltd",
+    "registrationNo": "REG123456",
+    "gstNumber": "24ABCDE1234F1Z5",
+    "email": "business@example.com",
+    "website": "https://business.com",
+    "address": "Business Park, CG Road",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "pincode": "380001",
+    "industry": "IT",
+    "companySize": "11-50",
+    "businessPlan": "Want to post tech jobs and hire developers",
+    "expectedJobs": 10
+  }
 }
 ```
 
-### 6.2 Create Business Profile
+### 6.2 Check Business Partner Application Status
+```http
+GET /role-upgrade/my-status
+Authorization: Bearer <USER_TOKEN>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "currentRole": "USER",
+  "pendingRequest": "BUSINESS_PARTNER",
+  "approvalStatus": "PENDING",
+  "approvedAt": null,
+  "businessApplication": {
+    "id": "uuid",
+    "companyName": "Tech Solutions Pvt Ltd",
+    "city": "Ahmedabad",
+    "state": "Gujarat",
+    "industry": "IT",
+    "status": "PENDING",
+    "reviewNotes": null,
+    "reviewedAt": null,
+    "createdAt": "2026-04-14T10:00:00Z"
+  }
+}
+```
+
+### 6.3 Admin: View Pending Business Partner Applications
+```http
+GET /role-upgrade/admin/pending?targetRole=BUSINESS_PARTNER&page=1&limit=20
+Authorization: Bearer <ADMIN_TOKEN>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 5,
+    "pages": 1
+  },
+  "requests": [
+    {
+      "id": "user-uuid",
+      "mobile": "9222222222",
+      "fullName": "Business Owner",
+      "identity": "USER",
+      "requestedRole": "BUSINESS_PARTNER",
+      "createdAt": "2026-04-14T10:00:00Z",
+      "bpApplication": {
+        "id": "app-uuid",
+        "companyName": "Tech Solutions Pvt Ltd",
+        "registrationNo": "REG123456",
+        "gstNumber": "24ABCDE1234F1Z5",
+        "email": "business@example.com",
+        "website": "https://business.com",
+        "address": "Business Park, CG Road",
+        "city": "Ahmedabad",
+        "state": "Gujarat",
+        "country": "India",
+        "pincode": "380001",
+        "industry": "IT",
+        "companySize": "11-50",
+        "businessPlan": "Want to post tech jobs and hire developers",
+        "expectedJobs": 10,
+        "createdAt": "2026-04-14T10:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+### 6.4 Admin: Approve Business Partner Application
+```http
+PATCH /role-upgrade/admin/{userId}/process
+Authorization: Bearer <ADMIN_TOKEN>
+Content-Type: application/json
+
+{
+  "action": "APPROVE",
+  "reason": "Business verified and approved"
+}
+```
+
+**What happens on approval:**
+1. User's identity is changed to `BUSINESS_PARTNER`
+2. A `Business` profile is automatically created with the application details
+3. Business profile is marked as `isVerified: true`
+4. Application status is updated to `APPROVED`
+
+### 6.5 Admin: Reject Business Partner Application
+```http
+PATCH /role-upgrade/admin/{userId}/process
+Authorization: Bearer <ADMIN_TOKEN>
+Content-Type: application/json
+
+{
+  "action": "REJECT",
+  "reason": "Insufficient business details provided"
+}
+```
+
+### 6.6 Create Business Profile (Legacy - Direct Creation)
 ```http
 POST /business/register
 Authorization: Bearer <BUSINESS_TOKEN>
