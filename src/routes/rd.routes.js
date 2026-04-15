@@ -1,43 +1,48 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 
 const rdService = require('../services/rd.service');
 const logger = require('../utils/audit');
 
-
 // POST /api/rd/capture
 router.post('/capture', async (req, res) => {
   try {
-    // Validate request body (must be XML string)
-    const xmlBody = req.body && typeof req.body === 'string' ? req.body : req.body.xml;
+    // Accept both JSON { xml: '...' } and raw string body
+    const xmlBody = req.body && typeof req.body === 'string' ? req.body : req.body?.xml;
     if (!xmlBody || typeof xmlBody !== 'string') {
       logger.logAction({ action: 'RD_CAPTURE_INVALID_BODY', metadata: { body: req.body } });
       return res.status(400).json({ success: false, message: 'Invalid request body: XML string required' });
     }
+
     const result = await rdService.callExternalApi(xmlBody);
+
     // Extract and clean response for client
     const resp = result.PidData || {};
     const respInfo = resp.Resp || {};
-    if (respInfo.errCode && respInfo.errCode !== '0') {
-      return res.status(400).json({ success: false, message: respInfo.errInfo || 'Device error', errCode: respInfo.errCode });
+
+    // Check errCode (mergeAttrs:true means attributes come as direct properties)
+    const errCode = String(respInfo.errCode || '0');
+    if (errCode !== '0') {
+      return res.status(400).json({ success: false, message: respInfo.errInfo || 'Device error', errCode });
     }
+
     const data = {
-      EncryptedPid: resp.Data?._ || '',
-      EncryptedHmac: resp.Hmac?._ || '',
-      SessionKeyValue: resp.Skey?._ || '',
-      CertificateIdentifier: resp.Skey?.ci ? Number(resp.Skey.ci) : undefined,
+      EncryptedPid: resp.Data?._ || resp.Data || '',
+      EncryptedHmac: resp.Hmac?._ || resp.Hmac || '',
+      SessionKeyValue: resp.Skey?._ || resp.Skey || '',
+      CertificateIdentifier: String(resp.Skey?.ci || ''),
     };
-    // DeviceInfo Params
-    const params = (resp.DeviceInfo && resp.DeviceInfo.Param) ? (Array.isArray(resp.DeviceInfo.Param) ? resp.DeviceInfo.Param : [resp.DeviceInfo.Param]) : [];
-    for (const p of params) {
-      const name = (p.name || '').toLowerCase();
-      if (name === 'dpid' || name === 'dpId') data.RegisteredDeviceProviderId = p._;
-      if (name === 'rdsid' || name === 'rdsId') data.RegisteredDeviceServiceId = p._;
-      if (name === 'rdsver' || name === 'rdsVer') data.RegisteredDeviceServiceVersion = p._;
-      if (name === 'dc') data.RegisteredDeviceCode = p._;
-      if (name === 'mi') data.RegisteredDeviceModelId = p._;
-      if (name === 'mc') data.RegisteredDevicePublicKey = p._;
-    }
+
+    // DeviceInfo attributes come as direct properties with mergeAttrs:true
+    const devInfo = resp.DeviceInfo || {};
+    data.RegisteredDeviceProviderId = devInfo.dpId || '';
+    data.RegisteredDeviceServiceId = devInfo.rdsId || '';
+    data.RegisteredDeviceServiceVersion = devInfo.rdsVer || '';
+    data.RegisteredDeviceCode = devInfo.dc || '';
+    data.RegisteredDeviceModelId = devInfo.mi || '';
+    data.RegisteredDevicePublicKey = devInfo.mc || '';
+
     return res.json({ success: true, data });
   } catch (err) {
     logger.logAction({ action: 'RD_CAPTURE_ROUTE_ERROR', metadata: { error: err.message } });

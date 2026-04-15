@@ -57,6 +57,32 @@ async function main() {
     });
   }
 
+  // --- Custom user seed ---
+  const tenant = await prisma.tenant.findFirst();
+  const superAdminRole = await prisma.role.findUnique({ where: { name: "SUPER_ADMIN" } });
+
+  await prisma.user.upsert({
+    where: { mobile: "9099005251" },
+    update: {},
+    create: {
+      id: generateUuid(),
+      mobile: "9099005251",
+      password: "Test@123", // Change as needed
+      fullName: "Online Saathi",
+      gender: "OTHER",
+      dateOfBirth: new Date("1990-01-01"),
+      identity: "ADMIN",
+      tenantId: tenant.id,
+      roles: {
+        create: {
+          id: generateUuid(),
+          roleId: superAdminRole.id
+        }
+      }
+    }
+  });
+  // --- End custom user seed ---
+
   console.log("Seed done.");
 }
 
