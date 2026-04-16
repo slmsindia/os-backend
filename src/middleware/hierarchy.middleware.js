@@ -1,6 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+<<<<<<< HEAD
 // Role hierarchy definition
 // Each role can only create the roles listed in canCreate
 // NOTE: USER and MEMBER are created through registration/upgrade process, not by hierarchy
@@ -41,6 +42,13 @@ const hierarchyCheck = async (req, res, next) => {
   const { user_id: myId, role: myRole } = req.user;
 
   if (myRole === "ADMIN" || myRole === "SUPER_ADMIN") return next();
+=======
+module.exports = async (req, res, next) => {
+  const { id: targetId } = req.params;
+  const { user_id: myId, role: myRole } = req.user;
+
+  if (myRole === "ADMIN") return next();
+>>>>>>> origin/hemraj
   if (!targetId || targetId === myId) return next();
 
   try {
@@ -54,6 +62,7 @@ const hierarchyCheck = async (req, res, next) => {
   }
 };
 
+<<<<<<< HEAD
 // New middleware - enforces strict role-based creation hierarchy
 const enforceHierarchy = (allowedRoles = []) => {
   return async (req, res, next) => {
@@ -113,6 +122,8 @@ const enforceHierarchy = (allowedRoles = []) => {
 };
 
 // Check if childId is a descendant of parentId in the hierarchy tree
+=======
+>>>>>>> origin/hemraj
 const checkTree = async (parentId, childId) => {
   const child = await prisma.user.findUnique({
     where: { id: childId },
@@ -124,6 +135,7 @@ const checkTree = async (parentId, childId) => {
 
   return await checkTree(parentId, child.parentId);
 };
+<<<<<<< HEAD
 
 // Get full hierarchy chain for a user
 const getHierarchyChain = async (userId) => {
@@ -181,3 +193,5 @@ module.exports = {
   getDescendants,
   ROLE_HIERARCHY
 };
+=======
+>>>>>>> origin/hemraj

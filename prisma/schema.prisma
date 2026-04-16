@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 model Wallet {
   id        String   @id @default(uuid())
   userId    String   @unique
@@ -18,13 +19,20 @@ model WalletTransaction {
   wallet    Wallet?  @relation(fields: [userId], references: [userId], map: "WalletTransaction_wallet_fkey")
   createdAt DateTime @default(now())
 }
+=======
+>>>>>>> origin/hemraj
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
+<<<<<<< HEAD
   provider = "postgresql"
   url      = env("DATABASE_URL")
+=======
+  provider = "sqlite"
+  url      = "file:./dev.db"
+>>>>>>> origin/hemraj
 }
 
 model Tenant {
@@ -33,6 +41,7 @@ model Tenant {
   domain    String   @unique
   createdAt DateTime @default(now())
   users     User[]
+<<<<<<< HEAD
   pricingSettings PricingSetting[]
 }
 
@@ -79,6 +88,8 @@ model District {
   
   @@unique([name, stateId])
   @@index([stateId])
+=======
+>>>>>>> origin/hemraj
 }
 
 enum Gender {
@@ -88,15 +99,20 @@ enum Gender {
 }
 
 enum Identity {
+<<<<<<< HEAD
   SUPER_ADMIN
   ADMIN
   SUB_ADMIN
   COUNTRY_HEAD
   STATE_HEAD
+=======
+  ADMIN
+>>>>>>> origin/hemraj
   STATE_PARTNER
   DISTRICT_PARTNER
   AGENT
   USER
+<<<<<<< HEAD
   BUSINESS_PARTNER
 }
 
@@ -125,6 +141,8 @@ enum MemberStatus {
   ACTIVE
   EXPIRED
   CANCELLED
+=======
+>>>>>>> origin/hemraj
 }
 
 model User {
@@ -135,9 +153,12 @@ model User {
   gender       Gender
   dateOfBirth  DateTime
   identity     Identity @default(USER)
+<<<<<<< HEAD
   approvalStatus ApprovalStatus @default(APPROVED)
   requestedRole String?
   approvedAt    DateTime?
+=======
+>>>>>>> origin/hemraj
   tenantId     String
   parentId     String?
   createdBy    String?
@@ -155,6 +176,7 @@ model User {
   referrals    User[]   @relation("UserReferral")
 
   roles        UserRole[]
+<<<<<<< HEAD
   wallet        Wallet?
   walletTransactions WalletTransaction[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
@@ -173,12 +195,16 @@ model User {
   jobCredits   BusinessJobCredit? // Job posting credits for Business Partners
   bpApplication BusinessPartnerApplication? // Business partner application filed by this user
   reviewedBPApplications BusinessPartnerApplication[] @relation("BPApplicationReviewer") // Applications reviewed by this admin
+=======
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+>>>>>>> origin/hemraj
 
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
   @@index([referredBy])
   @@index([referralCode])
+<<<<<<< HEAD
   @@index([approvalStatus])
   @@index([requestedRole])
 }
@@ -198,6 +224,8 @@ model PricingSetting {
   @@unique([tenantId, key])
   @@index([tenantId])
   @@index([key])
+=======
+>>>>>>> origin/hemraj
 }
 
 model Role {
@@ -298,6 +326,7 @@ model ImeData {
   @@index([createdAt])
 }
 
+<<<<<<< HEAD
 // ============================================
 // TASK 1: NEW MODELS FOR JOB MATCHING SYSTEM
 // ============================================
@@ -1008,3 +1037,70 @@ model Agent {
   @@index([upgradedFromMember])
 }
 
+=======
+model PrabhuData {
+  id                   String   @id @default(uuid())
+  name                 String
+  mobile               String
+  relationship         String
+  purposeOfTransaction String?
+  paymentMode          String?
+  bankName             String?
+  bankBranch           String?
+  sendAmountInr        Float?
+  receiveAmountNpr     Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuReceiver {
+  id           String   @id @default(uuid())
+  customerId   String?
+  receiverId   String?  @unique
+  name         String
+  mobile       String
+  relationship String?
+  gender       String?
+  paymentMode  String?
+  bankCode     String?
+  bankBranchId String?
+  accountNumber String?
+  address      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuSender {
+  id             String   @id @default(uuid())
+  customerId     String?  @unique
+  name           String
+  mobile         String
+  gender         String?
+  dateOfBirth    String?
+  address        String?
+  city           String?
+  district       String?
+  state          String?
+  nationality    String?
+  email          String?
+  idType         String?
+  idNumber       String?
+  idExpiryDate   String?
+  idIssuedPlace  String?
+  sourceIncomeType String?
+  customerType   String?
+  status         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+>>>>>>> origin/hemraj

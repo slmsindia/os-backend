@@ -27,26 +27,16 @@ const adminRoutes = require("./routes/admin.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
-const setupRoutes = require("./routes/setup.routes");
-const locationRoutes = require("./routes/location.routes");
-const setupLocationRoutes = require("./routes/setup-location.routes");
-const setupJobTableRoutes = require("./routes/setup-job-table.routes");
+const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
+const cspRoutes = require("./modules/csp/csp.routes");
+const rdRoutes = require('./routes/rd.routes');
 
 const app = express();
 
-app.get("/ping", (req, res) => {
-  console.log("PING REQUEST RECEIVED");
-  res.json({ message: "pong" });
-});
-
 app.use(helmet());
-// CORS Configuration - Allow all origins
 app.use(cors({
-  origin: true, // Allow all origins
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
+  credentials: true
 }));
 app.use(morgan("dev"));
 app.use(express.json());

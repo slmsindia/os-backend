@@ -47,6 +47,7 @@ async function main() {
     });
   }
 
+<<<<<<< HEAD
   const pricingDefaults = [
     { key: "USER_REGISTRATION", amount: 10 },
     { key: "BUSINESS_PARTNER_REGISTRATION", amount: 500 },
@@ -78,6 +79,8 @@ async function main() {
     }
   }
 
+=======
+>>>>>>> origin/hemraj
   // basic perms
   const perms = ["VIEW_DASHBOARD", "MANAGE_USERS", "SEND_OTP"];
   for (const name of perms) {

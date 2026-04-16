@@ -43,7 +43,11 @@ const imeCreateCustomerBody = {
           LastName: { type: "string", example: "Bahadur" },
           Gender: { type: "string", enum: ["M", "F"], example: "M" },
           DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
+<<<<<<< HEAD
           IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+=======
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID", "AADHAR"], example: "NP_ID" },
+>>>>>>> origin/hemraj
           IDNumber: { type: "string", example: "29383-239334-2" },
           IDIssueDate: { type: "string", example: "2018-02-15" },
           PhoneNumber: { type: "string", example: "9841234567" },
@@ -73,11 +77,20 @@ const imeValidateCustomerBody = {
     "application/json": {
       schema: {
         type: "object",
+<<<<<<< HEAD
         required: ["CustomerId"],
         properties: {
           CustomerId: { type: "string", example: "CUST123" },
           IDType: { type: "string", example: "NP_ID" },
           IDNumber: { type: "string", example: "504XXXXXXXX" }
+=======
+        required: ["EntityId"],
+        properties: {
+          EntityType: { type: "string", example: "Customer" },
+          EntityId: { type: "string", example: "CUST123" },
+          CustomerId: { type: "string", example: "CUST123", description: "Backward-compatible alias for EntityId" },
+          MobileNo: { type: "string", example: "9800000000", description: "Optional alias source when CustomerId is unavailable" }
+>>>>>>> origin/hemraj
         }
       }
     }
@@ -173,11 +186,19 @@ const imeVerifyKycBody = {
     "application/json": {
       schema: {
         type: "object",
+<<<<<<< HEAD
         required: ["CustomerId", "IDType", "IDNumber"],
         properties: {
           CustomerId: { type: "string", example: "CUST001" },
           IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
           IDNumber: { type: "string", example: "509XXXXXXXX" }
+=======
+        required: ["EntityId"],
+        properties: {
+          EntityType: { type: "string", example: "Customer" },
+          EntityId: { type: "string", example: "CUST001" },
+          CustomerId: { type: "string", example: "CUST001", description: "Backward-compatible alias for EntityId" }
+>>>>>>> origin/hemraj
         }
       }
     }
@@ -209,7 +230,11 @@ const prabhuCredentialsBody = {
     "application/json": {
       schema: {
         type: "object",
+<<<<<<< HEAD
         description: "Credentials are auto-filled from server env (PRABHU_API_KEY/PRABHU_API_SECRET).",
+=======
+        description: "Credentials are auto-filled from server env (PRABHU_API_USERNAME/PRABHU_API_PASSWORD).",
+>>>>>>> origin/hemraj
         additionalProperties: true,
         properties: {}
       }
@@ -666,7 +691,11 @@ const addPost = (paths, path, tag, summary, options = {}) => {
   };
 };
 
+<<<<<<< HEAD
 const prabhuPrefix = "/api/Prabhu";
+=======
+const prabhuPrefix = "/api/prabhu";
+>>>>>>> origin/hemraj
 
 const paths = {
   "/api/ping": {
@@ -1055,6 +1084,10 @@ const paths = {
               required: ["PhoneNumber"],
               properties: {
                 PhoneNumber: { type: "string", example: "9812474750" },
+<<<<<<< HEAD
+=======
+                ReferenceValue: { type: "string", example: "9812474750", description: "Optional explicit IME reference (customer token/id/mobile)" },
+>>>>>>> origin/hemraj
                 Module: { type: "string", example: "CustomerRegistration" }
               }
             }
@@ -1112,12 +1145,20 @@ const paths = {
   "/api/ime/customers/{customerId}": {
     get: {
       tags: ["IME"],
+<<<<<<< HEAD
       summary: "Get IME Customer Details",
+=======
+      summary: "Get IME Customer Requery Status By EntityId",
+>>>>>>> origin/hemraj
       parameters: [
         { name: "customerId", in: "path", required: true, schema: { type: "string" } },
       ],
       responses: {
+<<<<<<< HEAD
         200: { description: "Customer details" },
+=======
+        200: { description: "Customer requery result" },
+>>>>>>> origin/hemraj
         404: { description: "Customer not found" },
       },
     },
@@ -1126,10 +1167,17 @@ const paths = {
   "/api/ime/customers/validate": {
     post: {
       tags: ["IME"],
+<<<<<<< HEAD
       summary: "Validate IME Customer",
       requestBody: jsonBody,
       responses: {
         200: { description: "Validation result" },
+=======
+      summary: "Check IME Entity Status",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Entity status result" },
+>>>>>>> origin/hemraj
       },
     },
   },
@@ -1176,7 +1224,11 @@ const paths = {
   "/api/ime/receivers": {
     post: {
       tags: ["IME"],
+<<<<<<< HEAD
       summary: "Create IME Receiver",
+=======
+      summary: "Create IME Receiver (mapped via CustomerRegistration)",
+>>>>>>> origin/hemraj
       requestBody: jsonBody,
       responses: {
         201: { description: "Receiver created" },
@@ -1287,10 +1339,17 @@ const paths = {
   "/api/ime/kyc/verify": {
     post: {
       tags: ["IME"],
+<<<<<<< HEAD
       summary: "Verify IME KYC",
       requestBody: jsonBody,
       responses: {
         200: { description: "KYC verification result" },
+=======
+      summary: "Check IME Entity Status for KYC",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Entity status/KYC result" },
+>>>>>>> origin/hemraj
       },
     },
   },
@@ -1466,6 +1525,7 @@ paths[`${prabhuPrefix}/UploadDocument`].post.requestBody = prabhuUploadDocumentB
 paths[`${prabhuPrefix}/GetUnverifiedCustomers`].post.requestBody = prabhuCredentialsBody;
 paths[`${prabhuPrefix}/RegisterComplaint`].post.requestBody = prabhuRegisterComplaintBody;
 paths[`${prabhuPrefix}/TrackComplaint`].post.requestBody = prabhuTrackComplaintBody;
+<<<<<<< HEAD
 
 // ==================== NEW MODULES (Tasks 2-10) ====================
 
@@ -3218,6 +3278,85 @@ paths["/api/member-agent/admin/agents/fee"] = {
     security: bearerSecurity,
     responses: { 200: { description: "Agent fees" } }
   }
+=======
+const ekycPrefix = "/api/ekyc";
+const cspPrefix = "/api/csp";
+
+[
+  "initiate",
+  "unique-ref-status",
+  "enrollment",
+  "customer-onboarding",
+].forEach((name) => {
+  addPost(paths, `${ekycPrefix}/${name}`, "Prabhu E-KYC", name, {
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Success" },
+      400: { description: "Validation error" },
+      500: { description: "Upstream/Server error" },
+    },
+  });
+});
+
+paths[`${ekycPrefix}/generate-token`] = {
+  post: { tags: ["Prabhu E-KYC"], summary: "Generate token", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${ekycPrefix}/health-auth`] = {
+  get: { tags: ["Prabhu E-KYC"], summary: "Health auth", responses: { 200: { description: "Success" } } },
+  post: { tags: ["Prabhu E-KYC"], summary: "Health auth (POST)", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+
+[
+  "initiate",
+  "send-otp",
+  "unique-ref-status",
+  "enrollment",
+  "onboarding",
+  "search",
+  "create",
+  "agent-consent",
+  "mapping",
+  "bio-kyc-requery",
+  "unique-ref-poll",
+].forEach((name) => {
+  addPost(paths, `${cspPrefix}/${name}`, "Prabhu CSP", name, {
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Success" },
+      400: { description: "Validation error" },
+      500: { description: "Upstream/Server error" },
+    },
+  });
+});
+
+paths[`${prabhuPrefix}/data`] = {
+  get: { tags: ["Prabhu Data"], summary: "List Prabhu Data", responses: { 200: { description: "Success" } } },
+  post: { tags: ["Prabhu Data"], summary: "Create Prabhu Data", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/data/{id}`] = {
+  patch: { tags: ["Prabhu Data"], summary: "Update Prabhu Data", requestBody: jsonBody, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } },
+  delete: { tags: ["Prabhu Data"], summary: "Delete Prabhu Data", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } }
+};
+
+paths[`${prabhuPrefix}/receivers`] = { get: { tags: ["Prabhu Data"], summary: "List Receivers", responses: { 200: { description: "Success" } } } };
+paths[`${prabhuPrefix}/receivers/upsert`] = { post: { tags: ["Prabhu Data"], summary: "Upsert Receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } } };
+
+paths[`${prabhuPrefix}/senders`] = { get: { tags: ["Prabhu Data"], summary: "List Senders", responses: { 200: { description: "Success" } } } };
+paths[`${prabhuPrefix}/senders/upsert`] = { post: { tags: ["Prabhu Data"], summary: "Upsert Sender", requestBody: jsonBody, responses: { 200: { description: "Success" } } } };
+
+paths[`${prabhuPrefix}/customers/search/mobile/{mobile}`] = {
+  get: { tags: ["Prabhu Workflow"], summary: "Search customer by mobile", parameters: [{ name: "mobile", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/customers/search/mobile`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Search customer by mobile (POST)", requestBody: prabhuGetCustomerByMobileBody, responses: { 200: { description: "Success" } } }
+};
+
+paths[`${prabhuPrefix}/workflow/step1-customer`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Workflow step 1 customer", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+};
+paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
+  post: { tags: ["Prabhu Workflow"], summary: "Workflow step 2 receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
+>>>>>>> origin/hemraj
 };
 
 module.exports = {
@@ -3233,6 +3372,7 @@ module.exports = {
     { name: "System" },
     { name: "Auth" },
     { name: "Users" },
+<<<<<<< HEAD
     { name: "Profile" },
     { name: "Job Profile" },
     { name: "Business" },
@@ -3250,6 +3390,15 @@ module.exports = {
     { name: "Admin" },
     { name: "Super Admin" },
     { name: "Prabhu" },
+=======
+    { name: "Admin" },
+    { name: "Super Admin" },
+    { name: "Prabhu" },
+    { name: "Prabhu CSP" },
+    { name: "Prabhu E-KYC" },
+    { name: "Prabhu Workflow" },
+    { name: "Prabhu Data" },
+>>>>>>> origin/hemraj
     { name: "IME" },
   ],
   components: {
