@@ -9,9 +9,9 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-router.post("/create-state", checkIdentity(["ADMIN"]), adminController.createState);
-router.post("/create-district", checkIdentity(["ADMIN", "STATE_PARTNER"]), adminController.createDistrict);
-router.post("/create-agent", checkIdentity(["ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminController.createAgent);
-router.post("/create-user", checkIdentity(["ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
+router.post("/create-state", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.createState);
+router.post("/create-district", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER"]), adminController.createDistrict);
+router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminController.createAgent);
+router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
 
 module.exports = router;

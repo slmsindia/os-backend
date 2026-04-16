@@ -22,6 +22,8 @@ enum Gender {
 }
 
 enum Identity {
+  SUPER_ADMIN
+  WHITE_LABEL_ADMIN
   ADMIN
   STATE_PARTNER
   DISTRICT_PARTNER
