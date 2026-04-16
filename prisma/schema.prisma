@@ -27,12 +27,17 @@ generator client {
 
 datasource db {
 <<<<<<< HEAD
+<<<<<<< HEAD
   provider = "postgresql"
   url      = env("DATABASE_URL")
 =======
   provider = "sqlite"
   url      = "file:./dev.db"
 >>>>>>> origin/hemraj
+=======
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+>>>>>>> 6db3e126885f6b7c04899f020878c2c9aa119993
 }
 
 model Tenant {
