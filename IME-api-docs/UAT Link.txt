@@ -1,5 +1,0 @@
-UAT link
-https://testsendapi.imeforex-txn.net/SendWsApi/IMEForexSendService.asmx
-
-
-
