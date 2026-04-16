@@ -1,0 +1,99 @@
+Online Saathi Backend
+Standard Request Headers
+For all JSON requests:
+● Content-Type: application/json
+For protected routes:
+● Authorization: Bearer <JWT_TOKEN>
+MODULE: AUTH
+Base URL: /api/auth
+POST /send-otp
+Sends a 6-digit OTP to the mobile number. Rate-limited per mobile/IP (30s).
+● Body: { "mobile": string }
+● Response (200): { "success": true, "message": "otp sent" }
+● Errors: invalid mobile, failed to send
+POST /verify-otp
+Verifies the OTP sent to the mobile.
+● Body: { "mobile": string, "otp": string }
+● Response (200): { "success": true, "message": "verified" }
+● Errors: missing inputs, wrong otp, otp expired
+POST /register
+Registers a new user (default identity: USER).
+● Body: { "mobile": string, "fullName": string, "gender": "MALE"|"FEMALE"|"OTHER",
+"dateOfBirth": string, "password": password, "referredBy": userId? }
+● Response (201): { "success": true, "user": { "id": string, "identity": "USER" },
+"accessToken": string }
+● Errors: fields missing, verify mobile first, already registered
+POST /login
+Authenticates a user within the tenant (resolved via domain).
+● Body: { "mobile": string, "password": password }
+● Response (200): { "success": true, "accessToken": string }
+● Errors: credentials required, invalid mobile or pass
+
+-- 1 of 3 --
+
+MODULE: TENANT / WHITE LABEL
+Base URL: /api/super-admin
+POST /api/super-admin/create-tenant
+Creates a new white-label tenant.
+Body: { "name": "Mahavir Enterprise",
+"domain": "mahavir.onlinesaathi.com",
+"adminMobile": "9876543210",
+"adminName": "Mahavir Admin",
+"adminPassword": "securePassword123"
+}
+Response (201): { "success": true, "tenant": { "id": uuid, "name": string, "domain": string } }
+MODULE: ADMINISTRATIVE (IDENTITY CREATION)
+Base URL: /api/admin Requires Authorization
+POST /create-state
+Identity Access: ADMIN
+Body: { "mobile": "9876511111",
+"fullName": "Gujarat State Partner",
+"password": "partnerPassword123",
+"gender": "MALE",
+"dateOfBirth": "1985-06-15"
+“parentId”: “12346546” // if null
+}
+Response (201): { "success": true, "user": { "id", "mobile", "identity": "STATE_PARTNER" } }
+POST /create-district
+● Identity Access: ADMIN, STATE_PARTNER
+● Body: Same as above.
+● Response (201): { "success": true, "user": { "identity": "DISTRICT_PARTNER" } }
+POST /create-agent
+● Identity Access: ADMIN, STATE_PARTNER, DISTRICT_PARTNER
+● Body: Same as above.
+● Response (201): { "success": true, "user": { "identity": "AGENT" } }
+POST /create-user
+● Identity Access: ADMIN, STATE_PARTNER, DISTRICT_PARTNER, AGENT
+● Body: Same as above.
+● Response (201): { "success": true, "user": { "identity": "USER" } }
+
+-- 2 of 3 --
+
+MODULE: USER
+Base URL: /api/users Requires Authorization
+GET /profile
+Returns the authenticated user's profile and roles.
+● Response (200): { "id", "mobile", "fullName", "identity", "roles": [{ "role": { "name":
+string } }], ... }
+PATCH /:id/role
+Assigns a functional role (e.g., ACCOUNTANT) to a user within the hierarchy.
+● Identity Access: ADMIN
+● Body: { "roleName": string }
+● Response (200): { "success": true, "message": "Role assigned successfully", "user": {
+"id", "roles": ["ROLE_NAME"] } }
+Response Standardization
+Success Response
+json
+{
+"success": true,
+"data": { ... }
+}
+Error Response
+json
+{
+"success": false,
+"message": "Human readable error message"
+}
+
+-- 3 of 3 --
+
