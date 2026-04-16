@@ -53,13 +53,15 @@ const authController = {
         return res.status(409).json({ success: false, message: "already registered" });
       }
 
-      const success = await sendOtp(mobile);
-      if (!success) return res.status(500).json({ success: false, message: "failed to send" });
-
+      const result = await sendOtp(mobile);
+      if (typeof result === 'object' && result !== null && result.success === false) {
+        return res.status(500).json({ success: false, message: result.message || "failed to send" });
+      }
+      if (!result) return res.status(500).json({ success: false, message: "failed to send" });
       res.json({ success: true, message: "otp sent" });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "server error" });
+      res.status(500).json({ success: false, message: err.message || String(err) || "server error" });
     }
   },
 

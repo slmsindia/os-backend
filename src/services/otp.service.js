@@ -14,13 +14,18 @@ const sendOtp = async (mobile) => {
   console.log("Hash generated");
 
   const key = `otp:${mobile}`;
-  console.log("Storing in Redis key:", key);
-  // store hash + tries
-  await redis.set(key, JSON.stringify({
-    hash,
-    attempts: 0
-  }), "EX", OTP_EXPIRY);
-  console.log("Stored in Redis");
+  try {
+    console.log("Storing in Redis key:", key);
+    // store hash + tries
+    await redis.set(key, JSON.stringify({
+      hash,
+      attempts: 0
+    }), "EX", OTP_EXPIRY);
+    console.log("Stored in Redis");
+  } catch (err) {
+    console.error("Redis error (OTP store):", err.message);
+    // continue to send OTP anyway
+  }
 
   console.log("Sending SMS");
   const result = await sendOtpSMS(mobile, code);
@@ -30,29 +35,48 @@ const sendOtp = async (mobile) => {
 
 const verifyOtp = async (mobile, otp) => {
   const key = `otp:${mobile}`;
-  const data = await redis.get(key);
+  let data;
+  try {
+    data = await redis.get(key);
+  } catch (err) {
+    console.error("Redis error (OTP get):", err.message);
+    return { success: false, message: "OTP verification unavailable (Redis error)" };
+  }
 
   if (!data) return { success: false, message: "expired" };
 
-  const stored = JSON.parse(data);
+  let stored;
+  try {
+    stored = JSON.parse(data);
+  } catch (err) {
+    return { success: false, message: "OTP data corrupted" };
+  }
 
   if (stored.attempts >= MAX_ATTEMPTS) {
-    await redis.del(key);
+    try { await redis.del(key); } catch (err) { console.error("Redis error (OTP del):", err.message); }
     return { success: false, message: "max attempts reached" };
   }
 
   const match = await bcrypt.compare(otp, stored.hash);
 
   if (match) {
-    await redis.del(key);
-    // valid for 10m registration window
-    await redis.set(`v:${mobile}`, "1", "EX", 600);
+    try {
+      await redis.del(key);
+      // valid for 10m registration window
+      await redis.set(`v:${mobile}`, "1", "EX", 600);
+    } catch (err) {
+      console.error("Redis error (OTP cleanup):", err.message);
+    }
     return { success: true };
   } else {
     stored.attempts += 1;
-    const ttl = await redis.ttl(key);
-    if (ttl > 0) {
-      await redis.set(key, JSON.stringify(stored), "EX", ttl);
+    try {
+      const ttl = await redis.ttl(key);
+      if (ttl > 0) {
+        await redis.set(key, JSON.stringify(stored), "EX", ttl);
+      }
+    } catch (err) {
+      console.error("Redis error (OTP update attempts):", err.message);
     }
     return { success: false, message: "wrong otp" };
   }
