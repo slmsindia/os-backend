@@ -1,3 +1,5 @@
+const express = require("express");
+const superAdminController = require("../controllers/superadmin.controller");
 const authMiddleware = require("../middleware/auth.middleware");
 const { checkIdentity } = require("../middleware/identity.middleware");
 
