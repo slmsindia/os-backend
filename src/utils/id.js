@@ -1,12 +1,18 @@
-const { v4: uuidv4, v7: uuidv7 } = require('uuid');
+const crypto = require('crypto');
 
 const generateUuid = () => {
-  if (typeof uuidv7 === 'function') {
-    return uuidv7();
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
   }
-  return uuidv4();
+
+  // Fallback: deterministic simple UUID v4 generator
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 };
 
 module.exports = {
-  generateUuid
+  generateUuid,
 };
