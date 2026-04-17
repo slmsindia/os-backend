@@ -17,6 +17,7 @@ const imeRoutes = require("./modules/ime/ime.routes");
 const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
 const cspRoutes = require("./modules/csp/csp.routes");
 const rdRoutes = require('./routes/rd.routes');
+const healthRoutes = require("./routes/health.routes");
 
 const app = express();
 
@@ -53,6 +54,8 @@ app.use(
   })
 );
 
+// Health check endpoint (no tenant required)
+app.use("/health", healthRoutes);
 
 app.use(tenantMiddleware);
 
