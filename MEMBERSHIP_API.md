@@ -581,3 +581,172 @@ rzp.open();
 - Rejected applications can be resubmitted without payment
 - Admin must provide a reason when rejecting an application
 - User type is automatically updated to MEMBER upon approval
+
+---
+
+## 🆕 NEW: Admin User & Member Management APIs
+
+### Get All Users
+
+**GET** `/api/admin/users`
+
+**Headers:**
+- `Authorization: Bearer <admin_token>`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `identity` (optional): Filter by user type (USER, MEMBER, SAATHI, BUSINESS_PARTNER, STATE_PARTNER, DISTRICT_PARTNER, AGENT, ADMIN)
+- `approvalStatus` (optional): Filter by approval status (PENDING, APPROVED, REJECTED)
+- `search` (optional): Search by mobile number or full name
+
+**Example Request:**
+```
+GET /api/admin/users?page=1&limit=10&identity=USER&search=98765
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "users": [
+      {
+        "id": "user-uuid",
+        "mobile": "9876543210",
+        "email": "user@example.com",
+        "fullName": "John Doe",
+        "profilePhoto": "https://example.com/photo.jpg",
+        "gender": "MALE",
+        "dateOfBirth": "1990-01-01T00:00:00.000Z",
+        "identity": "USER",
+        "tenantId": "tenant-uuid",
+        "referredBy": null,
+        "referralCode": "unique-code",
+        "createdAt": "2024-01-15T10:30:00.000Z",
+        "roles": ["USER"]
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 50,
+      "totalPages": 5
+    }
+  }
+}
+```
+
+---
+
+### Get All Members (Membership Applications)
+
+**GET** `/api/admin/members`
+
+**Headers:**
+- `Authorization: Bearer <admin_token>`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `status` (optional): Filter by application status (PENDING, APPROVED, REJECTED)
+
+**Example Request:**
+```
+GET /api/admin/members?page=1&limit=20&status=PENDING
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "members": [
+      {
+        "id": "application-uuid",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@example.com",
+        "status": "PENDING",
+        "gender": "male",
+        "maritalStatus": "UnMarried",
+        "citizenship": "India",
+        "isMigrantWorker": false,
+        "monthlyIncome": "below 15000",
+        "createdAt": "2024-01-15T10:30:00.000Z",
+        "updatedAt": "2024-01-15T10:30:00.000Z",
+        "user": {
+          "id": "user-uuid",
+          "mobile": "9876543210",
+          "fullName": "Test User",
+          "email": "user@example.com",
+          "profilePhoto": "https://example.com/photo.jpg",
+          "identity": "USER"
+        },
+        "payment": {
+          "id": "payment-uuid",
+          "status": "SUCCESS",
+          "amount": 100,
+          "currency": "INR",
+          "razorpayOrderId": "order_MxK..."
+        },
+        "education": {
+          "id": "edu-7",
+          "name": "Bachelor's Degree"
+        },
+        "sector": {
+          "id": "sec-4",
+          "name": "Information Technology"
+        },
+        "jobRole": {
+          "id": "job-6",
+          "name": "Engineer"
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 25,
+      "totalPages": 2
+    }
+  }
+}
+```
+
+---
+
+## Usage Examples
+
+### Filter Users by Type
+```bash
+# Get all agents
+GET /api/admin/users?identity=AGENT
+
+# Get all state partners
+GET /api/admin/users?identity=STATE_PARTNER
+
+# Get only members
+GET /api/admin/users?identity=MEMBER
+```
+
+### Search Users
+```bash
+# Search by mobile number
+GET /api/admin/users?search=98765
+
+# Search by name
+GET /api/admin/users?search=John
+```
+
+### Filter Members by Application Status
+```bash
+# Get only approved members
+GET /api/admin/members?status=APPROVED
+
+# Get only pending applications
+GET /api/admin/members?status=PENDING
+
+# Get rejected applications
+GET /api/admin/members?status=REJECTED
+```

@@ -14,4 +14,10 @@ router.post("/create-district", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN
 router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminController.createAgent);
 router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
 
+// Get all users (with filtering and pagination)
+router.get("/users", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.getAllUsers);
+
+// Get all members/membership applications (with filtering and pagination)
+router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.getAllMembers);
+
 module.exports = router;
