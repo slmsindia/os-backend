@@ -19,6 +19,7 @@ const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
 const cspRoutes = require("./modules/csp/csp.routes");
 const rdRoutes = require('./routes/rd.routes');
 const membershipRoutes = require("./routes/membership.routes");
+const walletRoutes = require("./routes/wallet.routes");
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use("/api/admin", adminMembershipRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
 app.use("/api/membership", membershipRoutes);
+app.use("/api/wallet", walletRoutes);
 app.use("/api/ime", imeRoutes);
 app.use("/api/IME", imeLegacyRoutes);
 app.use("/api", cspRoutes);

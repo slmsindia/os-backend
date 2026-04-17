@@ -750,3 +750,534 @@ GET /api/admin/members?status=PENDING
 # Get rejected applications
 GET /api/admin/members?status=REJECTED
 ```
+
+---
+
+## 💰 WALLET TOP-UP SYSTEM
+
+### Overview
+The wallet system allows members to add money to their wallet by:
+1. Admin posts bank account details
+2. Member transfers money to the bank account via UPI/Banking apps
+3. Member submits top-up request with payment proof (screenshot)
+4. Admin verifies and approves/rejects the request
+5. If approved, money is added to member's wallet
+
+**Note:** Wallet is automatically created when a user's membership is approved.
+
+---
+
+### MEMBER WALLET ENDPOINTS
+
+#### 1. Get My Wallet
+
+**GET** `/api/wallet/my-wallet`
+
+**Headers:**
+```
+Authorization: Bearer <member_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "wallet-uuid",
+    "userId": "user-uuid",
+    "balance": 5000.00,
+    "currency": "INR",
+    "isActive": true,
+    "createdAt": "2024-01-15T10:30:00.000Z",
+    "updatedAt": "2024-01-15T10:30:00.000Z",
+    "topUpRequests": [
+      {
+        "id": "request-uuid",
+        "amount": 5000,
+        "status": "APPROVED",
+        "utrNumber": "UPI1234567890",
+        "bankDetails": {
+          "id": "bank-uuid",
+          "bankName": "State Bank of India",
+          "accountNumber": "1234567890"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### 2. Get Active Bank Details
+
+**GET** `/api/wallet/bank-details`
+
+**Headers:**
+```
+Authorization: Bearer <member_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "bank-uuid",
+      "bankName": "State Bank of India",
+      "beneficiaryName": "Company Name Pvt Ltd",
+      "accountNumber": "1234567890",
+      "branch": "Mumbai Main Branch",
+      "ifscCode": "SBIN0001234",
+      "isActive": true,
+      "createdAt": "2024-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### 3. Create Top-Up Request
+
+**POST** `/api/wallet/top-up`
+
+**Headers:**
+```
+Authorization: Bearer <member_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "amount": 5000,
+  "depositDate": "2024-01-15",
+  "bankDetailsId": "bank-uuid",
+  "utrNumber": "UPI1234567890",
+  "paymentScreenshot": "https://example.com/screenshot.jpg"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Top-up request submitted successfully. Please wait for admin approval.",
+  "data": {
+    "id": "request-uuid",
+    "walletId": "wallet-uuid",
+    "bankDetailsId": "bank-uuid",
+    "amount": 5000,
+    "depositDate": "2024-01-15T00:00:00.000Z",
+    "utrNumber": "UPI1234567890",
+    "paymentScreenshot": "https://example.com/screenshot.jpg",
+    "status": "PENDING",
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+**Important Notes:**
+- UTR number must be globally unique (cannot reuse UTR from approved requests)
+- If request is rejected, the same UTR can be reused
+- Bank details must be active
+- Amount must be greater than 0
+
+---
+
+#### 4. Get My Top-Up Requests
+
+**GET** `/api/wallet/top-up/requests?page=1&limit=20&status=PENDING`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `status` (optional): Filter by status (PENDING, APPROVED, REJECTED)
+
+**Headers:**
+```
+Authorization: Bearer <member_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": [
+      {
+        "id": "request-uuid",
+        "amount": 5000,
+        "status": "PENDING",
+        "utrNumber": "UPI1234567890",
+        "depositDate": "2024-01-15T00:00:00.000Z",
+        "paymentScreenshot": "https://example.com/screenshot.jpg",
+        "bankDetails": {
+          "id": "bank-uuid",
+          "bankName": "State Bank of India",
+          "accountNumber": "1234567890",
+          "ifscCode": "SBIN0001234"
+        },
+        "createdAt": "2024-01-15T10:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+### ADMIN WALLET ENDPOINTS
+
+#### 5. Create Bank Details
+
+**POST** `/api/wallet/admin/bank-details`
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "bankName": "State Bank of India",
+  "beneficiaryName": "Company Name Pvt Ltd",
+  "accountNumber": "1234567890",
+  "branch": "Mumbai Main Branch",
+  "ifscCode": "SBIN0001234"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Bank details added successfully",
+  "data": {
+    "id": "bank-uuid",
+    "bankName": "State Bank of India",
+    "beneficiaryName": "Company Name Pvt Ltd",
+    "accountNumber": "1234567890",
+    "branch": "Mumbai Main Branch",
+    "ifscCode": "SBIN0001234",
+    "isActive": true,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+#### 6. Get All Bank Details
+
+**GET** `/api/wallet/admin/bank-details?page=1&limit=20&isActive=true`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `isActive` (optional): Filter by active status (true/false)
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "bankDetails": [
+      {
+        "id": "bank-uuid",
+        "bankName": "State Bank of India",
+        "beneficiaryName": "Company Name Pvt Ltd",
+        "accountNumber": "1234567890",
+        "branch": "Mumbai Main Branch",
+        "ifscCode": "SBIN0001234",
+        "isActive": true,
+        "createdAt": "2024-01-15T10:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+#### 7. Update Bank Details (Activate/Deactivate)
+
+**PUT** `/api/wallet/admin/bank-details/:id`
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "isActive": false
+}
+```
+
+You can also update other fields:
+```json
+{
+  "bankName": "New Bank Name",
+  "accountNumber": "9876543210",
+  "isActive": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Bank details updated successfully",
+  "data": {
+    "id": "bank-uuid",
+    "bankName": "New Bank Name",
+    "accountNumber": "9876543210",
+    "isActive": true,
+    "updatedAt": "2024-01-15T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+#### 8. Get All Top-Up Requests
+
+**GET** `/api/wallet/admin/top-up/requests?page=1&limit=20&status=PENDING`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `status` (optional): Filter by status (PENDING, APPROVED, REJECTED)
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": [
+      {
+        "id": "request-uuid",
+        "amount": 5000,
+        "status": "PENDING",
+        "utrNumber": "UPI1234567890",
+        "depositDate": "2024-01-15T00:00:00.000Z",
+        "paymentScreenshot": "https://example.com/screenshot.jpg",
+        "wallet": {
+          "user": {
+            "id": "user-uuid",
+            "mobile": "9876543210",
+            "fullName": "John Doe",
+            "email": "john@example.com"
+          }
+        },
+        "bankDetails": {
+          "bankName": "State Bank of India",
+          "accountNumber": "1234567890",
+          "branch": "Mumbai Main Branch",
+          "ifscCode": "SBIN0001234"
+        },
+        "createdAt": "2024-01-15T10:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+---
+
+#### 9. Approve Top-Up Request
+
+**POST** `/api/wallet/admin/top-up/:requestId/approve`
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Top-up request approved successfully. Wallet balance updated.",
+  "data": {
+    "requestId": "request-uuid",
+    "amount": 5000,
+    "walletId": "wallet-uuid"
+  }
+}
+```
+
+**What happens on approval:**
+- Request status changes to APPROVED
+- Amount is added to member's wallet balance
+- UTR number is marked as used (cannot be reused)
+
+---
+
+#### 10. Reject Top-Up Request
+
+**POST** `/api/wallet/admin/top-up/:requestId/reject`
+
+**Headers:**
+```
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "reason": "Invalid UTR number. Please verify with your bank statement and resubmit."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Top-up request rejected",
+  "data": {
+    "requestId": "request-uuid",
+    "rejectionReason": "Invalid UTR number. Please verify with your bank statement and resubmit."
+  }
+}
+```
+
+**What happens on rejection:**
+- Request status changes to REJECTED
+- Wallet balance is NOT updated
+- UTR number can be reused in a new request
+- Member can see the rejection reason
+
+---
+
+## WALLET TOP-UP FLOW
+
+### Complete Member Journey:
+
+1. **Check Wallet Balance**
+   ```
+   GET /api/wallet/my-wallet
+   ```
+
+2. **Get Bank Details**
+   ```
+   GET /api/wallet/bank-details
+   ```
+
+3. **Transfer Money** (Outside App)
+   - Member uses UPI app (PhonePe, GPay, Paytm) or Banking app
+   - Transfers money to the bank account shown in step 2
+   - Gets transaction receipt/screenshot
+
+4. **Submit Top-Up Request**
+   ```
+   POST /api/wallet/top-up
+   ```
+   - Enter amount transferred
+   - Enter deposit date
+   - Select bank account used
+   - Enter UTR number (from transaction)
+   - Upload payment screenshot URL
+
+5. **Wait for Admin Approval**
+   - Request status: PENDING
+   - Can check status: `GET /api/wallet/top-up/requests`
+
+6. **Result**
+   - **If Approved**: Money added to wallet balance
+   - **If Rejected**: Can resubmit with same UTR after fixing issues
+
+### Complete Admin Journey:
+
+1. **Add Bank Account**
+   ```
+   POST /api/wallet/admin/bank-details
+   ```
+
+2. **View Pending Requests**
+   ```
+   GET /api/wallet/admin/top-up/requests?status=PENDING
+   ```
+
+3. **Verify Payment**
+   - Check UTR number in bank statement
+   - Verify amount matches
+   - Check payment screenshot
+
+4. **Approve or Reject**
+   - **Approve**: `POST /api/wallet/admin/top-up/:id/approve`
+   - **Reject**: `POST /api/wallet/admin/top-up/:id/reject` (with reason)
+
+5. **Manage Bank Accounts**
+   - View all: `GET /api/wallet/admin/bank-details`
+   - Activate/Deactivate: `PUT /api/wallet/admin/bank-details/:id`
+   - Delete: `DELETE /api/wallet/admin/bank-details/:id`
+
+---
+
+## IMPORTANT VALIDATIONS
+
+1. **UTR Uniqueness**
+   - UTR must be unique across ALL approved requests globally
+   - Rejected requests allow UTR reuse
+   - Pending requests allow UTR reuse (in case they need to cancel)
+
+2. **Bank Account Status**
+   - Members can only submit to active bank accounts
+   - Admin can deactivate accounts without deleting them
+
+3. **Wallet Requirement**
+   - Only MEMBERS can have wallets
+   - Wallet is auto-created on membership approval
+   - Non-members get error when trying to top-up
+
+4. **Amount Validation**
+   - Amount must be greater than 0
+   - Amount is stored as Float (supports decimals)
+
+5. **Status Transitions**
+   - PENDING → APPROVED (wallet balance increases)
+   - PENDING → REJECTED (wallet balance unchanged)
+   - APPROVED/REJECTED → Cannot be changed again
+
+6. **Security**
+   - All endpoints require authentication
+   - Admin endpoints require ADMIN/SUPER_ADMIN/WHITE_LABEL_ADMIN role
+   - Member can only see their own wallet and requests
+   - Admin can see all requests from all members

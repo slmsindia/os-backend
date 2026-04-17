@@ -60,6 +60,7 @@ model User {
   roles        UserRole[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   membershipApplications MembershipApplication[]
+  wallet          Wallet?
 
   @@index([tenantId])
   @@index([parentId])
@@ -367,4 +368,61 @@ model MembershipDocument {
   updatedAt         DateTime @updatedAt
   
   @@index([applicationId])
+}
+
+// Wallet System Models
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Float    @default(0.0)
+  currency  String   @default("INR")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topUpRequests WalletTopUpRequest[]
+
+  @@index([userId])
+}
+
+model BankDetails {
+  id              String   @id @default(uuid())
+  bankName        String
+  beneficiaryName String
+  accountNumber   String
+  branch          String
+  ifscCode        String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topUpRequests   WalletTopUpRequest[]
+
+  @@index([isActive])
+}
+
+model WalletTopUpRequest {
+  id              String   @id @default(uuid())
+  walletId        String
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  bankDetailsId   String
+  bankDetails     BankDetails @relation(fields: [bankDetailsId], references: [id])
+  
+  amount          Float
+  depositDate     DateTime
+  utrNumber       String   @unique
+  paymentScreenshot String
+  
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@index([utrNumber])
 }

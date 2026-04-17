@@ -1,6 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
+const walletService = require("../services/wallet.service");
 
 const prisma = new PrismaClient();
 
@@ -220,6 +221,15 @@ const adminMembershipController = {
           userType: 'MEMBER'
         }
       });
+
+      // Create wallet for the new member
+      try {
+        await walletService.createWallet(application.userId);
+      } catch (walletErr) {
+        console.error("Failed to create wallet for user:", walletErr);
+        // Don't fail the approval if wallet creation fails
+        // Admin can manually create wallet later
+      }
 
       await logAction({
         userId: adminId,
