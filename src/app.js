@@ -37,6 +37,7 @@ const locationRoutes = require("./routes/location.routes");
 const setupRoutes = require("./routes/setup.routes");
 const setupLocationRoutes = require("./routes/setup-location.routes");
 const setupJobTableRoutes = require("./routes/setup-job-table.routes");
+const healthRoutes = require("./routes/health.routes");
 
 const app = express();
 
@@ -73,6 +74,8 @@ app.use(
   })
 );
 
+// Health check endpoint (no tenant required)
+app.use("/health", healthRoutes);
 
 app.use(tenantMiddleware);
 
@@ -109,7 +112,6 @@ app.use("/api/location", locationRoutes);
 app.use("/api/setup", setupRoutes);
 app.use("/api/setup-location", setupLocationRoutes);
 app.use("/api/setup-job-table", setupJobTableRoutes);
-
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
 

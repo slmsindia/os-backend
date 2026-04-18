@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "engines": {
+"engines": {
     "node": ">=20.19.0",
     "npm": ">=10.0.0"
   },
@@ -13,7 +13,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "seed": "node prisma/seed.js",
-    "seed:membership": "node scripts/seed-membership.js",
+"seed:membership": "node scripts/seed-membership.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -31,8 +31,8 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-    "razorpay": "^2.9.6",
-    "soap": "^0.45.0",
+"razorpay": "^2.9.6",
+    "soap": "^1.8.0",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
     "xml2js": "^0.6.2"

@@ -24,6 +24,12 @@ async function main() {
     create: { id: generateUuid(), name: "Frontend Dev 5174", domain: "localhost:5174" }
   });
 
+// Production tenant
+  await prisma.tenant.upsert({
+    where: { domain: "apiv2.onlinesaathi.org" },
+    update: {},
+    create: { id: generateUuid(), name: "Production Tenant", domain: "apiv2.onlinesaathi.org" }
+  });
   // initial roles
   const roles = [
     "ADMIN",

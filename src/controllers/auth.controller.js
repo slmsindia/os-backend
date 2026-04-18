@@ -170,7 +170,7 @@ const authController = {
   },
 
   register: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, otp, referredBy } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
     const tenantId = req.tenant_id;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
@@ -178,33 +178,8 @@ const authController = {
     }
 
     try {
-      // If OTP is provided, verify it and use it for registration
-      if (otp) {
-        console.log("OTP provided in registration request, verifying...");
-        const otpResult = await verifyOtp(mobile, otp);
-        if (!otpResult.success) {
-          return res.status(403).json({ 
-            message: "OTP verification failed", 
-            error: otpResult.message,
-            hint: otpResult.message === 'expired' 
-              ? "OTP already used or expired. Either register without 'otp' field (if you just verified it), or request a new OTP"
-              : "Please check your OTP and try again"
-          });
-        }
-        console.log("OTP verified successfully");
-      } else {
-        // No OTP provided, check if mobile was already verified recently
-        console.log("No OTP provided, checking isMobileVerified...");
-        const isVerified = await isMobileVerified(mobile);
-        console.log("isMobileVerified result:", isVerified);
-        
-        if (!isVerified) {
-          return res.status(403).json({ 
-            message: "verify mobile first",
-            hint: "Either: (1) Send OTP, verify it, then register within 10 minutes WITHOUT otp field, OR (2) Include 'otp' in registration request"
-          });
-        }
-        console.log("Mobile already verified");
+      if (!(await isMobileVerified(mobile))) {
+        return res.status(403).json({ message: "verify mobile first" });
       }
 
       const existing = await prisma.user.findUnique({ where: { mobile } });
@@ -253,24 +228,14 @@ const authController = {
         accessToken
       });
     } catch (err) {
-      console.error("Registration error:", err);
-      res.status(500).json({ 
-        message: "Registration failed",
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-        details: process.env.NODE_ENV === 'development' ? {
-          stack: err.stack,
-          code: err.code,
-          meta: err.meta
-        } : undefined
-      });
+      console.error(err);
+      res.status(500).json({ message: "error" });
     }
   },
 
   login: async (req, res) => {
     const { mobile, password } = req.body;
     const tenantId = req.tenant_id;
-
-    console.log("Login attempt:", mobile, "tenant:", tenantId);
 
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
@@ -280,15 +245,11 @@ const authController = {
         include: { roles: { include: { role: true } } }
       });
 
-      console.log("User found:", user ? user.id : "not found");
-
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: "invalid mobile or pass" });
       }
 
-      console.log("Password matched, generating token...");
       const accessToken = generateToken(user);
-      console.log("Token generated successfully");
 
       await logAction({
         userId: user.id,
@@ -297,123 +258,20 @@ const authController = {
         metadata: { ip: req.ip }
       });
 
-      // Determine primary role for redirection
-      const roles = user.roles.map((ur) => ur.role.name);
-      const primaryRole = roles[0] || user.identity || "USER";
-      let redirectTo = "/dashboard";
-      switch (primaryRole) {
-        case "ADMIN":
-        case "SUPER_ADMIN":
-          redirectTo = "/admin/dashboard";
-          break;
-        case "SUB_ADMIN":
-          redirectTo = "/subadmin/dashboard";
-          break;
-        case "COUNTRY_HEAD":
-          redirectTo = "/country/dashboard";
-          break;
-        case "STATE_HEAD":
-          redirectTo = "/state/dashboard";
-          break;
-        case "DISTRICT_HEAD":
-          redirectTo = "/district/dashboard";
-          break;
-        case "BUSINESS_PARTNER":
-          redirectTo = "/business/dashboard";
-          break;
-        case "MEMBER":
-          redirectTo = "/member/dashboard";
-          break;
-        case "SAATHI":
-          redirectTo = "/saathi/dashboard";
-          break;
-        case "USER":
-        default:
-          redirectTo = "/user/dashboard";
-      }
       res.json({
         success: true,
         accessToken,
         identity: user.identity,
-        roles,
-        redirectTo
+        roles: user.roles.map((ur) => ur.role.name)
       });
     } catch (err) {
-      console.error("Login error:", err);
-      res.status(500).json({ message: "error", error: err.message });
+      console.error(err);
+      res.status(500).json({ message: "error" });
     }
   },
 
   logout: async (req, res) => {
     res.json({ success: true, message: "logged out" });
-  },
-
-  // Get current user's profile/registration data
-  getMe: async (req, res) => {
-    const { user_id: userId } = req.user;
-
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          mobile: true,
-          fullName: true,
-          gender: true,
-          dateOfBirth: true,
-          identity: true,
-          approvalStatus: true,
-          referralCode: true,
-          referredBy: true,
-          createdAt: true,
-          roles: {
-            include: {
-              role: {
-                select: {
-                  id: true,
-                  name: true
-                }
-              }
-            }
-          },
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-              domain: true
-            }
-          },
-          wallet: {
-            select: {
-              id: true,
-              balance: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-
-      res.json({
-        success: true,
-        user: {
-          ...user,
-          roles: user.roles.map(ur => ur.role.name)
-        }
-      });
-    } catch (err) {
-      console.error("Get user profile error:", err);
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch user profile",
-        error: err.message
-      });
-    }
   }
 };
 
