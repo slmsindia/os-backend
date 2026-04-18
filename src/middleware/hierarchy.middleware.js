@@ -1,7 +1,19 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-module.exports = async (req, res, next) => {
+const enforceHierarchy = (allowedRoles) => {
+  return (req, res, next) => {
+    const { role: userRole } = req.user;
+    
+    if (allowedRoles.includes(userRole)) {
+      return next();
+    }
+    
+    return res.status(403).json({ message: "Insufficient permissions for this operation" });
+  };
+};
+
+const checkHierarchy = async (req, res, next) => {
   const { id: targetId } = req.params;
   const { user_id: myId, role: myRole } = req.user;
 
@@ -29,4 +41,9 @@ const checkTree = async (parentId, childId) => {
   if (child.parentId === parentId) return true;
 
   return await checkTree(parentId, child.parentId);
+};
+
+module.exports = {
+  enforceHierarchy,
+  checkHierarchy
 };
