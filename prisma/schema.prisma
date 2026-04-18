@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  domain    String   @unique
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Identity {
+  SUPER_ADMIN
+  WHITE_LABEL_ADMIN
+  ADMIN
+  STATE_PARTNER
+  DISTRICT_PARTNER
+  AGENT
+  USER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  mobile       String   @unique
+  email        String?
+  password     String
+  fullName     String
+  profilePhoto String?
+  gender       Gender
+  dateOfBirth  DateTime
+  identity     Identity @default(USER)
+  tenantId     String
+  parentId     String?
+  createdBy    String?
+  referredBy   String?
+  referralCode String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
+
+  parent       User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children     User[]   @relation("UserHierarchy")
+
+  creator      User?    @relation("UserCreation", fields: [createdBy], references: [id])
+  createdUsers User[]   @relation("UserCreation")
+
+  referrer     User?    @relation("UserReferral", fields: [referredBy], references: [id])
+  referrals    User[]   @relation("UserReferral")
+
+  roles        UserRole[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  membershipApplications MembershipApplication[]
+  wallet          Wallet?
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@index([createdBy])
+  @@index([referredBy])
+  @@index([referralCode])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  targetId  String?
+  metadata  Json?
+  tenantId  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model PrabhuApiLog {
+  id             String   @id @default(uuid())
+  operation      String
+  integration    String
+  endpointPath   String
+  requestMethod  String
+  requestPayload Json?
+  responsePayload Json?
+  statusCode     Int?
+  success        Boolean  @default(false)
+  errorMessage   String?
+  errorPayload   Json?
+  userId         String?
+  tenantId       String?
+  ipAddress      String?
+  userAgent      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  mobile    String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([mobile])
+}
+
+model ImeData {
+  id               String   @id @default(uuid())
+  name             String
+  mobile           String
+  relationship     String
+  sendAmountInr    Float?
+  receiveAmountNpr Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuData {
+  id                   String   @id @default(uuid())
+  name                 String
+  mobile               String
+  relationship         String
+  purposeOfTransaction String?
+  paymentMode          String?
+  bankName             String?
+  bankBranch           String?
+  sendAmountInr        Float?
+  receiveAmountNpr     Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuReceiver {
+  id           String   @id @default(uuid())
+  customerId   String?
+  receiverId   String?  @unique
+  name         String
+  mobile       String
+  relationship String?
+  gender       String?
+  paymentMode  String?
+  bankCode     String?
+  bankBranchId String?
+  accountNumber String?
+  address      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuSender {
+  id             String   @id @default(uuid())
+  customerId     String?  @unique
+  name           String
+  mobile         String
+  gender         String?
+  dateOfBirth    String?
+  address        String?
+  city           String?
+  district       String?
+  state          String?
+  nationality    String?
+  email          String?
+  idType         String?
+  idNumber       String?
+  idExpiryDate   String?
+  idIssuedPlace  String?
+  sourceIncomeType String?
+  customerType   String?
+  status         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+// Membership Configuration
+model MembershipConfig {
+  id              String   @id @default(uuid())
+  membershipPrice Float    @default(100.0)
+  currency        String   @default("INR")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Reference Data Models
+model Education {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+}
+
+model Sector {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+}
+
+model JobRole {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+}
+
+model DocumentType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipDocuments MembershipDocument[]
+}
+
+// Membership Application
+model MembershipApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  // Personal Information
+  firstName         String
+  lastName          String
+  email             String
+  gender            String
+  educationId       String
+  education         Education @relation(fields: [educationId], references: [id])
+  sectorId          String
+  sector            Sector    @relation(fields: [sectorId], references: [id])
+  jobRoleId         String
+  jobRole           JobRole   @relation(fields: [jobRoleId], references: [id])
+  maritalStatus     String
+  citizenship       String
+  isMigrantWorker   Boolean
+  monthlyIncome     String
+  
+  // Current Address
+  currentCountry    String
+  currentState      String
+  currentDistrict   String
+  currentAddress    String
+  currentPincode    String
+  
+  // Permanent Address
+  permanentCountry  String
+  permanentState    String
+  permanentDistrict String
+  permanentAddress  String
+  permanentPincode  String
+  
+  // Application Status
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedAt        DateTime?
+  approvedBy        String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Payment & Documents
+  payment           MembershipPayment?
+  documents         MembershipDocument[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model MembershipPayment {
+  id                String   @id @default(uuid())
+  applicationId     String   @unique
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  razorpayOrderId   String
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount            Float
+  currency          String   @default("INR")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+  @@index([razorpayOrderId])
+}
+
+model MembershipDocument {
+  id                String   @id @default(uuid())
+  applicationId     String
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  documentTypeId    String
+  documentType      DocumentType @relation(fields: [documentTypeId], references: [id])
+  documentNumber    String
+  frontImageUrl     String
+  backImageUrl      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+}
+
+// Wallet System Models
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Float    @default(0.0)
+  currency  String   @default("INR")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topUpRequests WalletTopUpRequest[]
+
+  @@index([userId])
+}
+
+model BankDetails {
+  id              String   @id @default(uuid())
+  bankName        String
+  beneficiaryName String
+  accountNumber   String
+  branch          String
+  ifscCode        String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topUpRequests   WalletTopUpRequest[]
+
+  @@index([isActive])
+}
+
+model WalletTopUpRequest {
+  id              String   @id @default(uuid())
+  walletId        String
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  bankDetailsId   String
+  bankDetails     BankDetails @relation(fields: [bankDetailsId], references: [id])
+  
+  amount          Float
+  depositDate     DateTime
+  utrNumber       String   @unique
+  paymentScreenshot String
+  
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@index([utrNumber])
+}
