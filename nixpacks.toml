@@ -4,6 +4,9 @@ nixPkgs = ["nodejs_20", "npm-9_x", "openssl"]
 [phases.install]
 cmds = ["npm ci"]
 
+[phases.build]
+cmds = ["npm run build"]
+
 [phases.start]
 cmd = "npm start"
 
