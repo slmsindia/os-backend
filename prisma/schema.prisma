@@ -59,11 +59,8 @@ email        String?
 
   roles        UserRole[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
-<<<<<<< HEAD
-  membershipApplications MembershipApplication[]
+membershipApplications MembershipApplication[]
   wallet          Wallet?
-=======
->>>>>>> f201157cceb2ec6a69a6a3d848402d848300e90b
 
   @@index([tenantId])
   @@index([parentId])
@@ -235,7 +232,6 @@ model PrabhuSender {
   @@index([mobile])
   @@index([createdAt])
 }
-<<<<<<< HEAD
 
 // Membership Configuration
 model MembershipConfig {
@@ -430,5 +426,3 @@ model WalletTopUpRequest {
   @@index([status])
   @@index([utrNumber])
 }
-=======
->>>>>>> f201157cceb2ec6a69a6a3d848402d848300e90b
