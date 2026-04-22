@@ -8,5 +8,6 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post("/create-tenant", checkIdentity(["SUPER_ADMIN"]), superAdminController.createTenant);
+router.get("/tenants", checkIdentity(["SUPER_ADMIN"]), superAdminController.getAllTenants);
 
 module.exports = router;

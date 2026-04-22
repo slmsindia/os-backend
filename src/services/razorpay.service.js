@@ -3,10 +3,18 @@ const crypto = require('crypto');
 
 class RazorpayService {
   constructor() {
-    this.instance = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      console.warn('RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is missing in .env. Razorpay features will be disabled.');
+      this.instance = null;
+    } else {
+      this.instance = new Razorpay({
+        key_id: keyId,
+        key_secret: keySecret,
+      });
+    }
   }
 
   /**
@@ -17,6 +25,9 @@ class RazorpayService {
    * @returns {Promise<object>} - Razorpay order object
    */
   async createOrder(amount, currency = 'INR', receipt) {
+    if (!this.instance) {
+      throw new Error('Razorpay service is not initialized. Please check your RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env');
+    }
     try {
       const options = {
         amount: Math.round(amount * 100), // Convert to paise
@@ -62,6 +73,9 @@ class RazorpayService {
    * @returns {Promise<object>} - Payment details
    */
   async fetchPayment(paymentId) {
+    if (!this.instance) {
+      throw new Error('Razorpay service is not initialized.');
+    }
     try {
       const payment = await this.instance.payments.fetch(paymentId);
       return payment;
@@ -77,6 +91,9 @@ class RazorpayService {
    * @returns {Promise<object>} - Order details
    */
   async fetchOrder(orderId) {
+    if (!this.instance) {
+      throw new Error('Razorpay service is not initialized.');
+    }
     try {
       const order = await this.instance.orders.fetch(orderId);
       return order;

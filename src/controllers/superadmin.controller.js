@@ -28,7 +28,7 @@ const superAdminController = {
             password: hash,
             gender: "MALE",
             dateOfBirth: new Date("1990-01-01"),
-            identity: "ADMIN",
+            identity: "WHITE_LABEL_ADMIN",
             tenantId: tenant.id
           }
         });
@@ -53,6 +53,26 @@ const superAdminController = {
       if (err.code === "P2002") {
         return res.status(400).json({ success: false, message: "Domain already exists" });
       }
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+  getAllTenants: async (req, res) => {
+    try {
+      const tenants = await prisma.tenant.findMany({
+        include: {
+          _count: {
+            select: { users: true }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+
+      res.json({
+        success: true,
+        data: tenants
+      });
+    } catch (err) {
+      console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
