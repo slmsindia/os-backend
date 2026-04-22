@@ -13,6 +13,7 @@ const prabhuService = require('./prabhu.service');
 const prabhuDataService = require('./prabhu-data.service');
 const prabhuReceiverService = require('./prabhu-receiver.service');
 const prabhuSenderService = require('./prabhu-sender.service');
+const walletService = require('../../services/wallet.service');
 
 const ok = (res, message, payload) => {
   return res.json({
@@ -202,7 +203,9 @@ const getCustomerByMobile = async (req, res) => {
 
 const createCustomer = async (req, res) => {
   try {
-    const configuredCspCode = (process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
+    console.log('DEBUG - Prabhu CreateCustomer Request Body:', JSON.stringify(req.body, null, 2));
+
+    const configuredCspCode = (process.env.PRABHU_CSPCODE || process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
 
     const requestBody = {
       ...(req.body || {})
@@ -217,6 +220,8 @@ const createCustomer = async (req, res) => {
 
     requestBody.cspCode = effectiveCspCode;
     requestBody.CSPCode = effectiveCspCode;
+
+    console.log('DEBUG - CSP Code Set:', { configuredCspCode, effectiveCspCode, finalCspCode: requestBody.cspCode });
 
     await normalizeIndiaTemporaryStateCode(requestBody, getRequestContext(req));
 
@@ -233,11 +238,6 @@ const createCustomer = async (req, res) => {
       mobile: requestBody?.PhoneNumber || requestBody?.mobile || requestBody?.phone || '',
       gender: requestBody?.gender,
       dateOfBirth: requestBody?.dob,
-      address: requestBody?.address,
-      city: requestBody?.city,
-      district: requestBody?.district,
-      state: requestBody?.state,
-      nationality: requestBody?.nationality,
       email: requestBody?.email,
       idType: requestBody?.IDType || requestBody?.idType,
       idNumber: requestBody?.IDNumber || requestBody?.idNumber,
@@ -298,7 +298,8 @@ const workflowStep1Customer = async (req, res) => {
         customerId: req.body?.customerId,
         customerFullName: req.body?.customerFullName || req.body?.name,
         cspMobile: req.body?.cspMobile,
-        cspName: req.body?.cspName
+        cspName: req.body?.cspName,
+        idType: req.body?.idType || req.body?.IDType || '12' // Defaulting to 12 if not provided
       }, getRequestContext(req));
 
       return ok(res, 'Customer not found. CreateCustomer OTP sent.', {
@@ -631,14 +632,82 @@ module.exports = {
   complianceTransactions: proxyOperation('ComplianceTransactions', 'Compliance transactions success'),
   uploadDocument: proxyOperation('UploadDocument', 'Upload document success'),
   sendTransaction: async (req, res) => {
+    let deductedWallet = null;
+    let transferAmount = 0;
+    let walletRefunded = false;
+
     try {
+      const appUserId = req.user?.user_id || req.user?.id;
+      if (!appUserId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Unauthorized'
+        });
+      }
+
+      transferAmount = getTransferAmount(req.body || {});
+      if (!transferAmount) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid transfer amount is required'
+        });
+      }
+
+      await walletService.ensureSufficientBalance(appUserId, transferAmount);
+      deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount);
+
       const payload = {
         ...req.body,
         cspCode: req.body.cspCode || process.env.PRABHU_CSP_CODE
       };
       const result = await prabhuService.callEndpoint('SendTransaction', payload, getRequestContext(req));
-      return ok(res, 'Send transaction success', { data: result.data });
+      const responseCode = String(result?.data?.code || '').trim();
+
+      if (responseCode !== '000') {
+        await walletService.updateBalance(deductedWallet.id, transferAmount);
+        walletRefunded = true;
+        return res.status(400).json({
+          success: false,
+          message: result?.data?.message || 'Send transaction failed',
+          data: result.data
+        });
+      }
+
+      return ok(res, 'Send transaction success', {
+        data: result.data,
+        wallet: {
+          id: deductedWallet.id,
+          balance: deductedWallet.balance,
+          debitedAmount: transferAmount
+        }
+      });
     } catch (error) {
+      if (!walletRefunded && deductedWallet?.id && transferAmount > 0) {
+        try {
+          await walletService.updateBalance(deductedWallet.id, transferAmount);
+          walletRefunded = true;
+        } catch (refundError) {
+          console.error('Failed to refund wallet after send transaction error:', refundError);
+        }
+      }
+
+      if (error.code === 'WALLET_NOT_FOUND') {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+
+      if (error.code === 'WALLET_INACTIVE') {
+        return res.status(403).json({ success: false, message: error.message });
+      }
+
+      if (error.code === 'INVALID_AMOUNT' || error.code === 'INSUFFICIENT_BALANCE') {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          availableBalance: error.availableBalance,
+          requiredAmount: error.requiredAmount
+        });
+      }
+
       return fail(res, error);
     }
   },
@@ -683,4 +752,17 @@ module.exports = {
   listPrabhuSenders,
   upsertPrabhuSender,
   cspUniqueRefPoll
+};
+
+const getTransferAmount = (payload = {}) => {
+  const candidates = [payload.transferAmount, payload.collectedAmount, payload.sendAmount];
+
+  for (const value of candidates) {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return 0;
 };

@@ -7,6 +7,7 @@ const router = express.Router();
 
 // ==================== MEMBER ENDPOINTS ====================
 // Get my wallet details
+router.get("/", authMiddleware, walletController.getMyWallet);
 router.get("/my-wallet", authMiddleware, walletController.getMyWallet);
 
 // Get all active bank details
@@ -15,7 +16,8 @@ router.get("/bank-details", authMiddleware, walletController.getActiveBankDetail
 // Create top-up request
 router.post("/top-up", authMiddleware, walletController.createTopUpRequest);
 
-// Get my top-up requests
+// Get my top-up requests (Transactions)
+router.get("/transactions", authMiddleware, walletController.getMyTopUpRequests);
 router.get("/top-up/requests", authMiddleware, walletController.getMyTopUpRequests);
 
 // ==================== ADMIN ENDPOINTS ====================

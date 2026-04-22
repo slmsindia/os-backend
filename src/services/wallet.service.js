@@ -1,6 +1,22 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+const createWalletError = (code, message, meta = {}) => {
+  const error = new Error(message);
+  error.code = code;
+  Object.assign(error, meta);
+  return error;
+};
+
+const normalizeAmount = (amount) => {
+  const parsed = Number.parseFloat(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw createWalletError("INVALID_AMOUNT", "Transfer amount must be greater than 0");
+  }
+
+  return parsed;
+};
+
 const walletService = {
   /**
    * Create a new wallet for a user
@@ -75,6 +91,108 @@ const walletService = {
       return wallet;
     } catch (err) {
       console.error("Error updating wallet balance:", err);
+      throw err;
+    }
+  },
+
+  /**
+   * Ensure a user wallet exists and has sufficient balance
+   * @param {string} userId - Application user ID
+   * @param {number|string} amount - Amount to validate
+   * @returns {Promise<Object>} Wallet object
+   */
+  ensureSufficientBalance: async (userId, amount) => {
+    try {
+      const requiredAmount = normalizeAmount(amount);
+      const wallet = await prisma.wallet.findUnique({
+        where: { userId }
+      });
+
+      if (!wallet) {
+        throw createWalletError("WALLET_NOT_FOUND", "Wallet not found for this user");
+      }
+
+      if (!wallet.isActive) {
+        throw createWalletError("WALLET_INACTIVE", "Wallet is inactive. Please contact admin.");
+      }
+
+      if (wallet.balance < requiredAmount) {
+        throw createWalletError(
+          "INSUFFICIENT_BALANCE",
+          `Insufficient wallet balance. Available: ₹${wallet.balance.toFixed(2)}, required: ₹${requiredAmount.toFixed(2)}`,
+          {
+            availableBalance: wallet.balance,
+            requiredAmount
+          }
+        );
+      }
+
+      return wallet;
+    } catch (err) {
+      console.error("Error checking wallet balance:", err);
+      throw err;
+    }
+  },
+
+  /**
+   * Atomically deduct balance from a user's wallet when sufficient funds exist
+   * @param {string} userId - Application user ID
+   * @param {number|string} amount - Amount to deduct
+   * @returns {Promise<Object>} Updated wallet
+   */
+  deductBalanceIfSufficient: async (userId, amount) => {
+    const requiredAmount = normalizeAmount(amount);
+
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const wallet = await tx.wallet.findUnique({
+          where: { userId }
+        });
+
+        if (!wallet) {
+          throw createWalletError("WALLET_NOT_FOUND", "Wallet not found for this user");
+        }
+
+        if (!wallet.isActive) {
+          throw createWalletError("WALLET_INACTIVE", "Wallet is inactive. Please contact admin.");
+        }
+
+        const result = await tx.wallet.updateMany({
+          where: {
+            id: wallet.id,
+            isActive: true,
+            balance: {
+              gte: requiredAmount
+            }
+          },
+          data: {
+            balance: {
+              decrement: requiredAmount
+            }
+          }
+        });
+
+        if (result.count === 0) {
+          const latestWallet = await tx.wallet.findUnique({
+            where: { id: wallet.id }
+          });
+
+          throw createWalletError(
+            "INSUFFICIENT_BALANCE",
+            `Insufficient wallet balance. Available: ₹${(latestWallet?.balance || 0).toFixed(2)}, required: ₹${requiredAmount.toFixed(2)}`,
+            {
+              availableBalance: latestWallet?.balance || 0,
+              requiredAmount
+            }
+          );
+        }
+
+        return tx.wallet.findUnique({
+          where: { id: wallet.id }
+        });
+      });
+    } catch (err) {
+      console.error("Error deducting wallet balance:", err);
       throw err;
     }
   },

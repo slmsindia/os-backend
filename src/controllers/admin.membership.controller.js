@@ -78,14 +78,11 @@ const adminMembershipController = {
             select: {
               id: true,
               mobile: true,
-              fullName: true
+              fullName: true,
+              profilePhoto: true
             }
           },
-          payment: true,
-          education: true,
-          sector: true,
-          jobRole: true,
-          documents: true
+          payment: true
         },
         orderBy: { createdAt: 'desc' },
         skip: (parseInt(page) - 1) * parseInt(limit),
@@ -103,7 +100,7 @@ const adminMembershipController = {
       res.json({
         success: true,
         data: {
-          applications,
+          members: applications,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -214,11 +211,18 @@ const adminMembershipController = {
         }
       });
 
-      // Update user type to MEMBER
+      // Update user profile and identity from application data
       await prisma.user.update({
         where: { id: application.userId },
         data: {
-          userType: 'MEMBER'
+          fullName: `${application.firstName} ${application.lastName}`,
+          email: application.email,
+          gender: application.gender.toUpperCase(),
+          userType: 'MEMBER',
+          identity: 'MEMBER',
+          approvalStatus: 'APPROVED',
+          approvedAt: new Date(),
+          roleId: null
         }
       });
 

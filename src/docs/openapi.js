@@ -1337,6 +1337,596 @@ const paths = {
     },
   },
 
+  // ==================== WALLET ENDPOINTS ====================
+  "/api/wallet": {
+    get: {
+      tags: ["Wallet"],
+      summary: "Get my wallet details",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Wallet details" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/wallet/my-wallet": {
+    get: {
+      tags: ["Wallet"],
+      summary: "Get my wallet details (alias)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Wallet details" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/wallet/bank-details": {
+    get: {
+      tags: ["Wallet"],
+      summary: "Get all active bank details",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Active bank details" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/wallet/top-up": {
+    post: {
+      tags: ["Wallet"],
+      summary: "Create top-up request",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Top-up request created" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/wallet/transactions": {
+    get: {
+      tags: ["Wallet"],
+      summary: "Get my top-up requests (Transactions)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Transaction history" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/wallet/top-up/requests": {
+    get: {
+      tags: ["Wallet"],
+      summary: "Get my top-up requests (alias)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Top-up requests" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  // ==================== WALLET ADMIN ENDPOINTS ====================
+  "/api/wallet/admin/bank-details": {
+    post: {
+      tags: ["Wallet Admin"],
+      summary: "Create bank details",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Bank details created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    get: {
+      tags: ["Wallet Admin"],
+      summary: "Get all bank details",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "All bank details" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/wallet/admin/bank-details/{id}": {
+    put: {
+      tags: ["Wallet Admin"],
+      summary: "Update bank details (including activate/deactivate)",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Bank details updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    delete: {
+      tags: ["Wallet Admin"],
+      summary: "Delete bank details",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Bank details deleted" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/wallet/admin/top-up/requests": {
+    get: {
+      tags: ["Wallet Admin"],
+      summary: "Get all top-up requests",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "All top-up requests" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/wallet/admin/top-up/{requestId}/approve": {
+    post: {
+      tags: ["Wallet Admin"],
+      summary: "Approve top-up request",
+      security: bearerSecurity,
+      parameters: [
+        { name: "requestId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Top-up request approved" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/wallet/admin/top-up/{requestId}/reject": {
+    post: {
+      tags: ["Wallet Admin"],
+      summary: "Reject top-up request",
+      security: bearerSecurity,
+      parameters: [
+        { name: "requestId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Top-up request rejected" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // ==================== MEMBERSHIP ENDPOINTS ====================
+  "/api/membership/price": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get membership price",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Membership price" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/membership/reference-data": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get reference data (education, sectors, job roles, document types)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Reference data" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/membership/apply": {
+    post: {
+      tags: ["Membership"],
+      summary: "Create membership application",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Application created" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/membership/verify-payment": {
+    post: {
+      tags: ["Membership"],
+      summary: "Verify payment",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Payment verified" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/membership/status": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get application status",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Application status" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/membership/resubmit": {
+    post: {
+      tags: ["Membership"],
+      summary: "Resubmit rejected application",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Application resubmitted" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  // ==================== ADMIN MEMBERSHIP ENDPOINTS ====================
+  "/api/admin/membership/price": {
+    put: {
+      tags: ["Admin"],
+      summary: "Update membership price",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Price updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/membership/applications": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get membership applications",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Membership applications" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/membership/applications/{applicationId}": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get application details",
+      security: bearerSecurity,
+      parameters: [
+        { name: "applicationId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Application details" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/membership/applications/{applicationId}/approve": {
+    post: {
+      tags: ["Admin"],
+      summary: "Approve application",
+      security: bearerSecurity,
+      parameters: [
+        { name: "applicationId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Application approved" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/membership/applications/{applicationId}/reject": {
+    post: {
+      tags: ["Admin"],
+      summary: "Reject application",
+      security: bearerSecurity,
+      parameters: [
+        { name: "applicationId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Application rejected" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/education": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create education",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Education created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    get: {
+      tags: ["Admin"],
+      summary: "Get educations",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Educations list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/sector": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create sector",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Sector created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    get: {
+      tags: ["Admin"],
+      summary: "Get sectors",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Sectors list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/job-role": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create job role",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Job role created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    get: {
+      tags: ["Admin"],
+      summary: "Get job roles",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Job roles list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/document-type": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create document type",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Document type created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
+  "/api/admin/users": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get all users (with filtering and pagination)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Users list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/members": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get all members/membership applications (with filtering and pagination)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Members list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/stats": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get dashboard statistics",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Dashboard statistics" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // ==================== USER ENDPOINTS ====================
+  "/api/users/profile": {
+    get: {
+      tags: ["Users"],
+      summary: "Get logged-in profile",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Profile" },
+        401: { description: "Unauthorized" },
+      },
+    },
+    put: {
+      tags: ["Users"],
+      summary: "Update profile",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Profile updated" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/users/approvals/pending": {
+    get: {
+      tags: ["Users"],
+      summary: "List pending approvals (ADMIN/SUPER_ADMIN)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Pending approval list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/users/{id}/role": {
+    patch: {
+      tags: ["Users"],
+      summary: "Change user role (ADMIN/SUPER_ADMIN)",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Role updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/users/{id}/user-type": {
+    patch: {
+      tags: ["Users"],
+      summary: "Set user type (ADMIN/SUPER_ADMIN)",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "User type updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/users/{id}/approval": {
+    patch: {
+      tags: ["Users"],
+      summary: "Approve user (ADMIN/SUPER_ADMIN)",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Approval updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // ==================== DEVICE ENDPOINTS ====================
+  "/api/devices": {
+    get: {
+      tags: ["Devices"],
+      summary: "Get user devices",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "User devices" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/devices/{id}": {
+    delete: {
+      tags: ["Devices"],
+      summary: "Remove device",
+      security: bearerSecurity,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Device removed" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  // ==================== RD ENDPOINTS ====================
+  "/api/rd/capture": {
+    post: {
+      tags: ["RD"],
+      summary: "Capture RD data",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Data captured" },
+        400: { description: "Bad request" },
+      },
+    },
+  },
+
+  "/api/rd/info": {
+    get: {
+      tags: ["RD"],
+      summary: "Get RD info",
+      responses: {
+        200: { description: "RD info" },
+      },
+    },
+  },
+
 };
 
 paths[`${prabhuPrefix}/GetCustomerByIdNumber/{customerIdNo}`] = {
@@ -1547,6 +2137,169 @@ paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
   post: { tags: ["Prabhu Workflow"], summary: "Workflow step 2 receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
 };
 
+// Remittance Endpoints
+const remittancePrefix = "/api/Remittance";
+
+// SendPrabhuTransaction endpoint
+paths[`${remittancePrefix}/SendPrabhuTransaction`] = {
+  post: {
+    tags: ["Remittance"],
+    summary: "Save Prabhu Transaction to Database",
+    description: "Save successful Prabhu transaction data to PrabhuTransaction table",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["customerId", "senderName", "receiverId", "paymentMode", "transferAmount", "pinNo"],
+            properties: {
+              customerId: { type: "string", example: "1108405" },
+              senderName: { type: "string", example: "Ram Bahadur" },
+              senderMobile: { type: "string", example: "7041897207" },
+              receiverId: { type: "string", example: "3779896" },
+              receiverName: { type: "string", example: "Hemraj Thapa" },
+              sendCountry: { type: "string", example: "India" },
+              payoutCountry: { type: "string", example: "Nepal" },
+              paymentMode: { type: "string", example: "Cash Payment" },
+              transferAmount: { type: "string", example: "700" },
+              sendAmount: { type: "string", example: "700" },
+              sendCurrency: { type: "string", example: "INR" },
+              payAmount: { type: "string", example: "1120" },
+              payCurrency: { type: "string", example: "NPR" },
+              exchangeRate: { type: "string", example: "1.6" },
+              serviceCharge: { type: "string", example: "200" },
+              collectedAmount: { type: "string", example: "900" },
+              accountNumber: { type: "string", example: "" },
+              partnerPinNo: { type: "string", example: "PARTNER123" },
+              remittanceReason: { type: "string", example: "6" },
+              SourceOfFund: { type: "string", example: "10" },
+              cspCode: { type: "string", example: "SHUBHPMT" },
+              otpProcessId: { type: "string", example: "ff16cb3b-3611-4907-8d6b-9766add460c3" },
+              otp: { type: "string", example: "958103" },
+              bankCode: { type: "string", example: "" },
+              transactionId: { type: "string", example: null },
+              pinNo: { type: "string", example: "1111260282751950" },
+              responseCode: { type: "string", example: "000" },
+              responseMessage: { type: "string", example: "Success" },
+              transactionStatus: { type: "string", example: "Success" },
+              createdAt: { type: "string", example: "2026-04-21T09:30:00.000Z" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      201: { description: "Transaction saved successfully" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Get Prabhu Transactions by User ID
+paths[`${remittancePrefix}/prabhu/{userId}`] = {
+  get: {
+    tags: ["Remittance"],
+    summary: "Get Prabhu Transactions by User ID",
+    description: "Retrieve all Prabhu transactions for a specific user",
+    parameters: [
+      { name: "userId", in: "path", required: true, schema: { type: "string" }, example: "1108405" }
+    ],
+    responses: {
+      200: { 
+        description: "Transactions retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                message: { type: "string", example: "Prabhu transactions retrieved successfully" },
+                data: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string", example: "uuid-string" },
+                      customerId: { type: "string", example: "1108405" },
+                      senderName: { type: "string", example: "Ram Bahadur" },
+                      receiverName: { type: "string", example: "Hemraj Thapa" },
+                      transferAmount: { type: "string", example: "700" },
+                      transactionStatus: { type: "string", example: "Success" },
+                      createdAt: { type: "string", example: "2026-04-21T09:30:00.000Z" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      404: { description: "User not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Get All Transactions
+paths[`${remittancePrefix}/GetTransactions`] = {
+  get: {
+    tags: ["Remittance"],
+    summary: "Get All Transactions",
+    description: "Retrieve all transactions from database",
+    responses: {
+      200: { 
+        description: "Transactions retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                message: { type: "string", example: "Transactions retrieved successfully" },
+                data: { type: "array", items: { type: "object" } }
+              }
+            }
+          }
+        }
+      },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Get Transaction by PIN
+paths[`${remittancePrefix}/GetTransactionByPinNo`] = {
+  get: {
+    tags: ["Remittance"],
+    summary: "Get Transaction by PIN Number",
+    description: "Retrieve a specific transaction using PIN number",
+    parameters: [
+      { name: "pinNo", in: "query", required: true, schema: { type: "string" }, example: "1111260282751950" }
+    ],
+    responses: {
+      200: { 
+        description: "Transaction retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                message: { type: "string", example: "Transaction retrieved successfully" },
+                data: { type: "object" }
+              }
+            }
+          }
+        }
+      },
+      404: { description: "Transaction not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
 module.exports = {
   openapi: "3.0.3",
   info: {
@@ -1562,12 +2315,18 @@ module.exports = {
     { name: "Users" },
     { name: "Admin" },
     { name: "Super Admin" },
+    { name: "Wallet" },
+    { name: "Wallet Admin" },
+    { name: "Membership" },
+    { name: "Devices" },
+    { name: "RD" },
     { name: "Prabhu" },
     { name: "Prabhu CSP" },
     { name: "Prabhu E-KYC" },
     { name: "Prabhu Workflow" },
     { name: "Prabhu Data" },
     { name: "IME" },
+    { name: "Remittance" },
   ],
   components: {
     securitySchemes: {

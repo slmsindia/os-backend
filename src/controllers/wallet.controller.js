@@ -10,10 +10,16 @@ const walletController = {
    * Get my wallet details
    */
   getMyWallet: async (req, res) => {
-    const { user_id: userId } = req.user;
+    const { user_id: userId, identity } = req.user;
 
     try {
-      const wallet = await walletService.getWalletByUserId(userId);
+      let wallet = await walletService.getWalletByUserId(userId);
+
+      // Lazy initialization for members who don't have a wallet yet
+      if (!wallet && identity === 'MEMBER') {
+        console.log(`Initializing missing wallet for member: ${userId}`);
+        wallet = await walletService.createWallet(userId);
+      }
 
       if (!wallet) {
         return res.status(404).json({
@@ -57,7 +63,8 @@ const walletController = {
    */
   createTopUpRequest: async (req, res) => {
     const { user_id: userId } = req.user;
-    const { amount, depositDate, bankDetailsId, utrNumber, paymentScreenshot } = req.body;
+    const { amount, depositDate, bankDetailsId, paymentScreenshot } = req.body;
+    const utrNumber = req.body.utrNumber?.trim();
 
     // Validation
     if (!amount || !depositDate || !bankDetailsId || !utrNumber || !paymentScreenshot) {
@@ -71,6 +78,17 @@ const walletController = {
       return res.status(400).json({
         success: false,
         message: "Amount must be greater than 0"
+      });
+    }
+
+    const inputDate = new Date(depositDate);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // Allow until end of today
+
+    if (inputDate > today) {
+      return res.status(400).json({
+        success: false,
+        message: "Deposit date cannot be in the future"
       });
     }
 
@@ -103,12 +121,27 @@ const walletController = {
         });
       }
 
+      // Prevent multiple pending requests
+      const existingPending = await prisma.walletTopUpRequest.findFirst({
+        where: {
+          walletId: wallet.id,
+          status: "PENDING"
+        }
+      });
+
+      if (existingPending) {
+        return res.status(400).json({
+          success: false,
+          message: "You already have a pending top-up request. Please wait for it to be processed."
+        });
+      }
+
       // Check if UTR number is already used in an approved request
       const utrExists = await walletService.checkUtrExists(utrNumber);
       if (utrExists) {
         return res.status(400).json({
           success: false,
-          message: "This UTR number has already been used. Please enter a valid UTR."
+          message: "This UTR number is already associated with a pending or approved request. Please check your transaction history."
         });
       }
 
@@ -119,7 +152,7 @@ const walletController = {
           bankDetailsId,
           amount: parseFloat(amount),
           depositDate: new Date(depositDate),
-          utrNumber,
+          utrNumber: utrNumber.trim(),
           paymentScreenshot,
           status: "PENDING"
         },
@@ -131,6 +164,20 @@ const walletController = {
               accountNumber: true
             }
           }
+        }
+      });
+
+      // Mark the previous REJECTED request with same UTR as resubmitted
+      await prisma.walletTopUpRequest.updateMany({
+        where: {
+          walletId: wallet.id,
+          utrNumber: utrNumber.trim(),
+          status: 'REJECTED',
+          isResubmitted: false,
+          id: { not: topUpRequest.id }
+        },
+        data: {
+          isResubmitted: true
         }
       });
 
@@ -492,6 +539,15 @@ const walletController = {
         return res.status(400).json({
           success: false,
           message: `Request is already ${request.status}`
+        });
+      }
+
+      // Check if UTR is already approved by another request
+      const isAlreadyApproved = await walletService.checkUtrExists(request.utrNumber);
+      if (isAlreadyApproved) {
+        return res.status(400).json({
+          success: false,
+          message: "This UTR number has already been approved in another request."
         });
       }
 

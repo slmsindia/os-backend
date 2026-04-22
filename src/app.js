@@ -20,16 +20,29 @@ const cspRoutes = require("./modules/csp/csp.routes");
 const rdRoutes = require('./routes/rd.routes');
 const membershipRoutes = require("./routes/membership.routes");
 const walletRoutes = require("./routes/wallet.routes");
+const remittanceRoutes = require('./routes/remittance.routes');
 
 const app = express();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [
+    'http://localhost:3005',
+    'http://localhost:5273',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:3000',
+    'https://web.onlinesaathi.org',
+    'https://apiv2.onlinesaathi.org',
+    'https://dash.onlinesaathi.org',
+    'https://apiv3.onlinesaathi.org'
+  ],
   credentials: true
 }));
 app.use(morgan("dev"));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 const buildSwaggerSpec = (req) => {
   const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
@@ -37,9 +50,24 @@ const buildSwaggerSpec = (req) => {
   const host = req.get("host");
   const requestServerUrl = `${protocol}://${host}`;
 
+  const allServerUrls = [
+    { url: requestServerUrl },
+    { url: "http://localhost:3005" },
+    { url: "http://localhost:5273" },
+    { url: "https://web.onlinesaathi.org" },
+    { url: "https://apiv2.onlinesaathi.org" },
+    { url: "https://dash.onlinesaathi.org" },
+    { url: "https://apiv3.onlinesaathi.org" }
+  ];
+
+  // Filter out duplicate URLs
+  const uniqueServers = allServerUrls.filter((server, index, self) =>
+    index === self.findIndex((s) => s.url === server.url)
+  );
+
   return {
     ...openApiSpec,
-    servers: [{ url: requestServerUrl }, ...(openApiSpec.servers || []).filter((s) => s.url !== requestServerUrl)],
+    servers: uniqueServers,
   };
 };
 
@@ -73,6 +101,7 @@ app.use("/api/ime", imeRoutes);
 app.use("/api/IME", imeLegacyRoutes);
 app.use("/api", cspRoutes);
 app.use('/api/rd', rdRoutes);
+app.use('/api/Remittance', remittanceRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
@@ -84,7 +113,7 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
     message: "error",
-    err: process.env.NODE_ENV === "dev" ? err.message : undefined
+    error: process.env.NODE_ENV === "development" ? err.message : undefined
   });
 });
 

@@ -29,20 +29,49 @@ const getOrCreateRole = async (roleName) => {
 
 const userController = {
   getProfile: async (req, res) => {
-    const { user_id: myId, tenant_id: myTenantId } = req.user;
     try {
+      const myId = req.user?.user_id;
+      const myTenantId = req.user?.tenant_id || req.user?.tenantId;
+
+      if (!myId) return res.status(401).json({ success: false, message: "Unauthorized: User ID missing" });
+
       const user = await prisma.user.findFirst({
-        where: { id: myId, tenantId: myTenantId },
-        include: { roles: { include: { role: true } } }
+        where: { 
+          id: myId,
+          ...(myTenantId ? { tenantId: myTenantId } : {})
+        },
+        include: {
+          roles: { include: { role: true } },
+          membershipApplications: {
+            where: { status: 'APPROVED' },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { documents: { take: 1 } }
+          }
+        }
       });
 
-      if (!user) return res.status(404).json({ message: "user not found" });
+      if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
       const { password, ...safeUser } = user;
+
+      // Fallback logic for missing fields from approved application
+      const latestApp = user.membershipApplications?.[0];
+      if (latestApp) {
+        if (!safeUser.email) safeUser.email = latestApp.email;
+        if (!safeUser.profilePhoto) {
+          // Fallback to the first document's front image if no profile photo is set
+          safeUser.profilePhoto = latestApp.documents?.[0]?.frontImageUrl || null;
+        }
+      }
+      
+      // Always cleanup internal fields
+      delete safeUser.membershipApplications;
+
       res.json(safeUser);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "error" });
+      console.error("error in getProfile:", err);
+      res.status(500).json({ success: false, message: "Internal server error during profile load" });
     }
   },
 
@@ -235,6 +264,64 @@ const userController = {
         return res.status(404).json({ success: false, message: "User not found" });
       }
       res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  updateProfile: async (req, res) => {
+    try {
+      const myId = req.user?.user_id;
+      const myTenantId = req.user?.tenant_id || req.user?.tenantId;
+      
+      const { firstName, lastName, fullName, gender, dateOfBirth, country, language, phoneNumber } = req.body;
+
+      // Security check: Verify user belongs to the tenant before updating
+      if (myTenantId) {
+        const checkUser = await prisma.user.findFirst({
+          where: { id: myId, tenantId: myTenantId }
+        });
+        if (!checkUser) return res.status(403).json({ success: false, message: "Access denied" });
+      }
+
+      const updateData = {};
+      
+      if (firstName || lastName) {
+        updateData.fullName = `${firstName || ''} ${lastName || ''}`.trim();
+      } else if (fullName) {
+        updateData.fullName = fullName;
+      }
+
+      if (gender) updateData.gender = gender.toUpperCase();
+      if (dateOfBirth && !isNaN(new Date(dateOfBirth).getTime())) {
+        updateData.dateOfBirth = new Date(dateOfBirth);
+      }
+      if (country) updateData.country = country;
+      if (language) updateData.language = language;
+      if (phoneNumber) updateData.mobile = phoneNumber;
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ success: false, message: "No fields to update" });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: myId }, // Identity is unique identifier
+        data: updateData
+      });
+
+      await logAction({
+        userId: myId,
+        action: "PROFILE_UPDATE",
+        tenantId: myTenantId,
+        metadata: { updatedFields: Object.keys(updateData) }
+      });
+
+      res.json({
+        success: true,
+        message: "Profile updated successfully",
+        user: updatedUser
+      });
+    } catch (err) {
+      console.error("error in updateProfile:", err);
+      res.status(500).json({ success: false, message: "Internal server error during profile update" });
     }
   }
 };

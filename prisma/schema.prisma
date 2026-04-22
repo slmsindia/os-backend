@@ -25,8 +25,14 @@ enum Identity {
   SUPER_ADMIN
   WHITE_LABEL_ADMIN
   ADMIN
+  SUB_ADMIN
+  SUPPORT_TEAM
+  COUNTRY_HEAD
   STATE_PARTNER
   DISTRICT_PARTNER
+  BUSINESS_PARTNER
+  SAATHI
+  MEMBER
   AGENT
   USER
 }
@@ -39,9 +45,13 @@ model User {
   fullName     String
   profilePhoto String?
   gender       Gender
-  dateOfBirth  DateTime
-  identity     Identity @default(USER)
-  tenantId     String
+  dateOfBirth    DateTime
+  identity       Identity @default(USER)
+  userType       String   @default("USER")
+  approvalStatus String   @default("APPROVED")
+  approvedAt     DateTime?
+  roleId         String?
+  tenantId       String
   parentId     String?
   createdBy    String?
   referredBy   String?
@@ -411,11 +421,12 @@ model WalletTopUpRequest {
   
   amount          Float
   depositDate     DateTime
-  utrNumber       String   @unique
+  utrNumber       String
   paymentScreenshot String
   
   status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
   rejectionReason String?
+  isResubmitted   Boolean  @default(false)
   approvedBy      String?
   approvedAt      DateTime?
   
@@ -425,4 +436,47 @@ model WalletTopUpRequest {
   @@index([walletId])
   @@index([status])
   @@index([utrNumber])
+}
+
+// Prabhu Transaction Model
+model PrabhuTransaction {
+  id                  String   @id @default(uuid())
+  customerId          String?
+  senderName          String
+  senderMobile        String
+  receiverId          String
+  receiverName        String
+  receiverMobile      String
+  sendCountry         String   @default("India")
+  payoutCountry       String   @default("Nepal")
+  paymentMode         String
+  transferAmount      String
+  sendAmount          String
+  sendCurrency        String   @default("INR")
+  payAmount           String
+  payCurrency         String   @default("NPR")
+  exchangeRate        String   @default("1.6")
+  serviceCharge       String
+  collectedAmount     String
+  accountNumber       String   @default("")
+  partnerPinNo        String
+  remittanceReason    String
+  sourceOfFund        String
+  cspCode             String
+  otpProcessId        String
+  otp                 String
+  bankCode            String
+  bankBranchId        String
+  transactionId       String?
+  pinNo               String
+  responseCode        String   @default("000")
+  responseMessage     String   @default("Success")
+  transactionStatus   String   @default("Success")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([pinNo])
+  @@index([transactionStatus])
+  @@index([createdAt])
 }

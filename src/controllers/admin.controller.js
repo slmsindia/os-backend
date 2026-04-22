@@ -4,6 +4,11 @@ const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
 
+const hasGlobalAdminScope = (user = {}) => {
+  const identity = String(user?.identity || '').toUpperCase();
+  return ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(identity);
+};
+
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
@@ -72,32 +77,52 @@ const adminController = {
    * Query params: page, limit, identity, approvalStatus, search
    */
   getAllUsers: async (req, res) => {
-    const { user_id: adminId, tenant_id: myTenantId } = req.user;
+    const { user_id: adminId } = req.user;
+    const myTenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
+    const useTenantScope = !hasGlobalAdminScope(req.user);
     const { page = 1, limit = 20, identity, approvalStatus, search } = req.query;
 
     try {
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const where = {
-        tenantId: myTenantId
-      };
+      const andFilters = [];
+
+      if (useTenantScope && myTenantId) {
+        andFilters.push({ tenantId: myTenantId });
+      }
 
       // Filter by identity if provided
-      if (identity) {
-        where.identity = identity;
+      if (identity && String(identity).trim()) {
+        const normalizedIdentity = String(identity).trim().toUpperCase();
+
+        if (normalizedIdentity === "MEMBER") {
+          andFilters.push({
+            OR: [
+              { identity: "MEMBER" },
+              { membershipApplications: { some: { status: "APPROVED" } } }
+            ]
+          });
+        } else {
+          andFilters.push({ identity: normalizedIdentity });
+        }
       }
 
       // Filter by approval status if provided
       if (approvalStatus) {
-        where.approvalStatus = approvalStatus;
+        andFilters.push({ approvalStatus });
       }
 
       // Search by mobile or fullName if provided
       if (search) {
-        where.OR = [
-          { mobile: { contains: search } },
-          { fullName: { contains: search } }
-        ];
+        andFilters.push({
+          OR: [
+            { mobile: { contains: search } },
+            { fullName: { contains: search } },
+            { email: { contains: search } }
+          ]
+        });
       }
+
+      const where = andFilters.length ? { AND: andFilters } : {};
 
       const [users, total] = await Promise.all([
         prisma.user.findMany({
@@ -106,6 +131,16 @@ const adminController = {
           take: parseInt(limit),
           orderBy: { createdAt: "desc" },
           include: {
+            wallet: {
+              select: {
+                balance: true
+              }
+            },
+            membershipApplications: {
+              where: { status: "APPROVED" },
+              orderBy: { approvedAt: "desc" },
+              take: 1
+            },
             roles: {
               include: { role: true }
             }
@@ -119,6 +154,8 @@ const adminController = {
         const { password, ...safeUser } = user;
         return {
           ...safeUser,
+          walletBalance: user.wallet?.balance || 0,
+          approvedAt: user.membershipApplications?.[0]?.approvedAt || safeUser.approvedAt || null,
           roles: user.roles.map(ur => ur.role.name)
         };
       });
@@ -139,6 +176,13 @@ const adminController = {
             limit: parseInt(limit),
             total,
             totalPages: Math.ceil(total / parseInt(limit))
+          },
+          filters: {
+            tenantId: useTenantScope ? myTenantId : null,
+            scope: useTenantScope ? "tenant" : "global",
+            identity: identity ? String(identity).trim().toUpperCase() : null,
+            approvalStatus: approvalStatus || null,
+            search: search || null
           }
         }
       });
@@ -149,11 +193,89 @@ const adminController = {
   },
 
   /**
+   * Get specific user details by ID
+   */
+  getUserById: async (req, res) => {
+    const { id } = req.params;
+    const { user_id: adminId } = req.user;
+    const myTenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
+    const useTenantScope = !hasGlobalAdminScope(req.user);
+
+    try {
+      const whereClause = { id };
+      if (useTenantScope && myTenantId) {
+        whereClause.tenantId = myTenantId;
+      }
+
+      const user = await prisma.user.findFirst({
+        where: whereClause,
+        include: {
+          wallet: {
+            select: {
+              balance: true
+            }
+          },
+          membershipApplications: {
+            where: { status: "APPROVED" },
+            orderBy: { approvedAt: "desc" },
+            take: 1,
+            include: {
+              documents: { take: 1 },
+              payment: true,
+              education: true,
+              sector: true,
+              jobRole: true
+            }
+          },
+          roles: {
+            include: { role: true }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      // Remove sensitive data
+      const { password, ...safeUser } = user;
+      
+      // Format the response
+      const userWithDetails = {
+        ...safeUser,
+        walletBalance: user.wallet?.balance || 0,
+        approvedAt: user.membershipApplications?.[0]?.approvedAt || safeUser.approvedAt || null,
+        roles: user.roles.map(ur => ur.role.name),
+        // Include membership application details if available
+        membershipApplication: user.membershipApplications?.[0] || null
+      };
+
+      await logAction({
+        userId: adminId,
+        action: "VIEW_USER_DETAILS",
+        targetId: id,
+        tenantId: myTenantId,
+        metadata: { userId: id }
+      });
+
+      res.json({
+        success: true,
+        data: userWithDetails
+      });
+    } catch (err) {
+      console.error("Error fetching user details:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * Get all members (users with membership applications)
    * Query params: page, limit, status (PENDING, APPROVED, REJECTED), search
    */
   getAllMembers: async (req, res) => {
-    const { user_id: adminId, tenant_id: myTenantId } = req.user;
+    const { user_id: adminId } = req.user;
+    const myTenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
+    const useTenantScope = !hasGlobalAdminScope(req.user);
     const { page = 1, limit = 20, status, search } = req.query;
 
     try {
@@ -163,6 +285,34 @@ const adminController = {
       const applicationWhere = {};
       if (status) {
         applicationWhere.status = status;
+      }
+
+      if (useTenantScope && myTenantId) {
+        applicationWhere.user = {
+          ...(applicationWhere.user || {}),
+          tenantId: myTenantId
+        };
+      }
+
+      if (search && String(search).trim()) {
+        const searchValue = String(search).trim();
+        applicationWhere.OR = [
+          { firstName: { contains: searchValue } },
+          { lastName: { contains: searchValue } },
+          { email: { contains: searchValue } },
+          {
+            user: {
+              ...(useTenantScope && myTenantId ? { tenantId: myTenantId } : {}),
+              mobile: { contains: searchValue }
+            }
+          },
+          {
+            user: {
+              ...(useTenantScope && myTenantId ? { tenantId: myTenantId } : {}),
+              fullName: { contains: searchValue }
+            }
+          }
+        ];
       }
 
       const [applications, total] = await Promise.all([
@@ -207,12 +357,109 @@ const adminController = {
             limit: parseInt(limit),
             total,
             totalPages: Math.ceil(total / parseInt(limit))
+          },
+          filters: {
+            tenantId: useTenantScope ? myTenantId : null,
+            scope: useTenantScope ? "tenant" : "global",
+            status: status || null,
+            search: search || null
           }
         }
       });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Get dashboard statistics
+   */
+  getStats: async (req, res) => {
+    try {
+      const myId = req.user?.user_id;
+      // Safeguard against undefined which can crash Prisma 6 queries
+      const myTenantId = req.user?.tenant_id || req.user?.tenantId || null;
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Perform counts with safer 'where' clauses
+      const [totalUsers, activeUsersRaw, totalApps, securityAlerts, recentActivity] = await Promise.all([
+        // Total Users
+        prisma.user.count({ 
+          where: { 
+            ...(myTenantId ? { tenantId: myTenantId } : {})
+          } 
+        }),
+
+        // Active Users (Distinct users with logins in last 30 days)
+        prisma.auditLog.groupBy({
+          by: ['userId'],
+          where: {
+            ...(myTenantId ? { tenantId: myTenantId } : {}),
+            action: 'USER_LOGIN',
+            createdAt: { gte: thirtyDaysAgo }
+          }
+        }),
+
+        // Total Membership Applications
+        prisma.membershipApplication.count({ 
+          where: { 
+            user: { 
+                ...(myTenantId ? { tenantId: myTenantId } : {})
+            } 
+          } 
+        }),
+
+        // "Security Alerts" (Significant audit actions)
+        prisma.auditLog.count({
+          where: {
+            ...(myTenantId ? { tenantId: myTenantId } : {}),
+            action: { in: ['ROLE_ASSIGNMENT', 'IDENTITY_UPGRADE', 'UNAUTHORIZED_ACCESS'] }
+          }
+        }),
+
+        // Recent Activity (Removed 'include: user' because relation is not defined in schema)
+        prisma.auditLog.findMany({
+          where: { 
+            ...(myTenantId ? { tenantId: myTenantId } : {})
+          },
+          take: 5,
+          orderBy: { createdAt: 'desc' }
+        })
+      ]);
+
+      // Manual join: fetch users for the recent activity feed
+      const userIds = [...new Set(recentActivity.map(log => log.userId).filter(Boolean))];
+      const actors = userIds.length > 0 
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, fullName: true, mobile: true }
+          })
+        : [];
+      
+      const actorMap = Object.fromEntries(actors.map(u => [u.id, u.fullName || u.mobile]));
+
+      res.json({
+        totalUsers,
+        activeUsers: activeUsersRaw.length,
+        totalApps,
+        securityAlerts,
+        recentActivity: recentActivity.map(log => ({
+          id: log.id,
+          action: log.action.replace(/_/g, ' '),
+          actor: actorMap[log.userId] || 'System',
+          createdAt: log.createdAt
+        }))
+      });
+    } catch (err) {
+      console.error("Error fetching admin stats:", err);
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error during stats aggregation",
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
     }
   }
 };

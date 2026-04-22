@@ -216,7 +216,7 @@ const getEkycConfig = () => {
   const baseUrl = (process.env.PRABHU_CSP_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com/testkya').trim();
   const baseRoute = '/v1';
   const baseRoute2 = '/v1';
-  const agentCodeRaw = (process.env.PRABHU_AGENT_CODE || '').trim();
+  const agentCodeRaw = (process.env.PRABHU_CSPCODE || process.env.PRABHU_AGENT_CODE || '').trim();
   return {
     active,
     userName,
