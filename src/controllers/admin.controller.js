@@ -6,7 +6,7 @@ const { generateUuid } = require("../utils/id");
 
 const hasGlobalAdminScope = (user = {}) => {
   const identity = String(user?.identity || '').toUpperCase();
-  return ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(identity);
+  return identity === "SUPER_ADMIN";
 };
 
 const adminController = {
@@ -20,6 +20,19 @@ const adminController = {
     }
 
     try {
+      const myIdentity = String(req.user?.identity || '').toUpperCase();
+
+      // Hierarchy Enforcement
+      if (targetIdentity === "WHITE_LABEL_ADMIN" && myIdentity !== "SUPER_ADMIN") {
+        return res.status(403).json({ success: false, message: "Only Super Admin can create White Label Admins" });
+      }
+      if (targetIdentity === "ADMIN" && !["SUPER_ADMIN", "WHITE_LABEL_ADMIN"].includes(myIdentity)) {
+        return res.status(403).json({ success: false, message: "Only White Label Admins or Super Admins can create Admins" });
+      }
+      if (targetIdentity === "SUB_ADMIN" && !["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(myIdentity)) {
+        return res.status(403).json({ success: false, message: "Only Admins or higher can create Sub-Admins" });
+      }
+
       let finalParentId = myId;
 
       // If explicit parentId provided, verify it belongs to same tenant
@@ -67,6 +80,9 @@ const adminController = {
     }
   },
 
+  createWhiteLabelAdmin: (req, res) => adminController.createIdentity(req, res, "WHITE_LABEL_ADMIN"),
+  createAdmin: (req, res) => adminController.createIdentity(req, res, "ADMIN"),
+  createSubAdmin: (req, res) => adminController.createIdentity(req, res, "SUB_ADMIN"),
   createState: (req, res) => adminController.createIdentity(req, res, "STATE_PARTNER"),
   createDistrict: (req, res) => adminController.createIdentity(req, res, "DISTRICT_PARTNER"),
   createAgent: (req, res) => adminController.createIdentity(req, res, "AGENT"),
@@ -80,14 +96,23 @@ const adminController = {
     const { user_id: adminId } = req.user;
     const myTenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
     const useTenantScope = !hasGlobalAdminScope(req.user);
-    const { page = 1, limit = 20, identity, approvalStatus, search } = req.query;
+    const { page = 1, limit = 20, identity, approvalStatus, search, tenantId, parentId } = req.query;
 
     try {
       const skip = (parseInt(page) - 1) * parseInt(limit);
       const andFilters = [];
 
+      // If not SuperAdmin, force tenant scope
       if (useTenantScope && myTenantId) {
         andFilters.push({ tenantId: myTenantId });
+      } else if (tenantId) {
+        // SuperAdmin can filter by specific tenant
+        andFilters.push({ tenantId });
+      }
+
+      // Filter by parent/creator
+      if (parentId) {
+        andFilters.push({ parentId });
       }
 
       // Filter by identity if provided
@@ -103,6 +128,16 @@ const adminController = {
           });
         } else {
           andFilters.push({ identity: normalizedIdentity });
+        }
+      } else {
+        // Hierarchy Visibility Logic
+        const myIdentity = String(req.user?.identity || '').toUpperCase();
+        if (myIdentity === "ADMIN") {
+          // ADMIN only sees SUB_ADMIN and below (Agents, Users)
+          andFilters.push({ identity: { in: ["SUB_ADMIN", "AGENT", "USER", "MEMBER"] } });
+        } else if (myIdentity === "WHITE_LABEL_ADMIN") {
+          // WHITE_LABEL_ADMIN sees everyone in tenant (Admins, SubAdmins, etc)
+          // (Tenant filter already applied above)
         }
       }
 
