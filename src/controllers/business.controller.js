@@ -1,0 +1,164 @@
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
+
+const businessController = {
+  /**
+   * Apply to become a Business Partner
+   */
+  apply: async (req, res) => {
+    const { 
+      businessName, brandName, ownerName, email, contactNumber1, contactNumber2,
+      sectorId, businessType, employerType, amount, paymentMode, razorPayReferenceNo,
+      address, documents 
+    } = req.body;
+    const { user_id: userId, tenant_id: tenantId } = req.user;
+
+    try {
+      // 1. Verify User Identity
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      if (!["USER", "SAATHI", "MEMBER"].includes(user.identity)) {
+        return res.status(403).json({ success: false, message: "Only Users, Saathi, or Members can apply for Business Partnership" });
+      }
+
+      // 2. Verify Sector ID
+      const sector = await prisma.sector.findUnique({ where: { id: sectorId } });
+      if (!sector) {
+        return res.status(400).json({ success: false, message: "Invalid Sector ID. Please provide a valid ID from the Sector list." });
+      }
+
+      const application = await prisma.businessApplication.create({
+        data: {
+          id: generateUuid(),
+          userId,
+          businessName,
+          brandName,
+          ownerName,
+          email,
+          contactNumber1,
+          contactNumber2,
+          sectorId,
+          amount: parseFloat(amount || 0),
+          paymentMode: parseInt(paymentMode || 1),
+          razorPayReferenceNo,
+          address,
+          documents,
+          status: "PENDING"
+        }
+      });
+
+      await logAction({
+        userId,
+        action: "APPLY_BUSINESS_PARTNER",
+        targetId: application.id,
+        tenantId,
+        metadata: { businessName }
+      });
+
+      res.status(201).json({ success: true, message: "Application submitted successfully", application });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Post a Job
+   */
+  postJob: async (req, res) => {
+    const { 
+      jobDescription, jobType, payStructure, offeredAmount, educationId, experience,
+      gender, minAge, maxAge, officeStartTime, officeEndTime, address, facilities,
+      isJoiningFees, joiningAmount, joiningFeeReason, contactName, contactNumber,
+      isUrgentHiring, noOfOpenings, shiftType, weekOffDays, skillIds, sectorId,
+      jobRoleId, applicationCloseDate 
+    } = req.body;
+    const { user_id: userId, tenant_id: tenantId } = req.user;
+
+    try {
+      // Check if user has an approved business profile
+      const profile = await prisma.businessProfile.findUnique({ where: { userId } });
+      if (!profile) {
+        return res.status(403).json({ success: false, message: "Only approved Business Partners can post jobs" });
+      }
+
+      const job = await prisma.jobPost.create({
+        data: {
+          id: generateUuid(),
+          businessId: profile.id,
+          creatorId: userId,
+          jobDescription,
+          jobType,
+          payStructure,
+          offeredAmount,
+          educationId,
+          experience,
+          gender,
+          minAge,
+          maxAge,
+          officeStartTime,
+          officeEndTime,
+          address,
+          facilities,
+          isJoiningFees,
+          joiningAmount,
+          joiningFeeReason,
+          contactName,
+          contactNumber,
+          isUrgentHiring,
+          noOfOpenings,
+          shiftType,
+          weekOffDays,
+          skillIds,
+          sectorId,
+          jobRoleId,
+          applicationCloseDate: new Date(applicationCloseDate)
+        }
+      });
+
+      await logAction({
+        userId,
+        action: "POST_JOB",
+        targetId: job.id,
+        tenantId,
+        metadata: { jobDescription: jobDescription.substring(0, 50) }
+      });
+
+      res.status(201).json({ success: true, message: "Job posted successfully", job });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Get own business status
+   */
+  getBusinessStatus: async (req, res) => {
+    const { user_id: userId } = req.user;
+    try {
+      const profile = await prisma.businessProfile.findUnique({ where: { userId } });
+      const latestApplication = await prisma.businessApplication.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" }
+      });
+
+      res.json({
+        success: true,
+        isBusinessPartner: !!profile,
+        profile,
+        latestApplication
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+};
+
+module.exports = businessController;

@@ -1,0 +1,851 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  domain    String   @unique
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Identity {
+  SUPER_ADMIN
+  WHITE_LABEL_ADMIN
+  ADMIN
+  SUB_ADMIN
+  SUPPORT_TEAM
+  COUNTRY_HEAD
+  STATE_PARTNER
+  DISTRICT_PARTNER
+  BUSINESS_PARTNER
+  SAATHI
+  MEMBER
+  AGENT
+  USER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  mobile       String   @unique
+  email        String?
+  password     String
+  fullName     String
+  profilePhoto String?
+  gender       Gender
+  dateOfBirth    DateTime
+  identity       Identity @default(USER)
+  userType       String   @default("USER")
+  approvalStatus String   @default("APPROVED")
+  approvedAt     DateTime?
+  roleId         String?
+  tenantId       String
+  parentId     String?
+  createdBy    String?
+  referredBy   String?
+  referralCode String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
+
+  parent       User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children     User[]   @relation("UserHierarchy")
+
+  creator      User?    @relation("UserCreation", fields: [createdBy], references: [id])
+  createdUsers User[]   @relation("UserCreation")
+
+  referrer     User?    @relation("UserReferral", fields: [referredBy], references: [id])
+  referrals    User[]   @relation("UserReferral")
+
+  roles        UserRole[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  membershipApplications MembershipApplication[]
+  wallet          Wallet?
+  businessProfile BusinessProfile?
+  businessApplications BusinessApplication[]
+  jobPosts        JobPost[]
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@index([createdBy])
+  @@index([referredBy])
+  @@index([referralCode])
+}
+
+// ... (existing models)
+
+// Business Partner System
+model BusinessProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  companyLogoUrl    String?
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  businessType      Int      @default(0)
+  employerType      Int      @default(0)
+  
+  serviceCharges    Float    @default(0)
+  gst               Float    @default(0)
+  platformFees      Float    @default(0)
+  
+  address           Json?    // Stores structured address
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  jobPosts          JobPost[]
+}
+
+model BusinessApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  amount            Float    @default(0)
+  paymentMode       Int      @default(1)
+  razorPayReferenceNo String?
+  
+  address           Json?
+  documents         Json?    // Stores array of document objects
+  
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedBy        String?  // Admin ID
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model JobPost {
+  id                String   @id @default(uuid())
+  businessId        String
+  business          BusinessProfile @relation(fields: [businessId], references: [id])
+  creatorId         String
+  creator           User     @relation(fields: [creatorId], references: [id])
+  
+  jobDescription    String
+  jobType           Int      @default(0)
+  payStructure      Int      @default(0)
+  offeredAmount     Float
+  
+  educationId       String
+  education         Education @relation(fields: [educationId], references: [id])
+  experience        Int      @default(0)
+  
+  gender            Gender   @default(OTHER)
+  minAge            Int      @default(18)
+  maxAge            Int      @default(60)
+  
+  officeStartTime   String
+  officeEndTime     String
+  
+  address           Json?
+  facilities        String[] // Array of facility IDs or names
+  
+  isJoiningFees     Boolean  @default(false)
+  joiningAmount     Float    @default(0)
+  joiningFeeReason  Int[]    // Array of reason codes
+  
+  contactName       String
+  contactNumber     String
+  isUrgentHiring    Boolean  @default(false)
+  noOfOpenings      Int      @default(1)
+  shiftType         Int      @default(0)
+  weekOffDays       Int[]    // Array of day codes
+  
+  skillIds          String[] // Array of Skill IDs
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  jobRoleId         String
+  jobRole           JobRole  @relation(fields: [jobRoleId], references: [id])
+  
+  applicationCloseDate DateTime
+  status            String   @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([sectorId])
+}
+
+// Additional Master Data
+model Skill {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model JobFacility {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String
+  countryId String
+  isActive  Boolean  @default(true)
+}
+
+model District {
+  id        String   @id @default(uuid())
+  name      String
+  stateId   String
+  isActive  Boolean  @default(true)
+}
+
+model Municipality {
+  id         String   @id @default(uuid())
+  name       String
+  districtId String
+  isActive   Boolean  @default(true)
+}
+
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  targetId  String?
+  metadata  Json?
+  tenantId  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model PrabhuApiLog {
+  id             String   @id @default(uuid())
+  operation      String
+  integration    String
+  endpointPath   String
+  requestMethod  String
+  requestPayload Json?
+  responsePayload Json?
+  statusCode     Int?
+  success        Boolean  @default(false)
+  errorMessage   String?
+  errorPayload   Json?
+  userId         String?
+  tenantId       String?
+  ipAddress      String?
+  userAgent      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  mobile    String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([mobile])
+}
+
+model ImeData {
+  id               String   @id @default(uuid())
+  name             String
+  mobile           String
+  relationship     String
+  sendAmountInr    Float?
+  receiveAmountNpr Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuData {
+  id                   String   @id @default(uuid())
+  name                 String
+  mobile               String
+  relationship         String
+  purposeOfTransaction String?
+  paymentMode          String?
+  bankName             String?
+  bankBranch           String?
+  sendAmountInr        Float?
+  receiveAmountNpr     Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuReceiver {
+  id           String   @id @default(uuid())
+  customerId   String?
+  receiverId   String?  @unique
+  name         String
+  mobile       String
+  relationship String?
+  gender       String?
+  paymentMode  String?
+  bankCode     String?
+  bankBranchId String?
+  accountNumber String?
+  address      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuSender {
+  id             String   @id @default(uuid())
+  customerId     String?  @unique
+  name           String
+  mobile         String
+  gender         String?
+  dateOfBirth    String?
+  address        String?
+  city           String?
+  district       String?
+  state          String?
+  nationality    String?
+  email          String?
+  idType         String?
+  idNumber       String?
+  idExpiryDate   String?
+  idIssuedPlace  String?
+  sourceIncomeType String?
+  customerType   String?
+  status         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+// Membership Configuration
+model MembershipConfig {
+  id              String   @id @default(uuid())
+  membershipPrice Float    @default(100.0)
+  currency        String   @default("INR")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Reference Data Models
+model Education {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
+}
+
+model Sector {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+  businessProfiles       BusinessProfile[]
+  businessApplications   BusinessApplication[]
+  jobPosts               JobPost[]
+}
+
+model JobRole {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
+}
+
+model DocumentType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipDocuments MembershipDocument[]
+}
+
+// Membership Application
+model MembershipApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  // Personal Information
+  firstName         String
+  lastName          String
+  email             String
+  gender            String
+  educationId       String
+  education         Education @relation(fields: [educationId], references: [id])
+  sectorId          String
+  sector            Sector    @relation(fields: [sectorId], references: [id])
+  jobRoleId         String
+  jobRole           JobRole   @relation(fields: [jobRoleId], references: [id])
+  maritalStatus     String
+  citizenship       String
+  isMigrantWorker   Boolean
+  monthlyIncome     String
+  
+  // Current Address
+  currentCountry    String
+  currentState      String
+  currentDistrict   String
+  currentAddress    String
+  currentPincode    String
+  
+  // Permanent Address
+  permanentCountry  String
+  permanentState    String
+  permanentDistrict String
+  permanentAddress  String
+  permanentPincode  String
+  
+  // Application Status
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedAt        DateTime?
+  approvedBy        String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Payment & Documents
+  payment           MembershipPayment?
+  documents         MembershipDocument[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model MembershipPayment {
+  id                String   @id @default(uuid())
+  applicationId     String   @unique
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  razorpayOrderId   String
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount            Float
+  currency          String   @default("INR")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+  @@index([razorpayOrderId])
+}
+
+model MembershipDocument {
+  id                String   @id @default(uuid())
+  applicationId     String
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  documentTypeId    String
+  documentType      DocumentType @relation(fields: [documentTypeId], references: [id])
+  documentNumber    String
+  frontImageUrl     String
+  backImageUrl      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+}
+
+// Wallet System Models
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Float    @default(0.0)
+  currency  String   @default("INR")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topUpRequests WalletTopUpRequest[]
+
+  @@index([userId])
+}
+
+model BankDetails {
+  id              String   @id @default(uuid())
+  bankName        String
+  beneficiaryName String
+  accountNumber   String
+  branch          String
+  ifscCode        String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topUpRequests   WalletTopUpRequest[]
+
+  @@index([isActive])
+}
+
+model WalletTopUpRequest {
+  id              String   @id @default(uuid())
+  walletId        String
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  bankDetailsId   String
+  bankDetails     BankDetails @relation(fields: [bankDetailsId], references: [id])
+  
+  amount          Float
+  depositDate     DateTime
+  utrNumber       String
+  paymentScreenshot String
+  
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason String?
+  isResubmitted   Boolean  @default(false)
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@index([utrNumber])
+}
+
+// Prabhu Transaction Model
+model PrabhuTransaction {
+  id                  String   @id @default(uuid())
+  customerId          String?
+  senderName          String
+  senderMobile        String
+  receiverId          String
+  receiverName        String
+  receiverMobile      String
+  sendCountry         String   @default("India")
+  payoutCountry       String   @default("Nepal")
+  paymentMode         String
+  transferAmount      String
+  sendAmount          String
+  sendCurrency        String   @default("INR")
+  payAmount           String
+  payCurrency         String   @default("NPR")
+  exchangeRate        String   @default("1.6")
+  serviceCharge       String
+  collectedAmount     String
+  accountNumber       String   @default("")
+  partnerPinNo        String
+  remittanceReason    String
+  sourceOfFund        String
+  cspCode             String
+  otpProcessId        String
+  otp                 String
+  bankCode            String
+  bankBranchId        String
+  transactionId       String?
+  pinNo               String
+  responseCode        String   @default("000")
+  responseMessage     String   @default("Success")
+  transactionStatus   String   @default("Success")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([pinNo])
+  @@index([transactionStatus])
+  @@index([createdAt])
+}
+
+// ==========================================
+// IME Remittance Models
+// ==========================================
+
+model IMECustomer {
+  id                    String   @id @default(uuid())
+  mobileNo              String   @unique
+  firstName             String
+  middleName            String?
+  lastName              String
+  nationality           String   // Country ID (e.g., 'IND', 'NPL')
+  maritalStatus         String   // Marital Status ID from static data
+  dateOfBirth           String   // YYYY/MM/DD format
+  gender                String   // Gender ID (1801=Male, 1802=Female)
+  fatherOrMotherName    String
+  email                 String?
+  occupation            String   // Occupation ID
+  sourceOfFund          String?  // Source of Fund ID
+  
+  // Permanent Address (Nepal)
+  permanentState        String   // State ID
+  permanentDistrict     String   // District ID
+  permanentMunicipality String?
+  permanentAddress      String
+  permanentWardNo       String?
+  permanentHouseNo      String?
+  
+  // Temporary Address (India)
+  tempState             String   // State ID
+  tempDistrict          String   // District ID
+  tempAddress           String
+  tempPostalCode        String?
+  tempHouseNo           String?
+  
+  // Identity Details
+  idType                String   // ID Type ID
+  idNumber              String
+  idPlaceOfIssue        String?
+  idIssueDate           String   // YYYY/MM/DD
+  idExpiryDate          String?
+  idNoCitizenship       String?  // For Nepal citizens with non-citizenship ID
+  idIssuePlaceCitizenship String?
+  idIssueDateCitizenship String?
+  
+  // Documents
+  idData                String?  // Base64 encoded
+  idDataType            String?  // pdf, jpg, jpeg, png
+  photoData             String?  // Base64 encoded
+  photoDataType         String?  // pdf, jpg, jpeg, png
+  
+  // IME Response Fields
+  customerToken         String?  // Token from CustomerRegistration
+  imeCustomerId         String?  // IME's internal customer ID
+  kycStatus             String   @default("Pending") // Approved, Pending, Rejected
+  amlStatus             Boolean  @default(false)
+  
+  // Phase 2 eKYC
+  aadharNo              String?
+  eKycStatus            String?  // Pending, Completed, Failed
+  eKycUniqueId          String?
+  eKycOttToken          String?
+  
+  userId                String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  transactions          IMETransaction[]
+  
+  @@index([mobileNo])
+  @@index([kycStatus])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model IMETransaction {
+  id                    String   @id @default(uuid())
+  agentTxnRefId         String   @unique // Our internal reference
+  
+  // Customer Reference
+  customerId            String
+  customer              IMECustomer @relation(fields: [customerId], references: [id])
+  senderMobileNo        String
+  senderName            String
+  senderOccupation      String
+  
+  // Receiver Details
+  receiverName          String
+  receiverAddress       String
+  receiverGender        String
+  receiverMobileNo      String
+  receiverCity          String?
+  receiverCountry       String   @default("NPL")
+  receiverState         String   // State ID
+  receiverDistrict      String   // District ID
+  receiverMunicipality  String   // Municipality ID
+  
+  // Transaction Details
+  forexSessionId        String   // From GetCalculation
+  remitAmount           Float    // Amount to send
+  collectAmount         Float    // Total collected (with service charge)
+  payoutAmount          Float    // Amount receiver gets in NPR
+  serviceCharge         Float
+  exchangeRate          Float
+  payoutCurrency        String   @default("NPR")
+  
+  // Payment Info
+  paymentType           String   // C=Cash, B=Bank
+  bankId                String?
+  bankBranchId          String?
+  bankAccountNumber     String?
+  
+  // Transaction Metadata
+  sourceOfFund          String
+  relationship          String   // Relationship ID
+  purposeOfRemittance   String   // Purpose ID
+  calcBy                String   // C=Collection, P=Payout
+  
+  // IME Response
+  refNo                 String?  // Reference number from SendTransaction
+  icn                   String?  // ICN from ConfirmSendTransaction (payout code)
+  otpToken              String?
+  
+  // Status
+  status                String   @default("Pending") // Pending, Confirmed, Paid, Cancelled, Failed
+  transactionDate       DateTime @default(now())
+  paidDate              DateTime?
+  cancelDate            DateTime?
+  cancelReason          String?
+  cancelCharge          Float?
+  
+  // Error Handling
+  responseCode          String?
+  responseMessage       String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([customerId])
+  @@index([agentTxnRefId])
+  @@index([icn])
+  @@index([status])
+  @@index([transactionDate])
+}
+
+model IMEStaticData {
+  id                    String   @id @default(uuid())
+  typeCode              String   // e.g., WSST-GDRV1, WSST-MSSV1
+  referenceValue        String?  // Optional reference (country code, state ID, etc.)
+  itemId                String   // The numeric ID from IME
+  itemValue             String   // Human-readable value
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@unique([typeCode, referenceValue, itemId])
+  @@index([typeCode])
+  @@index([isActive])
+}
+
+model IMECSP {
+  id                    String   @id @default(uuid())
+  partnerCSPCode        String   @unique
+  cspName               String
+  registrationType      String   // Registration Type ID
+  registrationNumber    String
+  businessType          String   // Business Type ID
+  contractExpiryDate    String   // YYYY/MM/DD
+  contractRenewalDate   String   // YYYY/MM/DD
+  panNumber             String
+  
+  // Company Info
+  country               String   // Country ID
+  state                 String   // State ID
+  district              String   // District ID
+  city                  String
+  houseNumber           String
+  roadName              String
+  pinCode               String
+  addressProofType      String   // Address Proof Type ID
+  
+  // Contact Person
+  contactPersonName     String
+  mobileNumber1         String
+  mobileNumber2         String?
+  landlineNumber        String?
+  email                 String
+  
+  // Status
+  status                String   @default("Pending") // Active, Inactive, Pending
+  imeStatus             String?  // Status from IME response
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([partnerCSPCode])
+  @@index([status])
+}
