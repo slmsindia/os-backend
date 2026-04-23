@@ -32,7 +32,8 @@ const locationController = {
       });
       res.json({ success: true, data: states });
     } catch (err) {
-      res.status(500).json({ success: false, message: "Error fetching states" });
+      console.error("Error fetching states:", err);
+      res.status(500).json({ success: false, message: "Error fetching states", error: err.message });
     }
   },
 
@@ -48,7 +49,8 @@ const locationController = {
       });
       res.json({ success: true, data: districts });
     } catch (err) {
-      res.status(500).json({ success: false, message: "Error fetching districts" });
+      console.error("Error fetching districts:", err);
+      res.status(500).json({ success: false, message: "Error fetching districts", error: err.message });
     }
   },
 
@@ -64,7 +66,8 @@ const locationController = {
       });
       res.json({ success: true, data: municipalities });
     } catch (err) {
-      res.status(500).json({ success: false, message: "Error fetching municipalities" });
+      console.error("Error fetching municipalities:", err);
+      res.status(500).json({ success: false, message: "Error fetching municipalities", error: err.message });
     }
   }
 };
