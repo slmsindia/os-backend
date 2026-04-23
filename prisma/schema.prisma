@@ -71,6 +71,9 @@ model User {
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   membershipApplications MembershipApplication[]
   wallet          Wallet?
+  businessProfile BusinessProfile?
+  businessApplications BusinessApplication[]
+  jobPosts        JobPost[]
 
   @@index([tenantId])
   @@index([parentId])
@@ -78,6 +81,169 @@ model User {
   @@index([referredBy])
   @@index([referralCode])
 }
+
+// ... (existing models)
+
+// Business Partner System
+model BusinessProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  companyLogoUrl    String?
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  businessType      Int      @default(0)
+  employerType      Int      @default(0)
+  
+  serviceCharges    Float    @default(0)
+  gst               Float    @default(0)
+  platformFees      Float    @default(0)
+  
+  address           Json?    // Stores structured address
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  jobPosts          JobPost[]
+}
+
+model BusinessApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  amount            Float    @default(0)
+  paymentMode       Int      @default(1)
+  razorPayReferenceNo String?
+  
+  address           Json?
+  documents         Json?    // Stores array of document objects
+  
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedBy        String?  // Admin ID
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model JobPost {
+  id                String   @id @default(uuid())
+  businessId        String
+  business          BusinessProfile @relation(fields: [businessId], references: [id])
+  creatorId         String
+  creator           User     @relation(fields: [creatorId], references: [id])
+  
+  jobDescription    String
+  jobType           Int      @default(0)
+  payStructure      Int      @default(0)
+  offeredAmount     Float
+  
+  educationId       String
+  education         Education @relation(fields: [educationId], references: [id])
+  experience        Int      @default(0)
+  
+  gender            Gender   @default(OTHER)
+  minAge            Int      @default(18)
+  maxAge            Int      @default(60)
+  
+  officeStartTime   String
+  officeEndTime     String
+  
+  address           Json?
+  facilities        String[] // Array of facility IDs or names
+  
+  isJoiningFees     Boolean  @default(false)
+  joiningAmount     Float    @default(0)
+  joiningFeeReason  Int[]    // Array of reason codes
+  
+  contactName       String
+  contactNumber     String
+  isUrgentHiring    Boolean  @default(false)
+  noOfOpenings      Int      @default(1)
+  shiftType         Int      @default(0)
+  weekOffDays       Int[]    // Array of day codes
+  
+  skillIds          String[] // Array of Skill IDs
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  jobRoleId         String
+  jobRole           JobRole  @relation(fields: [jobRoleId], references: [id])
+  
+  applicationCloseDate DateTime
+  status            String   @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([sectorId])
+}
+
+// Additional Master Data
+model Skill {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model JobFacility {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String
+  countryId String
+  isActive  Boolean  @default(true)
+}
+
+model District {
+  id        String   @id @default(uuid())
+  name      String
+  stateId   String
+  isActive  Boolean  @default(true)
+}
+
+model Municipality {
+  id         String   @id @default(uuid())
+  name       String
+  districtId String
+  isActive   Boolean  @default(true)
+}
+
 
 model Role {
   id          String           @id @default(uuid())
@@ -262,6 +428,7 @@ model Education {
   updatedAt DateTime @updatedAt
 
   membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
 }
 
 model Sector {
@@ -272,6 +439,9 @@ model Sector {
   updatedAt DateTime @updatedAt
 
   membershipApplications MembershipApplication[]
+  businessProfiles       BusinessProfile[]
+  businessApplications   BusinessApplication[]
+  jobPosts               JobPost[]
 }
 
 model JobRole {
@@ -282,6 +452,7 @@ model JobRole {
   updatedAt DateTime @updatedAt
 
   membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
 }
 
 model DocumentType {

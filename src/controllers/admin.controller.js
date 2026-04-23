@@ -22,15 +22,34 @@ const adminController = {
     try {
       const myIdentity = String(req.user?.identity || '').toUpperCase();
 
-      // Hierarchy Enforcement
-      if (targetIdentity === "WHITE_LABEL_ADMIN" && myIdentity !== "SUPER_ADMIN") {
-        return res.status(403).json({ success: false, message: "Only Super Admin can create White Label Admins" });
-      }
-      if (targetIdentity === "ADMIN" && !["SUPER_ADMIN", "WHITE_LABEL_ADMIN"].includes(myIdentity)) {
-        return res.status(403).json({ success: false, message: "Only White Label Admins or Super Admins can create Admins" });
-      }
-      if (targetIdentity === "SUB_ADMIN" && !["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(myIdentity)) {
-        return res.status(403).json({ success: false, message: "Only Admins or higher can create Sub-Admins" });
+      // Role Ranking Definition (Lower number = Higher Power)
+      const roleRank = {
+        "SUPER_ADMIN": 0,
+        "WHITE_LABEL_ADMIN": 1,
+        "ADMIN": 2,
+        "SUB_ADMIN": 3,
+        "SUPPORT_TEAM": 4,
+        "COUNTRY_HEAD": 5,
+        "STATE_PARTNER": 6,
+        "DISTRICT_PARTNER": 7,
+        "BUSINESS_PARTNER": 8,
+        "SAATHI": 9,
+        "MEMBER": 10,
+        "AGENT": 11,
+        "USER": 12
+      };
+
+      const myRank = roleRank[myIdentity] ?? 99;
+      const targetRank = roleRank[targetIdentity] ?? 99;
+
+      // Permission Check: Can only create roles BELOW yourself
+      // Exception: Super Admin can create anything, and we allow same-level creation for some roles if needed, 
+      // but based on your request, it's a strict top-down hierarchy.
+      if (myRank >= targetRank && myIdentity !== "SUPER_ADMIN") {
+        return res.status(403).json({
+          success: false,
+          message: `Your role (${myIdentity}) does not have permission to create a ${targetIdentity}`
+        });
       }
 
       let finalParentId = myId;
@@ -83,6 +102,7 @@ const adminController = {
   createWhiteLabelAdmin: (req, res) => adminController.createIdentity(req, res, "WHITE_LABEL_ADMIN"),
   createAdmin: (req, res) => adminController.createIdentity(req, res, "ADMIN"),
   createSubAdmin: (req, res) => adminController.createIdentity(req, res, "SUB_ADMIN"),
+  createCountryHead: (req, res) => adminController.createIdentity(req, res, "COUNTRY_HEAD"),
   createState: (req, res) => adminController.createIdentity(req, res, "STATE_PARTNER"),
   createDistrict: (req, res) => adminController.createIdentity(req, res, "DISTRICT_PARTNER"),
   createAgent: (req, res) => adminController.createIdentity(req, res, "AGENT"),

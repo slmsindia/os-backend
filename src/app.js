@@ -21,6 +21,9 @@ const rdRoutes = require('./routes/rd.routes');
 const membershipRoutes = require("./routes/membership.routes");
 const walletRoutes = require("./routes/wallet.routes");
 const remittanceRoutes = require('./routes/remittance.routes');
+const businessRoutes = require("./routes/business.routes");
+const adminBusinessRoutes = require("./routes/admin.business.routes");
+const locationRoutes = require("./routes/location.routes");
 
 const app = express();
 
@@ -101,6 +104,9 @@ app.use("/api/ime", imeRoutes);
 app.use("/api/IME", imeLegacyRoutes);
 app.use("/api", cspRoutes);
 app.use('/api/rd', rdRoutes);
+app.use("/api/business", businessRoutes);
+app.use("/api/admin/business", adminBusinessRoutes);
+app.use("/api/locations", locationRoutes);
 app.use('/api/Remittance', remittanceRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
