@@ -87,12 +87,17 @@ app.use(
   })
 );
 
-
 app.use(tenantMiddleware);
 
+// Health check to verify deployment
+app.get("/api/health-check", (req, res) => res.json({ 
+  status: "ok", 
+  version: "1.0.7", 
+  timestamp: new Date().toISOString() 
+}));
 
+app.use("/api/membership", membershipRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/membership", membershipRoutes); // Moved up
 app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
@@ -111,9 +116,7 @@ app.use('/api/Remittance', remittanceRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
-
 app.use((req, res) => res.status(404).json({ message: "not found" }));
-
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

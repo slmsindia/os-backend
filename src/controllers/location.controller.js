@@ -1,10 +1,20 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+// Helper to get model from prisma client regardless of capitalization
+const getModel = (name) => {
+  const lowercase = name.toLowerCase();
+  const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+  return prisma[lowercase] || prisma[capitalized];
+};
+
 const locationController = {
   getCountries: async (req, res) => {
     try {
-      const countries = await prisma.country.findMany({
+      const model = getModel('country');
+      if (!model) throw new Error("Country model not found in Prisma Client");
+
+      const countries = await model.findMany({
         where: { isActive: true },
         orderBy: { name: "asc" }
       });
@@ -15,7 +25,7 @@ const locationController = {
         success: false, 
         message: "Error fetching countries", 
         error: err.message,
-        available: Object.keys(prisma).filter(k => !k.startsWith('_'))
+        availableModels: Object.keys(prisma).filter(k => !k.startsWith('_'))
       });
     }
   },
@@ -23,7 +33,10 @@ const locationController = {
   getStates: async (req, res) => {
     const { countryId } = req.query;
     try {
-      const states = await prisma.state.findMany({
+      const model = getModel('state');
+      if (!model) throw new Error("State model not found in Prisma Client");
+
+      const states = await model.findMany({
         where: { 
           isActive: true,
           ...(countryId ? { countryId } : {})
@@ -40,7 +53,10 @@ const locationController = {
   getDistricts: async (req, res) => {
     const { stateId } = req.query;
     try {
-      const districts = await prisma.district.findMany({
+      const model = getModel('district');
+      if (!model) throw new Error("District model not found in Prisma Client");
+
+      const districts = await model.findMany({
         where: { 
           isActive: true,
           ...(stateId ? { stateId } : {})
@@ -57,7 +73,10 @@ const locationController = {
   getMunicipalities: async (req, res) => {
     const { districtId } = req.query;
     try {
-      const municipalities = await prisma.municipality.findMany({
+      const model = getModel('municipality');
+      if (!model) throw new Error("Municipality model not found in Prisma Client");
+
+      const municipalities = await model.findMany({
         where: { 
           isActive: true,
           ...(districtId ? { districtId } : {})
