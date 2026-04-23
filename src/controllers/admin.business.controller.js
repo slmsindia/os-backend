@@ -148,6 +148,11 @@ const adminBusinessController = {
    */
   createMasterData: async (req, res, modelName) => {
     const { name, code, countryId, stateId, districtId } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Name is required" });
+    }
+
     try {
       const data = { 
         id: generateUuid(), 
@@ -162,8 +167,24 @@ const adminBusinessController = {
       const item = await prisma[modelName].create({ data });
       res.status(201).json({ success: true, data: item });
     } catch (err) {
-      console.error("Master Data Creation Error:", err);
-      res.status(500).json({ success: false, message: `Error creating ${modelName}` });
+      console.error(`Master Data Creation Error (${modelName}):`, err);
+      if (err.code === 'P2002') {
+        return res.status(400).json({ success: false, message: `${modelName} with this name already exists` });
+      }
+      res.status(500).json({ success: false, message: `Error creating ${modelName}`, error: err.message });
+    }
+  },
+
+  getMasterData: async (req, res, modelName) => {
+    try {
+      const items = await prisma[modelName].findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' }
+      });
+      res.json({ success: true, data: items });
+    } catch (err) {
+      console.error(`Master Data Fetch Error (${modelName}):`, err);
+      res.status(500).json({ success: false, message: `Error fetching ${modelName}` });
     }
   }
 };

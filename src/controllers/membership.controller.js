@@ -2,8 +2,19 @@ const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const razorpayService = require("../services/razorpay.service");
+const walletService = require("../services/wallet.service");
 
 const prisma = new PrismaClient();
+
+const AUTHORIZED_CREATOR_ROLES = [
+  'SUPER_ADMIN',
+  'WHITE_LABEL_ADMIN',
+  'ADMIN',
+  'SUB_ADMIN',
+  'COUNTRY_HEAD',
+  'STATE_PARTNER',
+  'DISTRICT_PARTNER'
+];
 
 const membershipController = {
   /**
@@ -102,10 +113,17 @@ const membershipController = {
         });
       }
 
-      // Check if user already has a pending application
+      // Check if this is Method 2 (Admin/Partner creating for someone else)
+      const requesterIdentity = req.user.identity;
+      const isMethod2 = AUTHORIZED_CREATOR_ROLES.includes(requesterIdentity);
+      
+      // For Method 2, targetUserId can be from body, otherwise it's self-application
+      const targetUserId = (isMethod2 && body.userId) ? body.userId : userId;
+
+      // Check if target user already has a pending application
       const existingApplication = await prisma.membershipApplication.findFirst({
         where: {
-          userId,
+          userId: targetUserId,
           status: { in: ['PENDING', 'APPROVED'] }
         }
       });
@@ -113,7 +131,7 @@ const membershipController = {
       if (existingApplication) {
         return res.status(400).json({
           success: false,
-          message: "You already have a pending or approved membership application"
+          message: "User already has a pending or approved membership application"
         });
       }
 
@@ -130,11 +148,26 @@ const membershipController = {
         });
       }
 
+      // Handle Wallet Payment for Method 2
+      let walletTransaction = null;
+      if (isMethod2) {
+        try {
+          // Deduct from the requester's (creator's) wallet
+          walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice);
+        } catch (walletErr) {
+          return res.status(400).json({
+            success: false,
+            message: walletErr.message || "Insufficient wallet balance",
+            code: walletErr.code
+          });
+        }
+      }
+
       // Create membership application
       const application = await prisma.membershipApplication.create({
         data: {
           id: generateUuid(),
-          userId,
+          userId: targetUserId,
           firstName: body.firstName,
           lastName: body.lastName,
           email: body.email,
@@ -156,7 +189,9 @@ const membershipController = {
           permanentDistrict: body.permanentDistrict,
           permanentAddress: body.permanentAddress,
           permanentPincode: body.permanentPincode,
-          status: 'PENDING'
+          status: 'PENDING',
+          paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY',
+          createdById: userId
         }
       });
 
@@ -176,6 +211,38 @@ const membershipController = {
         });
       }
 
+      // For Method 2 (Wallet), we mark payment as success immediately
+      if (isMethod2) {
+        await prisma.membershipPayment.create({
+          data: {
+            id: generateUuid(),
+            applicationId: application.id,
+            razorpayOrderId: `wallet_${application.id.slice(0, 20)}`,
+            amount: config.membershipPrice,
+            currency: config.currency,
+            status: 'SUCCESS',
+            paidAt: new Date()
+          }
+        });
+
+        await logAction({
+          userId,
+          action: "MEMBERSHIP_APPLICATION_CREATED_WALLET",
+          targetId: application.id,
+          metadata: { amount: config.membershipPrice, targetUserId }
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Membership application created successfully via wallet payment.",
+          data: {
+            applicationId: application.id,
+            status: 'PENDING'
+          }
+        });
+      }
+
+      // Method 1 (Razorpay)
       // Create Razorpay order (receipt max 40 chars)
       const receipt = `member_${application.id.slice(0, 28)}`; // Keep under 40 chars
       const order = await razorpayService.createOrder(

@@ -59,16 +59,118 @@ const adminMembershipController = {
   },
 
   /**
+   * Delegate membership approval functionality to a lower role/user
+   */
+  delegateApproval: async (req, res) => {
+    const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const { targetUserId, canApprove } = req.body;
+
+    if (adminIdentity !== 'ADMIN' && adminIdentity !== 'SUPER_ADMIN' && adminIdentity !== 'WHITE_LABEL_ADMIN') {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admins can delegate approval functionality"
+      });
+    }
+
+    try {
+      const targetUser = await prisma.user.findUnique({
+        where: { id: targetUserId }
+      });
+
+      if (!targetUser || targetUser.tenantId !== tenantId) {
+        return res.status(404).json({
+          success: false,
+          message: "Target user not found in your tenant"
+        });
+      }
+
+      // Check if target user role is eligible
+      const ELIGIBLE_ROLES = ['SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      if (!ELIGIBLE_ROLES.includes(targetUser.identity)) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot delegate to role: ${targetUser.identity}. Eligible roles: ${ELIGIBLE_ROLES.join(', ')}`
+        });
+      }
+
+      await prisma.user.update({
+        where: { id: targetUserId },
+        data: {
+          canApproveMembership: !!canApprove,
+          membershipApprovalDelegatedBy: canApprove ? adminId : null
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "MEMBERSHIP_APPROVAL_DELEGATED",
+        targetId: targetUserId,
+        tenantId,
+        metadata: { canApprove }
+      });
+
+      res.json({
+        success: true,
+        message: `Approval functionality ${canApprove ? 'delegated to' : 'removed from'} user successfully`
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Helper to get all descendant IDs for a user
+   */
+  getDescendantIds: async (userId) => {
+    // This is a simplified recursive fetch. In production, a materialized path or closure table is better.
+    let descendantIds = [];
+    let currentLevelIds = [userId];
+
+    while (currentLevelIds.length > 0) {
+      const children = await prisma.user.findMany({
+        where: { parentId: { in: currentLevelIds } },
+        select: { id: true }
+      });
+
+      if (children.length === 0) break;
+
+      const childrenIds = children.map(c => c.id);
+      descendantIds = descendantIds.concat(childrenIds);
+      currentLevelIds = childrenIds;
+    }
+
+    return descendantIds;
+  },
+
+  /**
    * Get all membership applications (for admin review)
    */
   getMembershipApplications: async (req, res) => {
-    const { user_id: adminId, tenant_id: tenantId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { status, page = 1, limit = 20 } = req.query;
 
     try {
-      const where = {};
+      const where = {
+        user: {
+          tenantId: tenantId
+        }
+      };
+
       if (status) {
         where.status = status;
+      }
+
+      // Hierarchy Visibility Rule:
+      // SUPER_ADMIN and WHITE_LABEL_ADMIN see everything in tenant.
+      // Others see only applications from their hierarchy (descendants).
+      if (adminIdentity !== 'SUPER_ADMIN' && adminIdentity !== 'WHITE_LABEL_ADMIN' && adminIdentity !== 'ADMIN') {
+        const descendantIds = await adminMembershipController.getDescendantIds(adminId);
+        // Also include applications created by the user themselves for others
+        where.OR = [
+          { userId: { in: descendantIds } },
+          { createdById: adminId }
+        ];
       }
 
       const applications = await prisma.membershipApplication.findMany({
@@ -79,7 +181,15 @@ const adminMembershipController = {
               id: true,
               mobile: true,
               fullName: true,
-              profilePhoto: true
+              profilePhoto: true,
+              parentId: true
+            }
+          },
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              identity: true
             }
           },
           payment: true
@@ -169,10 +279,27 @@ const adminMembershipController = {
    * Approve membership application
    */
   approveApplication: async (req, res) => {
-    const { user_id: adminId, tenant_id: tenantId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { applicationId } = req.params;
 
     try {
+      // Check if user has permission to approve
+      const admin = await prisma.user.findUnique({
+        where: { id: adminId }
+      });
+
+      const canApprove = adminIdentity === 'SUPER_ADMIN' || 
+                        adminIdentity === 'WHITE_LABEL_ADMIN' || 
+                        adminIdentity === 'ADMIN' || 
+                        admin.canApproveMembership;
+
+      if (!canApprove) {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have permission to approve membership applications"
+        });
+      }
+
       const application = await prisma.membershipApplication.findUnique({
         where: { id: applicationId },
         include: {
@@ -231,8 +358,6 @@ const adminMembershipController = {
         await walletService.createWallet(application.userId);
       } catch (walletErr) {
         console.error("Failed to create wallet for user:", walletErr);
-        // Don't fail the approval if wallet creation fails
-        // Admin can manually create wallet later
       }
 
       await logAction({
@@ -261,7 +386,7 @@ const adminMembershipController = {
    * Reject membership application
    */
   rejectApplication: async (req, res) => {
-    const { user_id: adminId, tenant_id: tenantId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { applicationId } = req.params;
     const { reason } = req.body;
 
@@ -273,6 +398,23 @@ const adminMembershipController = {
     }
 
     try {
+      // Check if user has permission to reject
+      const admin = await prisma.user.findUnique({
+        where: { id: adminId }
+      });
+
+      const canReject = adminIdentity === 'SUPER_ADMIN' || 
+                        adminIdentity === 'WHITE_LABEL_ADMIN' || 
+                        adminIdentity === 'ADMIN' || 
+                        admin.canApproveMembership;
+
+      if (!canReject) {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have permission to reject membership applications"
+        });
+      }
+
       const application = await prisma.membershipApplication.findUnique({
         where: { id: applicationId }
       });
@@ -296,7 +438,8 @@ const adminMembershipController = {
         where: { id: applicationId },
         data: {
           status: 'REJECTED',
-          rejectionReason: reason
+          rejectionReason: reason,
+          approvedBy: adminId // Store who rejected it
         }
       });
 

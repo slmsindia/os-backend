@@ -70,16 +70,22 @@ model User {
   roles        UserRole[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   membershipApplications MembershipApplication[]
+  createdMembershipApplications MembershipApplication[] @relation("ApplicationCreator")
   wallet          Wallet?
   businessProfile BusinessProfile?
   businessApplications BusinessApplication[]
   jobPosts        JobPost[]
+
+  // Membership Delegation
+  canApproveMembership Boolean @default(false)
+  membershipApprovalDelegatedBy String? // Admin ID who delegated
 
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
   @@index([referredBy])
   @@index([referralCode])
+  @@index([canApproveMembership])
 }
 
 // ... (existing models)
@@ -507,6 +513,10 @@ model MembershipApplication {
   approvedAt        DateTime?
   approvedBy        String?
   
+  createdById       String?   // The admin/partner who filled the form (Method 2)
+  creator           User?     @relation("ApplicationCreator", fields: [createdById], references: [id])
+  paymentType       String    @default("RAZORPAY") // RAZORPAY, WALLET
+  
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
@@ -516,6 +526,7 @@ model MembershipApplication {
   
   @@index([userId])
   @@index([status])
+  @@index([createdById])
 }
 
 model MembershipPayment {

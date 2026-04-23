@@ -272,8 +272,12 @@ const authController = {
         roles: user.roles.map((ur) => ur.role.name)
       });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: "error" });
+      console.error("Login Error:", err);
+      res.status(500).json({ 
+        success: false,
+        message: "Internal server error during login",
+        error: process.env.NODE_ENV !== 'production' ? err.message : undefined
+      });
     }
   },
 
