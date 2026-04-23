@@ -4,14 +4,12 @@ const authMiddleware = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authMiddleware);
-
-// Get membership price
+// Public routes (No authentication required to see price and options)
 router.get("/price", membershipController.getMembershipPrice);
-
-// Get reference data (education, sectors, job roles, document types)
 router.get("/reference-data", membershipController.getReferenceData);
+
+// Protected routes require authentication
+router.use(authMiddleware);
 
 // Create membership application
 router.post("/apply", membershipController.createApplication);

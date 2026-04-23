@@ -92,13 +92,13 @@ app.use(tenantMiddleware);
 
 
 app.use("/api/auth", authRoutes);
+app.use("/api/membership", membershipRoutes); // Moved up
 app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin", adminMembershipRoutes);
 app.use("/api/super-admin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
-app.use("/api/membership", membershipRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/ime", imeRoutes);
 app.use("/api/IME", imeLegacyRoutes);
