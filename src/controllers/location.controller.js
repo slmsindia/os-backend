@@ -10,7 +10,13 @@ const locationController = {
       });
       res.json({ success: true, data: countries });
     } catch (err) {
-      res.status(500).json({ success: false, message: "Error fetching countries" });
+      console.error("Error fetching countries:", err);
+      res.status(500).json({ 
+        success: false, 
+        message: "Error fetching countries", 
+        error: err.message,
+        available: Object.keys(prisma).filter(k => !k.startsWith('_'))
+      });
     }
   },
 

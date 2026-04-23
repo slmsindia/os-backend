@@ -163,8 +163,16 @@ const adminBusinessController = {
     };
 
     const prismaModel = modelMap[modelName] || modelName;
+    const capitalizedModel = prismaModel.charAt(0).toUpperCase() + prismaModel.slice(1);
 
     try {
+      // Try lowercase first, then capitalized
+      const model = prisma[prismaModel] || prisma[capitalizedModel];
+      
+      if (!model) {
+        throw new Error(`Model ${prismaModel} or ${capitalizedModel} not found in Prisma Client. Available: ${Object.keys(prisma).filter(k => !k.startsWith('_')).join(', ')}`);
+      }
+
       const data = { 
         id: generateUuid(), 
         name, 
@@ -175,10 +183,10 @@ const adminBusinessController = {
         ...(districtId ? { districtId } : {})
       };
       
-      const item = await prisma[prismaModel].create({ data });
+      const item = await model.create({ data });
       res.status(201).json({ success: true, data: item });
     } catch (err) {
-      console.error(`Master Data Creation Error (${prismaModel}):`, err);
+      console.error(`Master Data Creation Error:`, err);
       if (err.code === 'P2002') {
         return res.status(400).json({ success: false, message: `${modelName} with this name already exists` });
       }
@@ -198,25 +206,28 @@ const adminBusinessController = {
     };
 
     const prismaModel = modelMap[modelName] || modelName;
+    const capitalizedModel = prismaModel.charAt(0).toUpperCase() + prismaModel.slice(1);
 
     try {
-      if (!prisma[prismaModel]) {
-        throw new Error(`Model ${prismaModel} not found in Prisma Client`);
+      const model = prisma[prismaModel] || prisma[capitalizedModel];
+
+      if (!model) {
+        throw new Error(`Model ${prismaModel} or ${capitalizedModel} not found in Prisma Client`);
       }
 
-      const items = await prisma[prismaModel].findMany({
+      const items = await model.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' }
       });
       res.json({ success: true, data: items });
     } catch (err) {
       const availableModels = Object.keys(prisma).filter(k => !k.startsWith('_') && typeof prisma[k] === 'object');
-      console.error(`Master Data Fetch Error (${prismaModel}):`, err);
+      console.error(`Master Data Fetch Error:`, err);
       res.status(500).json({ 
         success: false, 
         message: `Error fetching ${modelName}`,
-        error: process.env.NODE_ENV !== 'production' ? err.message : undefined,
-        debug: process.env.NODE_ENV !== 'production' ? { availableModels } : undefined
+        error: err.message,
+        debug: { availableModels }
       });
     }
   }
