@@ -60,7 +60,11 @@ const adminMembershipController = {
       });
     } catch (err) {
       console.error("Direct User Creation Error:", err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error during user creation",
+        error: err.message // Returns specific DB error (e.g., "column path does not exist")
+      });
     }
   },
   /**
