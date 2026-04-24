@@ -391,7 +391,7 @@ const adminMembershipController = {
 
       const application = await prisma.membershipApplication.findUnique({
         where: { id: applicationId },
-        include: { user: true }
+        include: { user: true, payment: true }
       });
 
       if (!application) {
