@@ -29,29 +29,42 @@ const adminMembershipController = {
       // Calculate hierarchy path for scalability
       let path = "";
       if (creatorId) {
+        // Safe selection: only request fields that exist in the client
+        const selectFields = { id: true };
+        const availableFields = Object.keys(prisma.user.fields || {});
+        if (availableFields.includes('path') || prisma.user.findUnique.toString().includes('path')) {
+          selectFields.path = true;
+        }
+
         const creator = await prisma.user.findUnique({
           where: { id: creatorId },
-          select: { id: true, path: true }
+          select: selectFields
         });
+        
         if (creator) {
           path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
         }
       }
 
-      const user = await prisma.user.create({
-        data: {
-          id: generateUuid(),
-          mobile,
-          fullName,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          password: hashedPassword,
-          identity,
-          tenantId,
-          parentId: creatorId,
-          path: path // Store the path for O(1) hierarchy lookups
-        }
-      });
+      const userData = {
+        id: generateUuid(),
+        mobile,
+        fullName,
+        gender,
+        dateOfBirth: new Date(dateOfBirth),
+        password: hashedPassword,
+        identity,
+        tenantId,
+        parentId: creatorId
+      };
+
+      // Only add path if the model supports it
+      const userModelFields = Object.keys(prisma.user.fields || {});
+      if (userModelFields.includes('path') || prisma.user.create.toString().includes('path')) {
+        userData.path = path;
+      }
+
+      const user = await prisma.user.create({ data: userData });
 
       res.status(201).json({
         success: true,
@@ -184,17 +197,33 @@ const adminMembershipController = {
    * Helper to get all descendant IDs for a user using indexed path search
    */
   getDescendantIds: async (userId) => {
-    // High-performance search: find all users whose path contains this ID
-    const descendants = await prisma.user.findMany({
-      where: {
-        path: {
-          contains: userId
-        }
-      },
-      select: { id: true }
-    });
+    // Check if path field exists in the client
+    const hasPath = Object.keys(prisma.user.fields || {}).includes('path') || 
+                    prisma.user.findMany.toString().includes('path');
 
-    return descendants.map(d => d.id);
+    if (hasPath) {
+      // High-performance search: find all users whose path contains this ID
+      const descendants = await prisma.user.findMany({
+        where: { path: { contains: userId } },
+        select: { id: true }
+      });
+      return descendants.map(d => d.id);
+    } else {
+      // Fallback to slower level-by-level search for older clients
+      let descendantIds = [];
+      let currentLevelIds = [userId];
+      while (currentLevelIds.length > 0) {
+        const children = await prisma.user.findMany({
+          where: { parentId: { in: currentLevelIds } },
+          select: { id: true }
+        });
+        if (children.length === 0) break;
+        const childrenIds = children.map(c => c.id);
+        descendantIds = descendantIds.concat(childrenIds);
+        currentLevelIds = childrenIds;
+      }
+      return descendantIds;
+    }
   },
 
   /**
@@ -206,9 +235,7 @@ const adminMembershipController = {
 
     try {
       const where = {
-        user: {
-          tenantId: tenantId
-        }
+        user: { tenantId: tenantId }
       };
 
       if (status) {
@@ -218,12 +245,23 @@ const adminMembershipController = {
       // Hierarchy Visibility Rule (Scalable Version):
       const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
       if (!topRoles.includes(adminIdentity)) {
-        // Optimized: Single query check using path indexing
-        where.OR = [
-          { user: { path: { contains: adminId } } },
-          { user: { parentId: adminId } },
-          { createdById: adminId }
-        ];
+        // Check if path field exists in the client for optimized search
+        const hasPath = Object.keys(prisma.user.fields || {}).includes('path') || 
+                        prisma.user.findMany.toString().includes('path');
+
+        if (hasPath) {
+          where.OR = [
+            { user: { path: { contains: adminId } } },
+            { user: { parentId: adminId } },
+            { createdById: adminId }
+          ];
+        } else {
+          const descendantIds = await adminMembershipController.getDescendantIds(adminId);
+          where.OR = [
+            { userId: { in: descendantIds } },
+            { createdById: adminId }
+          ];
+        }
       }
 
       const applications = await prisma.membershipApplication.findMany({
