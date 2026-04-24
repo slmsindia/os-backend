@@ -200,11 +200,11 @@ const walletService = {
           where: { id: wallet.id }
         });
 
-        if (!wallet) {
+        if (!currentWallet) {
           throw createWalletError("WALLET_NOT_FOUND", "Wallet not found for this user");
         }
 
-        if (!wallet.isActive) {
+        if (!currentWallet.isActive) {
           throw createWalletError("WALLET_INACTIVE", "Wallet is inactive. Please contact admin.");
         }
 
