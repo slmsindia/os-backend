@@ -886,6 +886,16 @@ const paths = {
         401: { description: "Unauthorized" },
       },
     },
+    put: {
+      tags: ["Users"],
+      summary: "Update logged-in profile",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Profile updated" },
+        401: { description: "Unauthorized" },
+      },
+    },
   },
 
   "/api/users/approvals/pending": {
@@ -959,6 +969,58 @@ const paths = {
     },
   },
 
+  "/api/admin/create-white-label-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create white-label admin (SUPER_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create admin (SUPER_ADMIN/WHITE_LABEL_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-sub-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create sub-admin (SUPER_ADMIN/WHITE_LABEL_ADMIN/ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-country-head": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create country head (SUPER_ADMIN/WHITE_LABEL_ADMIN/ADMIN/SUB_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
   "/api/admin/create-district": {
     post: {
       tags: ["Admin"],
@@ -1003,6 +1065,123 @@ const paths = {
       requestBody: jsonBody,
       responses: {
         201: { description: "Tenant created" },
+      },
+    },
+  },
+
+  "/api/super-admin/tenants": {
+    get: {
+      tags: ["Super Admin"],
+      summary: "List all tenants (SUPER_ADMIN)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Tenant list" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // Admin Business Endpoints
+  "/api/admin/business/applications": {
+    get: {
+      tags: ["Admin", "Business"],
+      summary: "List business applications",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Applications list" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/applications/{id}/process": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Process business application",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Application processed" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/skills": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create business skill master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/facilities": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create job facility master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/countries": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create country master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/states": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create state master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/districts": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create district master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/municipalities": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create municipality master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
       },
     },
   },
@@ -2933,6 +3112,21 @@ const paths = {
         200: { description: "Users list" },
         401: { description: "Unauthorized" },
         403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/users/{id}": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get user by id",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      responses: {
+        200: { description: "User details" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+        404: { description: "User not found" },
       },
     },
   },
