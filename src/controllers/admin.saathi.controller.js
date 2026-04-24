@@ -31,14 +31,62 @@ const adminSaathiController = {
    */
   createSaathiDirectly: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
-    const { userId, fullName, mobile, gender, dateOfBirth, address, paymentMethod } = req.body;
+    const { userId: providedUserId, fullName, mobile, gender, dateOfBirth, address, paymentMethod } = req.body;
 
     try {
+      // 1. Get Target User (or create if new)
+      let targetUserId = providedUserId;
+      let targetUser = null;
+
+      if (targetUserId) {
+        targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+        if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+      } else if (mobile) {
+        // Check if mobile already exists
+        targetUser = await prisma.user.findUnique({ where: { mobile } });
+        if (!targetUser) {
+          // Create new user record first
+          const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
+          const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+
+          targetUser = await prisma.user.create({
+            data: {
+              id: generateUuid(),
+              mobile,
+              fullName,
+              gender: (gender || 'OTHER').toUpperCase(),
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              identity: 'USER',
+              tenantId,
+              parentId: adminId,
+              path
+            }
+          });
+        }
+        targetUserId = targetUser.id;
+      }
+
+      if (!targetUserId) {
+        return res.status(400).json({ success: false, message: "Either userId or mobile is required" });
+      }
+
+      // 2. Hierarchy and Role Validation
+      if (targetUser.identity === 'SAATHI') {
+        return res.status(400).json({ success: false, message: "User is already a SAATHI" });
+      }
+
+      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      if (partnerRoles.includes(adminIdentity)) {
+        // Hierarchy Check: Must be in creator's path
+        if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
+          return res.status(403).json({ success: false, message: "You can only onboard Saathi in your own hierarchy" });
+        }
+      }
+
+      // 3. Payment Validation
       const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
       const amount = feeSetting ? parseFloat(feeSetting.value) : 1000;
 
-      // 1. Validation for Partners
-      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (partnerRoles.includes(adminIdentity)) {
         if (paymentMethod === 'CASH') {
           return res.status(403).json({ success: false, message: "Partners cannot use CASH method. Use Wallet or Razorpay." });
@@ -49,32 +97,23 @@ const adminSaathiController = {
           if (!wallet || wallet.balance < amount) {
             return res.status(400).json({ success: false, message: "Insufficient partner wallet balance" });
           }
-          await walletService.updateBalance(wallet.id, -amount); // Deduct from resolved wallet
+          await walletService.updateBalance(wallet.id, -amount);
         }
       }
 
-      // 2. Validation for Admins
-      const adminRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
-      if (adminRoles.includes(adminIdentity)) {
-        // Admins can use CASH (Fees Adjustment) or Razorpay
-        if (paymentMethod === 'WALLET') {
-          return res.status(400).json({ success: false, message: "Admins should use CASH or Razorpay" });
-        }
-      }
-
-      // 3. Create Application (Auto-Approved if created by Admin)
+      // 4. Create Application
       const application = await prisma.saathiApplication.create({
         data: {
           id: generateUuid(),
-          userId,
-          fullName,
-          mobile,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
+          userId: targetUserId,
+          fullName: fullName || targetUser.fullName,
+          mobile: mobile || targetUser.mobile,
+          gender: (gender || targetUser.gender || 'OTHER').toUpperCase(),
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : targetUser.dateOfBirth,
           address,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: 'PENDING', // Still needs to be approved by ADMIN as per request
+          status: 'PENDING',
           payment: {
             create: {
               id: generateUuid(),
@@ -89,8 +128,8 @@ const adminSaathiController = {
 
       res.status(201).json({
         success: true,
-        message: "Saathi application created. Awaiting Admin approval.",
-        data: { applicationId: application.id }
+        message: "Saathi application created successfully.",
+        data: { applicationId: application.id, userId: targetUserId }
       });
 
     } catch (err) {

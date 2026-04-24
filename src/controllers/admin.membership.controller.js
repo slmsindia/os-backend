@@ -19,6 +19,39 @@ const adminMembershipController = {
     }
 
     try {
+      // 1. Hierarchical Role Validation
+      const creatorIdentity = req.user.identity;
+      const targetIdentity = identity;
+
+      const ROLE_HIERARCHY = {
+        'SUPER_ADMIN': 100,
+        'WHITE_LABEL_ADMIN': 90,
+        'ADMIN': 80,
+        'SUB_ADMIN': 70,
+        'COUNTRY_HEAD': 60,
+        'STATE_PARTNER': 50,
+        'DISTRICT_PARTNER': 40,
+        'SAATHI': 30,
+        'MEMBER': 20,
+        'AGENT': 15,
+        'USER': 10
+      };
+
+      const creatorLevel = ROLE_HIERARCHY[creatorIdentity] || 0;
+      const targetLevel = ROLE_HIERARCHY[targetIdentity] || 0;
+
+      // Rule: You can only create roles with a level STRICTLY LOWER than yours
+      // Exception: Admins/Super Admins can create roles of their same level or lower (except Super Admin)
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
+      
+      if (!isTopAdmin && targetLevel >= creatorLevel) {
+        return res.status(403).json({
+          success: false,
+          message: `Your role (${creatorIdentity}) is not authorized to create a ${targetIdentity}. You can only create lower-tier roles.`
+        });
+      }
+
+      // 2. Check if mobile exists
       const existing = await prisma.user.findUnique({ where: { mobile } });
       if (existing) {
         return res.status(409).json({ success: false, message: "User with this mobile already exists" });
