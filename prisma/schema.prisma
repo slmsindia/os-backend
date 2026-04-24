@@ -14,6 +14,7 @@ model Tenant {
   domain    String   @unique
   createdAt DateTime @default(now())
   users     User[]
+  wallets   Wallet[] // Opposite relation for shared wallets
 }
 
 enum Gender {
