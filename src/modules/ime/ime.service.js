@@ -869,45 +869,17 @@ const validateBankAccount = async (bankCode, accountNumber, countryCode = 'NP') 
 };
 
 const getBankList = async (countryCode = 'NP') => {
-  return await callIMEMethod('GetBankList', { TypeCode: 'Bank', CountryCode: countryCode });
+  return await callIMEMethod('GetStaticData', {
+    TypeCode: 'WSST-BKLV1',
+    ReferenceValue: countryCode
+  });
 };
 
 const getBankBranches = async (countryCode = 'NP', bankValue = '') => {
-  const normalizedCountry = asString(countryCode, 'NP').trim();
-  const normalizedBank = asString(bankValue).trim();
-
-  const typeCandidates = [
-    'BankBranch',
-    'Branch',
-    'BankBranches',
-    'BankBranchList',
-    'PayoutAgentBranch'
-  ];
-
-  const referenceCandidates = [
-    normalizedBank && normalizedCountry ? `${normalizedBank}:${normalizedCountry}` : '',
-    normalizedBank,
-    normalizedCountry
-  ].filter((value, index, arr) => value && arr.indexOf(value) === index);
-
-  let lastResult = null;
-  for (const typeCode of typeCandidates) {
-    for (const referenceValue of referenceCandidates) {
-      const response = await callIMEMethod('GetStaticData', {
-        TypeCode: typeCode,
-        ReferenceValue: referenceValue
-      });
-
-      const rows = response?.data?.[0]?.GetStaticDataResult?.DataList;
-      if (Array.isArray(rows) && rows.length > 0) {
-        return response;
-      }
-
-      lastResult = response;
-    }
-  }
-
-  return lastResult;
+  return await callIMEMethod('GetStaticData', {
+    TypeCode: 'WSST-BBLV1',
+    ReferenceValue: bankValue || ''
+  });
 };
 
 const getStaticData = async (typeCode, referenceValue = '') => {
@@ -918,30 +890,10 @@ const getStaticData = async (typeCode, referenceValue = '') => {
 };
 
 const getIssuePlaces = async (countryCode = 'NP', idType = '') => {
-  const typeCandidates = [
-    'IssuePlace',
-    'IDIssuePlace',
-    'IdIssuePlace',
-    'PlaceOfIssue',
-    'District'
-  ];
-
-  let lastResult = null;
-  for (const typeCode of typeCandidates) {
-    const response = await callIMEMethod('GetStaticData', {
-      TypeCode: typeCode,
-      ReferenceValue: idType ? `${countryCode}:${idType}` : countryCode
-    });
-
-    const rows = response?.data?.[0]?.GetStaticDataResult?.DataList;
-    if (Array.isArray(rows) && rows.length > 0) {
-      return response;
-    }
-
-    lastResult = response;
-  }
-
-  return lastResult;
+  return await callIMEMethod('GetStaticData', {
+    TypeCode: 'WSST-POIV1',
+    ReferenceValue: idType || countryCode || ''
+  });
 };
 
 /**

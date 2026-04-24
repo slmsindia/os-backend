@@ -582,8 +582,10 @@ const getBankList = async (req, res) => {
 
 const getBankBranches = async (req, res) => {
   try {
-    const { country, bank } = req.query;
-    const result = await imeService.getBankBranches(country || 'NP', bank || '');
+    const { country, countryCode, bank, bankId } = req.query;
+    const bankValue = bankId || bank || '';
+    const countryValue = countryCode || country || 'NP';
+    const result = await imeService.getBankBranches(countryValue, bankValue);
     return ok(res, 'Bank branches retrieved', result);
   } catch (error) {
     return fail(res, error);
@@ -771,23 +773,119 @@ const cspDocumentUploadLegacy = proxyImeMethod(
 );
 const getAccountTypeLegacy = fetchStaticType('AccountType', 'Account type list retrieved');
 const countriesLegacy = fetchStaticType('Country', 'Countries retrieved');
-const statesLegacy = fetchStaticType('State', 'States retrieved', (req) => req.params.CountryId || '');
-const districtsLegacy = fetchStaticType('District', 'Districts retrieved', (req) => req.params.StateId || '');
+const statesLegacy = async (req, res) => {
+  try {
+    const countryId = req.params.CountryId || 'IND';
+    const result = await imeService.getStaticData('WSST-STTV1', countryId);
+    return ok(res, 'States retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const districtsLegacy = async (req, res) => {
+  try {
+    const stateId = req.params.StateId || '';
+    const result = await imeService.getStaticData('WSST-DISV1', stateId);
+    return ok(res, 'Districts retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
 const gendersLegacy = fetchStaticType('Gender', 'Genders retrieved');
 const maritalStatusLegacy = fetchStaticType('MaritalStatus', 'Marital status list retrieved');
 const occupationLegacy = fetchStaticType('Occupation', 'Occupation list retrieved');
 const purposeOfRemittanceLegacy = fetchStaticType('PurposeOfRemittance', 'Purpose of remittance list retrieved');
-const transactionCancelReasonLegacy = fetchStaticType('TransactionCancelReason', 'Transaction cancel reasons retrieved');
-const getIdTypesLegacy = fetchStaticType('IdType', 'ID types retrieved', (req) => req.query.countrycode || req.query.countryCode || '');
-const getIdentityTypesLegacy = fetchStaticType('IdentityType', 'Identity types retrieved', (req) => req.query.countrycode || req.query.countryCode || '');
-const cspRegistrationTypeListLegacy = fetchStaticType('CSPRegistrationTypeList', 'CSP registration types retrieved');
-const cspAddressProofTypeListLegacy = fetchStaticType('CSPAddressProofTypeList', 'CSP address proof types retrieved');
-const cspOwnerAddressProofTypeListLegacy = fetchStaticType('CSPOwnerAddressProofTypeList', 'CSP owner address proof types retrieved');
-const cspBusinessTypeListLegacy = fetchStaticType('CSPBusinessTypeList', 'CSP business types retrieved');
-const cspDocumentTypeListLegacy = fetchStaticType('CSPDocumentTypeList', 'CSP document types retrieved');
-const ownerCategoryTypesLegacy = fetchStaticType('OwnerCategoryTypes', 'Owner category types retrieved');
-const educationalQualificationListLegacy = fetchStaticType('EducationalQualificationList', 'Educational qualification list retrieved');
-const municipalitiesLegacy = fetchStaticType('Municipality', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
+const transactionCancelReasonLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-TCRV1', '');
+    return ok(res, 'Transaction cancel reasons retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const getIdTypesLegacy = async (req, res) => {
+  try {
+    const countryCode = req.query.countrycode || req.query.countryCode || 'IND';
+    const result = await imeService.getStaticData('WSST-IDTV1', countryCode);
+    return ok(res, 'ID types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const getIdentityTypesLegacy = async (req, res) => {
+  try {
+    const countryCode = req.query.countrycode || req.query.countryCode || 'IND';
+    const result = await imeService.getStaticData('WSST-IDTV1', countryCode);
+    return ok(res, 'Identity types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const cspRegistrationTypeListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-REGV1', '');
+    return ok(res, 'CSP registration types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const cspAddressProofTypeListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-ADPV1', '');
+    return ok(res, 'CSP address proof types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const cspOwnerAddressProofTypeListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-OAPV1', '');
+    return ok(res, 'CSP owner address proof types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const cspBusinessTypeListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-BUSV1', '');
+    return ok(res, 'CSP business types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const cspDocumentTypeListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-ADOV1', '');
+    return ok(res, 'CSP document types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const ownerCategoryTypesLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-CATV1', '');
+    return ok(res, 'Owner category types retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const educationalQualificationListLegacy = async (req, res) => {
+  try {
+    const result = await imeService.getStaticData('WSST-EDQV1', '');
+    return ok(res, 'Educational qualification list retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const municipalitiesLegacy = async (req, res) => {
+  try {
+    const districtId = req.params.DistrictId || '';
+    const result = await imeService.getStaticData('WSST-MUNV1', districtId);
+    return ok(res, 'Municipalities retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
 const relationshipListLegacy = fetchStaticType('Relationship', 'Relationship list retrieved');
 const idPlaceOfIssueLegacy = async (req, res) => {
   try {
