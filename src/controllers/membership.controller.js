@@ -158,8 +158,8 @@ const membershipController = {
       let walletTransaction = null;
       if (isMethod2 && !isPaidResubmission) {
         try {
-          // Deduct from the requester's (creator's) wallet
-          walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice);
+          // Deduct from the requester's (creator's) wallet (Smart Resolver handles Shared vs Personal)
+          walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice, user.tenantId, requesterIdentity);
         } catch (walletErr) {
           return res.status(400).json({
             success: false,

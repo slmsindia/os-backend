@@ -638,6 +638,9 @@ module.exports = {
 
     try {
       const appUserId = req.user?.user_id || req.user?.id;
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const identity = req.user?.identity;
+
       if (!appUserId) {
         return res.status(401).json({
           success: false,
@@ -653,8 +656,8 @@ module.exports = {
         });
       }
 
-      await walletService.ensureSufficientBalance(appUserId, transferAmount);
-      deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount);
+      await walletService.ensureSufficientBalance(appUserId, transferAmount, tenantId, identity);
+      deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount, tenantId, identity);
 
       const payload = {
         ...req.body,

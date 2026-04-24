@@ -139,16 +139,16 @@ const walletService = {
 
   /**
    * Ensure a user wallet exists and has sufficient balance
-   * @param {string} userId - Application user ID
+   * @param {string} userId - Current user ID
    * @param {number|string} amount - Amount to validate
+   * @param {string} tenantId - Tenant ID
+   * @param {string} identity - User identity
    * @returns {Promise<Object>} Wallet object
    */
-  ensureSufficientBalance: async (userId, amount) => {
+  ensureSufficientBalance: async (userId, amount, tenantId, identity) => {
     try {
       const requiredAmount = normalizeAmount(amount);
-      const wallet = await prisma.wallet.findUnique({
-        where: { userId }
-      });
+      const wallet = await walletService.resolveWallet(userId, tenantId, identity);
 
       if (!wallet) {
         throw createWalletError("WALLET_NOT_FOUND", "Wallet not found for this user");
