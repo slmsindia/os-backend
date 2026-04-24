@@ -66,6 +66,23 @@ const adminMembershipController = {
 
       const user = await prisma.user.create({ data: userData });
 
+      // Create wallet for the new user (unless they are USER or share a Corporate Wallet)
+      const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      if (identity !== 'USER' && !SHARED_WALLET_ROLES.includes(identity)) {
+        try {
+          await walletService.createWallet(user.id, tenantId, false);
+        } catch (walletErr) {
+          console.error("Failed to create personal wallet for user:", walletErr);
+        }
+      } else if (SHARED_WALLET_ROLES.includes(identity)) {
+        // Ensure Corporate Wallet exists for this tenant
+        try {
+          await walletService.resolveWallet(user.id, tenantId, identity);
+        } catch (walletErr) {
+          console.error("Failed to ensure corporate wallet:", walletErr);
+        }
+      }
+
       res.status(201).json({
         success: true,
         message: "User created successfully under your hierarchy",
@@ -452,7 +469,7 @@ const adminMembershipController = {
 
       // Create wallet for the new member
       try {
-        await walletService.createWallet(application.userId);
+        await walletService.createWallet(application.userId, tenantId, false);
       } catch (walletErr) {
         console.error("Failed to create wallet for user:", walletErr);
       }

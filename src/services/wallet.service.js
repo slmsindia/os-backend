@@ -177,18 +177,27 @@ const walletService = {
   },
 
   /**
-   * Atomically deduct balance from a user's wallet when sufficient funds exist
-   * @param {string} userId - Application user ID
+   * Atomically deduct balance from a user's wallet (Shared or Individual)
+   * @param {string} userId - Current user ID
    * @param {number|string} amount - Amount to deduct
+   * @param {string} tenantId - Tenant ID
+   * @param {string} identity - User identity
    * @returns {Promise<Object>} Updated wallet
    */
-  deductBalanceIfSufficient: async (userId, amount) => {
+  deductBalanceIfSufficient: async (userId, amount, tenantId, identity) => {
     const requiredAmount = normalizeAmount(amount);
 
     try {
+      // Resolve the correct wallet first
+      const wallet = await walletService.resolveWallet(userId, tenantId, identity);
+      if (!wallet) {
+        throw createWalletError("WALLET_NOT_FOUND", "Wallet not found for this user");
+      }
+
       return await prisma.$transaction(async (tx) => {
-        const wallet = await tx.wallet.findUnique({
-          where: { userId }
+        // Re-fetch inside transaction for locking
+        const currentWallet = await tx.wallet.findUnique({
+          where: { id: wallet.id }
         });
 
         if (!wallet) {

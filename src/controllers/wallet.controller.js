@@ -10,22 +10,20 @@ const walletController = {
    * Get my wallet details
    */
   getMyWallet: async (req, res) => {
-    const { user_id: userId, identity } = req.user;
+    const { user_id: userId, identity, tenant_id: tenantId } = req.user;
 
     try {
-      let wallet = await walletService.getWalletByUserId(userId);
+      // 1. Use the Smart Resolver to find the correct wallet (Personal or Shared)
+      let wallet = await walletService.resolveWallet(userId, tenantId, identity);
 
-      // Lazy initialization for members who don't have a wallet yet
-      if (!wallet && identity === 'MEMBER') {
-        console.log(`Initializing missing wallet for member: ${userId}`);
-        wallet = await walletService.createWallet(userId);
-      }
-
+      // 2. Handle missing wallets (Lazy initialization for non-admin roles)
       if (!wallet) {
-        return res.status(404).json({
-          success: false,
-          message: "Wallet not found. Please contact admin."
-        });
+        if (identity === 'USER') {
+          return res.status(404).json({ success: false, message: "Users do not have wallets." });
+        }
+        
+        console.log(`Initializing missing wallet for ${identity}: ${userId}`);
+        wallet = await walletService.createWallet(userId, tenantId, false);
       }
 
       res.json({
@@ -33,7 +31,7 @@ const walletController = {
         data: wallet
       });
     } catch (err) {
-      console.error(err);
+      console.error("Get Wallet Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
@@ -93,12 +91,14 @@ const walletController = {
     }
 
     try {
-      // Check if user has a wallet
-      const wallet = await walletService.getWalletByUserId(userId);
+      // Check if user has a wallet (Using Resolver for Shared/Individual)
+      const { identity, tenant_id: tenantId } = req.user;
+      const wallet = await walletService.resolveWallet(userId, tenantId, identity);
+      
       if (!wallet) {
         return res.status(404).json({
           success: false,
-          message: "Wallet not found. You must be a member to top-up."
+          message: "Wallet not found. Users cannot top-up."
         });
       }
 
@@ -209,11 +209,11 @@ const walletController = {
    * Get my top-up requests
    */
   getMyTopUpRequests: async (req, res) => {
-    const { user_id: userId } = req.user;
+    const { user_id: userId, identity, tenant_id: tenantId } = req.user;
     const { page = 1, limit = 20, status } = req.query;
 
     try {
-      const wallet = await walletService.getWalletByUserId(userId);
+      const wallet = await walletService.resolveWallet(userId, tenantId, identity);
       if (!wallet) {
         return res.status(404).json({
           success: false,
