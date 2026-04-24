@@ -26,6 +26,7 @@ const adminBusinessRoutes = require("./routes/admin.business.routes");
 const locationRoutes = require("./routes/location.routes");
 const saathiRoutes = require("./routes/saathi.routes");
 const adminSaathiRoutes = require("./routes/admin.saathi.routes");
+const hierarchyRoutes = require("./routes/hierarchy.routes");
 
 const app = express();
 
@@ -116,6 +117,7 @@ app.use("/api/admin/business", adminBusinessRoutes);
 app.use("/api/locations", locationRoutes);
 app.use("/api/saathi", saathiRoutes);
 app.use("/api/admin/saathi", adminSaathiRoutes);
+app.use("/api/admin/hierarchy", hierarchyRoutes);
 app.use('/api/Remittance', remittanceRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
