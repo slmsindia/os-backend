@@ -124,16 +124,22 @@ const membershipController = {
       const existingApplication = await prisma.membershipApplication.findFirst({
         where: {
           userId: targetUserId,
-          status: { in: ['PENDING', 'APPROVED'] }
-        }
+        },
+        include: { payment: true },
+        orderBy: { createdAt: 'desc' }
       });
 
-      if (existingApplication) {
+      if (existingApplication && ['PENDING', 'APPROVED'].includes(existingApplication.status)) {
         return res.status(400).json({
           success: false,
-          message: "User already has a pending or approved membership application"
+          message: `User already has a ${existingApplication.status.toLowerCase()} membership application`
         });
       }
+
+      // Special Check: If the application was REJECTED but the payment was SUCCESSFUL, we allow for free
+      const isPaidResubmission = existingApplication && 
+                               existingApplication.status === 'REJECTED' && 
+                               existingApplication.payment?.status === 'SUCCESS';
 
       // Get membership price
       const config = await prisma.membershipConfig.findFirst({
@@ -148,9 +154,9 @@ const membershipController = {
         });
       }
 
-      // Handle Wallet Payment for Method 2
+      // Handle Wallet Payment for Method 2 (Skip if it's a paid resubmission)
       let walletTransaction = null;
-      if (isMethod2) {
+      if (isMethod2 && !isPaidResubmission) {
         try {
           // Deduct from the requester's (creator's) wallet
           walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice);
@@ -163,37 +169,75 @@ const membershipController = {
         }
       }
 
-      // Create membership application
-      const application = await prisma.membershipApplication.create({
-        data: {
-          id: generateUuid(),
-          userId: targetUserId,
-          firstName: body.firstName,
-          lastName: body.lastName,
-          email: body.email,
-          gender: body.gender,
-          educationId: body.educationId,
-          sectorId: body.sectorId,
-          jobRoleId: body.jobRoleId,
-          maritalStatus: body.maritalStatus,
-          citizenship: body.citizenship,
-          isMigrantWorker: body.isMigrantWorker,
-          monthlyIncome: body.monthlyIncome,
-          currentCountry: body.currentCountry,
-          currentState: body.currentState,
-          currentDistrict: body.currentDistrict,
-          currentAddress: body.currentAddress,
-          currentPincode: body.currentPincode,
-          permanentCountry: body.permanentCountry,
-          permanentState: body.permanentState,
-          permanentDistrict: body.permanentDistrict,
-          permanentAddress: body.permanentAddress,
-          permanentPincode: body.permanentPincode,
-          status: 'PENDING',
-          paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY',
-          createdById: userId
-        }
-      });
+      // Create or Update membership application
+      let application;
+      if (isPaidResubmission) {
+        application = await prisma.membershipApplication.update({
+          where: { id: existingApplication.id },
+          data: {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            email: body.email,
+            gender: body.gender,
+            educationId: body.educationId,
+            sectorId: body.sectorId,
+            jobRoleId: body.jobRoleId,
+            maritalStatus: body.maritalStatus,
+            citizenship: body.citizenship,
+            isMigrantWorker: body.isMigrantWorker,
+            monthlyIncome: body.monthlyIncome,
+            currentCountry: body.currentCountry,
+            currentState: body.currentState,
+            currentDistrict: body.currentDistrict,
+            currentAddress: body.currentAddress,
+            currentPincode: body.currentPincode,
+            permanentCountry: body.permanentCountry,
+            permanentState: body.permanentState,
+            permanentDistrict: body.permanentDistrict,
+            permanentAddress: body.permanentAddress,
+            permanentPincode: body.permanentPincode,
+            status: 'PENDING',
+            rejectionReason: null, // Clear old reason
+            updatedAt: new Date()
+          }
+        });
+
+        // Delete old documents
+        await prisma.membershipDocument.deleteMany({
+          where: { applicationId: application.id }
+        });
+      } else {
+        application = await prisma.membershipApplication.create({
+          data: {
+            id: generateUuid(),
+            userId: targetUserId,
+            firstName: body.firstName,
+            lastName: body.lastName,
+            email: body.email,
+            gender: body.gender,
+            educationId: body.educationId,
+            sectorId: body.sectorId,
+            jobRoleId: body.jobRoleId,
+            maritalStatus: body.maritalStatus,
+            citizenship: body.citizenship,
+            isMigrantWorker: body.isMigrantWorker,
+            monthlyIncome: body.monthlyIncome,
+            currentCountry: body.currentCountry,
+            currentState: body.currentState,
+            currentDistrict: body.currentDistrict,
+            currentAddress: body.currentAddress,
+            currentPincode: body.currentPincode,
+            permanentCountry: body.permanentCountry,
+            permanentState: body.permanentState,
+            permanentDistrict: body.permanentDistrict,
+            permanentAddress: body.permanentAddress,
+            permanentPincode: body.permanentPincode,
+            status: 'PENDING',
+            paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY',
+            createdById: userId
+          }
+        });
+      }
 
       // Create documents
       if (body.documents && body.documents.length > 0) {
@@ -208,6 +252,22 @@ const membershipController = {
 
         await prisma.membershipDocument.createMany({
           data: documentData
+        });
+      }
+
+      // If it's a paid resubmission, we are done
+      if (isPaidResubmission) {
+        await logAction({
+          userId,
+          action: "MEMBERSHIP_APPLICATION_RESUBMITTED",
+          targetId: application.id,
+          metadata: { targetUserId }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: "Membership application resubmitted successfully. Previous payment reused.",
+          data: { applicationId: application.id, status: 'PENDING' }
         });
       }
 
@@ -243,15 +303,13 @@ const membershipController = {
       }
 
       // Method 1 (Razorpay)
-      // Create Razorpay order (receipt max 40 chars)
-      const receipt = `member_${application.id.slice(0, 28)}`; // Keep under 40 chars
+      const receipt = `member_${application.id.slice(0, 28)}`;
       const order = await razorpayService.createOrder(
         config.membershipPrice,
         config.currency,
         receipt
       );
 
-      // Create payment record
       await prisma.membershipPayment.create({
         data: {
           id: generateUuid(),
