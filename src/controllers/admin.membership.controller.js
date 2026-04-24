@@ -11,17 +11,24 @@ const adminMembershipController = {
    * Create a user directly (Admin/Partner led)
    */
   createUser: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, identity = "USER" } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, identity } = req.body;
     const { user_id: creatorId, tenant_id: tenantId } = req.user;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
+    // Sanitize identity input (convert camelCase or spaces to UPPER_SNAKE_CASE)
+    const sanitizedIdentity = (identity || "USER")
+      .trim()
+      .replace(/([a-z])([A-Z])/g, '$1_$2') // convert statePartner to state_Partner
+      .replace(/\s+/g, '_')                // convert "STATE PARTNER" to STATE_PARTNER
+      .toUpperCase();
+
     try {
       // 1. Hierarchical Role Validation
       const creatorIdentity = req.user.identity;
-      const targetIdentity = identity;
+      const targetIdentity = sanitizedIdentity;
 
       const ROLE_HIERARCHY = {
         'SUPER_ADMIN': 100,
@@ -86,7 +93,7 @@ const adminMembershipController = {
         gender,
         dateOfBirth: new Date(dateOfBirth),
         password: hashedPassword,
-        identity,
+        identity: targetIdentity,
         tenantId,
         parentId: creatorId
       };
@@ -101,16 +108,16 @@ const adminMembershipController = {
 
       // Create wallet for the new user (unless they are USER or share a Corporate Wallet)
       const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
-      if (identity !== 'USER' && !SHARED_WALLET_ROLES.includes(identity)) {
+      if (targetIdentity !== 'USER' && !SHARED_WALLET_ROLES.includes(targetIdentity)) {
         try {
           await walletService.createWallet(user.id, tenantId, false);
         } catch (walletErr) {
           console.error("Failed to create personal wallet for user:", walletErr);
         }
-      } else if (SHARED_WALLET_ROLES.includes(identity)) {
+      } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
         // Ensure Corporate Wallet exists for this tenant
         try {
-          await walletService.resolveWallet(user.id, tenantId, identity);
+          await walletService.resolveWallet(user.id, tenantId, targetIdentity);
         } catch (walletErr) {
           console.error("Failed to ensure corporate wallet:", walletErr);
         }
