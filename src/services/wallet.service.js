@@ -19,15 +19,19 @@ const normalizeAmount = (amount) => {
 
 const walletService = {
   /**
-   * Create a new wallet for a user
-   * @param {string} userId - User ID
+   * Create a new wallet
+   * @param {string} userId - User ID (null for corporate)
+   * @param {string} tenantId - Tenant ID
+   * @param {boolean} isCorporate - Whether this is a shared corporate wallet
    * @returns {Promise<Object>} Created wallet
    */
-  createWallet: async (userId) => {
+  createWallet: async (userId, tenantId, isCorporate = false) => {
     try {
       const wallet = await prisma.wallet.create({
         data: {
           userId,
+          tenantId,
+          isCorporate,
           balance: 0.0,
           currency: "INR",
           isActive: true
@@ -36,6 +40,44 @@ const walletService = {
       return wallet;
     } catch (err) {
       console.error("Error creating wallet:", err);
+      throw err;
+    }
+  },
+
+  /**
+   * Resolve the correct wallet for a user based on their identity
+   * @param {string} userId - Current user ID
+   * @param {string} tenantId - Current tenant ID
+   * @param {string} identity - Current user identity
+   * @returns {Promise<Object|null>} The wallet to be used
+   */
+  resolveWallet: async (userId, tenantId, identity) => {
+    try {
+      // Shared Corporate Wallet logic
+      if (['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(identity)) {
+        let corporateWallet = await prisma.wallet.findFirst({
+          where: { 
+            tenantId,
+            isCorporate: true
+          }
+        });
+
+        // Auto-create corporate wallet if it doesn't exist for the tenant
+        if (!corporateWallet) {
+          corporateWallet = await walletService.createWallet(null, tenantId, true);
+        }
+        
+        return corporateWallet;
+      }
+
+      // Individual Wallet logic
+      if (identity === 'USER') return null; // Users have no wallet
+
+      return await prisma.wallet.findUnique({
+        where: { userId }
+      });
+    } catch (err) {
+      console.error("Error resolving wallet:", err);
       throw err;
     }
   },

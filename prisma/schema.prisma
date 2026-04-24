@@ -77,16 +77,25 @@ model User {
   businessApplications BusinessApplication[]
   jobPosts        JobPost[]
 
-  // Membership Delegation
+  // Scalability & Hierarchy
+  path              String?  @default("")
+  
+  // Membership & Saathi Delegation
   canApproveMembership Boolean @default(false)
-  membershipApprovalDelegatedBy String? // Admin ID who delegated
+  membershipApprovalDelegatedBy String?
+  canApproveSaathi     Boolean @default(false)
+  saathiApprovalDelegatedBy String?
+
+  // Relations
+  saathiApplications        SaathiApplication[] @relation("UserSaathiApps")
+  createdSaathiApplications SaathiApplication[] @relation("SaathiCreator")
 
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
-  @@index([referredBy])
-  @@index([referralCode])
+  @@index([path])
   @@index([canApproveMembership])
+  @@index([canApproveSaathi])
 }
 
 // ... (existing models)
@@ -565,18 +574,24 @@ model MembershipDocument {
 
 // Wallet System Models
 model Wallet {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
-  balance   Float    @default(0.0)
-  currency  String   @default("INR")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  userId      String?  @unique // Null for Corporate/Shared wallets
+  user        User?    @relation(fields: [userId], references: [id])
+  tenantId    String   // Link to the organization
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  isCorporate Boolean  @default(false) // True for ADMIN/SUB_ADMIN shared wallet
+  
+  balance     Float    @default(0.0)
+  currency    String   @default("INR")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   topUpRequests WalletTopUpRequest[]
 
   @@index([userId])
+  @@index([tenantId])
+  @@index([isCorporate])
 }
 
 model BankDetails {
@@ -660,6 +675,61 @@ model PrabhuTransaction {
 
   @@index([customerId])
   @@index([pinNo])
-  @@index([transactionStatus])
   @@index([createdAt])
+}
+
+// Saathi System
+model SaathiApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation("UserSaathiApps", fields: [userId], references: [id])
+  
+  // Applicant details snapshot
+  fullName          String
+  mobile            String
+  gender            String
+  dateOfBirth       DateTime
+  address           String
+  
+  // Status and Approval
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedBy        String?
+  
+  // Creation metadata
+  createdById       String   
+  creator           User     @relation("SaathiCreator", fields: [createdById], references: [id])
+  
+  paymentType       String   @default("RAZORPAY") // RAZORPAY, WALLET, CASH
+  
+  // Relationships
+  payment           SaathiPayment?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model SaathiPayment {
+  id                String   @id @default(uuid())
+  applicationId     String   @unique
+  application       SaathiApplication @relation(fields: [applicationId], references: [id])
+  
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  
+  amount            Float
+  currency          String   @default("INR")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  method            String   // RAZORPAY, WALLET, CASH
+  
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([applicationId])
 }
