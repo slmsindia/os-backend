@@ -1,3 +1,4 @@
+const bcrypt = require("bcrypt");
 const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
@@ -6,6 +7,62 @@ const walletService = require("../services/wallet.service");
 const prisma = new PrismaClient();
 
 const adminMembershipController = {
+  /**
+   * Create a user directly (Admin/Partner led)
+   */
+  createUser: async (req, res) => {
+    const { mobile, fullName, gender, dateOfBirth, password, identity = "USER" } = req.body;
+    const { user_id: creatorId, tenant_id: tenantId } = req.user;
+
+    if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    try {
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+      if (existing) {
+        return res.status(409).json({ success: false, message: "User with this mobile already exists" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Calculate hierarchy path for scalability
+      let path = "";
+      if (creatorId) {
+        const creator = await prisma.user.findUnique({
+          where: { id: creatorId },
+          select: { id: true, path: true }
+        });
+        if (creator) {
+          path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+        }
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          id: generateUuid(),
+          mobile,
+          fullName,
+          gender,
+          dateOfBirth: new Date(dateOfBirth),
+          password: hashedPassword,
+          identity,
+          tenantId,
+          parentId: creatorId,
+          path: path // Store the path for O(1) hierarchy lookups
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "User created successfully under your hierarchy",
+        data: { userId: user.id, mobile: user.mobile }
+      });
+    } catch (err) {
+      console.error("Direct User Creation Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
   /**
    * Update membership price
    */
@@ -120,27 +177,20 @@ const adminMembershipController = {
   },
 
   /**
-   * Helper to get all descendant IDs for a user
+   * Helper to get all descendant IDs for a user using indexed path search
    */
   getDescendantIds: async (userId) => {
-    // This is a simplified recursive fetch. In production, a materialized path or closure table is better.
-    let descendantIds = [];
-    let currentLevelIds = [userId];
+    // High-performance search: find all users whose path contains this ID
+    const descendants = await prisma.user.findMany({
+      where: {
+        path: {
+          contains: userId
+        }
+      },
+      select: { id: true }
+    });
 
-    while (currentLevelIds.length > 0) {
-      const children = await prisma.user.findMany({
-        where: { parentId: { in: currentLevelIds } },
-        select: { id: true }
-      });
-
-      if (children.length === 0) break;
-
-      const childrenIds = children.map(c => c.id);
-      descendantIds = descendantIds.concat(childrenIds);
-      currentLevelIds = childrenIds;
-    }
-
-    return descendantIds;
+    return descendants.map(d => d.id);
   },
 
   /**
@@ -161,14 +211,13 @@ const adminMembershipController = {
         where.status = status;
       }
 
-      // Hierarchy Visibility Rule:
-      // SUPER_ADMIN and WHITE_LABEL_ADMIN see everything in tenant.
-      // Others see only applications from their hierarchy (descendants).
-      if (adminIdentity !== 'SUPER_ADMIN' && adminIdentity !== 'WHITE_LABEL_ADMIN' && adminIdentity !== 'ADMIN') {
-        const descendantIds = await adminMembershipController.getDescendantIds(adminId);
-        // Also include applications created by the user themselves for others
+      // Hierarchy Visibility Rule (Scalable Version):
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      if (!topRoles.includes(adminIdentity)) {
+        // Optimized: Single query check using path indexing
         where.OR = [
-          { userId: { in: descendantIds } },
+          { user: { path: { contains: adminId } } },
+          { user: { parentId: adminId } },
           { createdById: adminId }
         ];
       }
@@ -288,9 +337,7 @@ const adminMembershipController = {
         where: { id: adminId }
       });
 
-      const canApprove = adminIdentity === 'SUPER_ADMIN' || 
-                        adminIdentity === 'WHITE_LABEL_ADMIN' || 
-                        adminIdentity === 'ADMIN' || 
+      const canApprove = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity) || 
                         admin.canApproveMembership;
 
       if (!canApprove) {
@@ -302,16 +349,24 @@ const adminMembershipController = {
 
       const application = await prisma.membershipApplication.findUnique({
         where: { id: applicationId },
-        include: {
-          payment: true
-        }
+        include: { user: true }
       });
 
       if (!application) {
-        return res.status(404).json({
-          success: false,
-          message: "Application not found"
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
+      }
+
+      // STRICT HIERARCHY CHECK: 
+      // If not a Top Admin, you can only approve users in your own hierarchy
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      if (!topRoles.includes(adminIdentity)) {
+        const descendantIds = await adminMembershipController.getDescendantIds(adminId);
+        if (!descendantIds.includes(application.userId) && application.createdById !== adminId) {
+          return res.status(403).json({
+            success: false,
+            message: "You can only approve applications from users in your own hierarchy"
+          });
+        }
       }
 
       if (application.payment?.status !== 'SUCCESS') {
