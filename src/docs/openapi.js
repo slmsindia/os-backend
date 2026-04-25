@@ -93,7 +93,7 @@ const imeSendMoneyBody = {
         type: "object",
         required: [
           "SenderCustomerId",
-          "ReceiverCustomerId",
+          "ReceiverCustomerId", 
           "Amount",
           "SourceCurrency",
           "DestinationCurrency",
@@ -108,6 +108,70 @@ const imeSendMoneyBody = {
           PaymentMode: { type: "string", enum: ["CASH", "BANK"], example: "BANK" },
           Purpose: { type: "string", example: "Family support" },
           Notes: { type: "string", example: "Monthly transfer" }
+        }
+      }
+    }
+  }
+};
+
+const imeSendTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "SenderName",
+          "SenderMobileNo", 
+          "ReceiverName",
+          "ReceiverAddress",
+          "ReceiverGender",
+          "ReceiverMobileNo",
+          "ReceiverCountry",
+          "ReceiverState",
+          "ReceiverDistrict", 
+          "ReceiverMunicipality",
+          "ForexSessionId",
+          "CollectAmount",
+          "PayoutAmount",
+          "SourceOfFund",
+          "Relationship",
+          "PurposeOfRemittance",
+          "PaymentType",
+          "CalcBy"
+        ],
+        properties: {
+          // Sender Details
+          SenderName: { type: "string", example: "Hemraj Thapa", description: "Sender's full name" },
+          SenderMobileNo: { type: "string", example: "7041897207", description: "Registered customer mobile number" },
+          Occupation: { type: "string", example: "8081", description: "Occupation ID from IME Static Data (WSST-OCPV1)" },
+          
+          // Receiver Details  
+          ReceiverName: { type: "string", example: "Sita Sharma", description: "Receiver full name in Nepal" },
+          ReceiverAddress: { type: "string", example: "Kathmandu, Nepal", description: "Receiver address" },
+          ReceiverGender: { type: "string", example: "F", description: "Receiver gender (M/F)" },
+          ReceiverMobileNo: { type: "string", example: "9801234567", description: "Receiver mobile number in Nepal" },
+          ReceiverCity: { type: "string", example: "Kathmandu", description: "Receiver's city (optional)" },
+          ReceiverCountry: { type: "string", example: "NPL", description: "Always NPL for Nepal" },
+          ReceiverState: { type: "string", example: "1001", description: "Receiver State ID from IME Static Data" },
+          ReceiverDistrict: { type: "string", example: "5025", description: "Receiver District ID from IME Static Data" },
+          ReceiverMunicipality: { type: "string", example: "9285", description: "Receiver Municipality ID from IME Static Data" },
+          
+          // Transaction Details
+          ForexSessionId: { type: "string", example: "ABC123XYZ", description: "From GetCalculation response - must be unique each transaction" },
+          AgentTxnRefId: { type: "string", example: "TXN20240425001", description: "Your own unique transaction reference ID" },
+          CollectAmount: { type: "string", example: "10500", description: "Amount collected from sender including service charge" },
+          PayoutAmount: { type: "string", example: "16000", description: "Amount to be paid in Nepal" },
+          SourceOfFund: { type: "string", example: "8051", description: "Source of Fund ID from IME Static Data (WSST-SOFV1)" },
+          Relationship: { type: "string", example: "7001", description: "Relationship ID from IME Static Data (WSST-RELV1)" },
+          PurposeOfRemittance: { type: "string", example: "7001", description: "Purpose ID from IME Static Data (WSST-PORV1)" },
+          PaymentType: { type: "string", example: "C", description: "C = Cash, B = Bank Deposit" },
+          CalcBy: { type: "string", example: "P", description: "C = Collection Amount, P = Payout Amount" },
+          
+          // Bank Details (required if PaymentType = B)
+          BankId: { type: "string", example: "NABIL", description: "Bank ID - mandatory if PaymentType = B" },
+          BankBranchId: { type: "string", example: "123", description: "Bank Branch ID - mandatory if PaymentType = B" },
+          BankAccountNumber: { type: "string", example: "001100220033", description: "Beneficiary account - mandatory if PaymentType = B" }
         }
       }
     }
@@ -1310,7 +1374,7 @@ const paths = {
     post: {
       tags: ["IME"],
       summary: "Create IME Customer",
-      requestBody: jsonBody,
+      requestBody: imeCreateCustomerBody,
       responses: {
         201: { description: "Customer created" },
         400: { description: "Invalid input" },
@@ -1415,7 +1479,7 @@ const paths = {
     post: {
       tags: ["IME"],
       summary: "Send Money via IME",
-      requestBody: jsonBody,
+      requestBody: imeSendMoneyBody,
       responses: {
         200: { description: "Money sent successfully" },
         400: { description: "Invalid transaction data" },
@@ -1990,49 +2054,7 @@ const paths = {
       tags: ["IME Legacy SOAP"],
       summary: "Create Money Transfer Transaction",
       description: "Creates a new transaction. ForexSessionId from GetCalculation must be used immediately.",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: [
-                "SenderName", "SenderMobileNo", "Occupation",
-                "ReceiverName", "ReceiverAddress", "ReceiverGender", "ReceiverMobileNo",
-                "ReceiverCountry", "ReceiverState", "ReceiverDistrict", "ReceiverMunicipality",
-                "ForexSessionId", "AgentTxnRefId", "CollectAmount", "PayoutAmount",
-                "SourceOfFund", "Relationship", "PurposeOfRemittance", "PaymentType", "CalcBy"
-              ],
-              properties: {
-                SenderName: { type: "string", example: "Ram Bahadur" },
-                SenderMobileNo: { type: "string", example: "9812345678" },
-                Occupation: { type: "string", example: "8081" },
-                ReceiverName: { type: "string", example: "Hari Prasad" },
-                ReceiverAddress: { type: "string", example: "Kathmandu" },
-                ReceiverGender: { type: "string", example: "Male" },
-                ReceiverMobileNo: { type: "string", example: "9841234567" },
-                ReceiverCity: { type: "string", example: "Kathmandu" },
-                ReceiverCountry: { type: "string", example: "NPL" },
-                ReceiverState: { type: "string", example: "1041" },
-                ReceiverDistrict: { type: "string", example: "5705" },
-                ReceiverMunicipality: { type: "string", example: "6001" },
-                ForexSessionId: { type: "string", description: "From GetCalculation response" },
-                AgentTxnRefId: { type: "string", example: "TXN001", description: "Your unique reference" },
-                CollectAmount: { type: "string", example: "10500" },
-                PayoutAmount: { type: "string", example: "16000" },
-                SourceOfFund: { type: "string", example: "8051" },
-                Relationship: { type: "string", example: "2101" },
-                PurposeOfRemittance: { type: "string", example: "3801" },
-                PaymentType: { type: "string", example: "C" },
-                BankId: { type: "string", description: "Required if PaymentType=B" },
-                BankBranchId: { type: "string", description: "Required if PaymentType=B" },
-                BankAccountNumber: { type: "string", description: "Required if PaymentType=B" },
-                CalcBy: { type: "string", example: "C" }
-              }
-            }
-          }
-        }
-      },
+      requestBody: imeSendTransactionBody,
       responses: {
         200: {
           description: "Transaction created",
@@ -3506,176 +3528,7 @@ paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
 };
 
 // IME Legacy Endpoints (SOAP-based compatibility routes)
-const imeLegacyPrefix = "/api/IME";
-
-paths[`${imeLegacyPrefix}/SendOTP`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Send OTP (Legacy)",
-    description: "Send OTP for customer verification - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "OTP sent successfully" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/CustomerRegistration`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Register Customer (Legacy)",
-    description: "Register a new customer - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Customer registered" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/ConfirmCustomerRegistration`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Confirm Customer Registration (Legacy)",
-    description: "Confirm customer registration with OTP - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Registration confirmed" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/SendTransaction`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Send Transaction (Legacy)",
-    description: "Initiate a money transfer transaction - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Transaction initiated" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/ConfirmSendTransaction`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Confirm Send Transaction (Legacy)",
-    description: "Confirm transaction with OTP - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Transaction confirmed" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/TransactionInquiry`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Transaction Inquiry (Legacy)",
-    description: "Get transaction details - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Transaction details retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/CancelTransaction`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Cancel Transaction (Legacy)",
-    description: "Cancel a transaction - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Transaction cancelled" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/GetCalculation`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "Get Calculation (Legacy)",
-    description: "Calculate exchange rate and fees - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "Calculation retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/CheckCustomer/:mobileNo`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Check Customer (Legacy)",
-    description: "Check if customer exists by mobile number - Legacy SOAP endpoint",
-    parameters: [
-      { name: "mobileNo", in: "path", required: true, schema: { type: "string" } }
-    ],
-    responses: { 200: { description: "Customer check result" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/CheckCSP`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Check CSP (Legacy)",
-    description: "Check CSP registration status - Legacy SOAP endpoint",
-    responses: { 200: { description: "CSP check result" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/CSPRegistration`] = {
-  post: {
-    tags: ["IME Legacy"],
-    summary: "CSP Registration (Legacy)",
-    description: "Register a new CSP - Legacy SOAP endpoint",
-    requestBody: jsonBody,
-    responses: { 200: { description: "CSP registered" }, 400: { description: "Bad request" } }
-  }
-};
-
-// Static Data Endpoints (Legacy)
-["Countries", "Genders", "MaritalStatus", "Occupation", "PurposeOfRemittance", "TransactionCancelReason", "GetIdTypes", "GetIdentityTypes", "CSPRegistrationTypeList", "CSPAddressProofTypeList", "CSPOwnerAddressProofTypeList", "CSPBusinessTypeList", "CSPDocumentTypeList", "OwnerCategoryTypes", "EducationalQualificationList", "RelationshipList", "IDPlaceofIssue", "SourceOfFundList"].forEach(endpoint => {
-  paths[`${imeLegacyPrefix}/${endpoint}`] = {
-    get: {
-      tags: ["IME Legacy"],
-      summary: `Get ${endpoint} (Legacy)`,
-      description: `Get ${endpoint} reference data - Legacy SOAP endpoint`,
-      responses: { 200: { description: "Data retrieved successfully" }, 500: { description: "Server error" } }
-    }
-  };
-});
-
-// Parameterized Legacy Endpoints
-paths[`${imeLegacyPrefix}/States/:CountryId`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Get States by Country (Legacy)",
-    parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }],
-    responses: { 200: { description: "States retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/Districts/:StateId`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Get Districts by State (Legacy)",
-    parameters: [{ name: "StateId", in: "path", required: true, schema: { type: "string" } }],
-    responses: { 200: { description: "Districts retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/Municipalities/:DistrictId`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Get Municipalities by District (Legacy)",
-    parameters: [{ name: "DistrictId", in: "path", required: true, schema: { type: "string" } }],
-    responses: { 200: { description: "Municipalities retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/BankList/:CountryId`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Get Bank List by Country (Legacy)",
-    parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }],
-    responses: { 200: { description: "Banks retrieved" }, 400: { description: "Bad request" } }
-  }
-};
-
-paths[`${imeLegacyPrefix}/BankBranchList/:BankId`] = {
-  get: {
-    tags: ["IME Legacy"],
-    summary: "Get Bank Branch List (Legacy)",
-    parameters: [{ name: "BankId", in: "path", required: true, schema: { type: "string" } }],
-    responses: { 200: { description: "Bank branches retrieved" }, 400: { description: "Bad request" } }
-  }
-};
+// Uppercase legacy base `/api/IME/*` was removed; legacy contract routes are served under `/api/ime/*` only.
 
 // Remittance Endpoints
 const remittancePrefix = "/api/Remittance";
