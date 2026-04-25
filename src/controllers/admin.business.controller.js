@@ -1,5 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
+const bcrypt = require("bcrypt");
+const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
 
 const prisma = new PrismaClient();
@@ -27,6 +29,7 @@ const businessPartnerController = {
           // Create a new User account first
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+          const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
 
           targetUser = await prisma.user.create({
             data: {
@@ -34,7 +37,7 @@ const businessPartnerController = {
               mobile: body.contactNumber1,
               fullName: body.ownerName,
               email: body.email,
-              password: "DefaultPassword123", // They will be prompted to change this
+              password: hashedPassword,
               gender: "OTHER",
               dateOfBirth: new Date(),
               identity: 'USER',
@@ -127,9 +130,17 @@ const businessPartnerController = {
         message: "Business Partner application created successfully.",
         data: { applicationId: application.id }
       });
+
+      await logAction({
+        userId: adminId,
+        action: "BUSINESS_PARTNER_APP_CREATED",
+        targetId: application.id,
+        tenantId,
+        metadata: { userId: targetUserId, businessName: application.businessName }
+      });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -142,7 +153,7 @@ const businessPartnerController = {
       res.json({ success: true, data: applications });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 

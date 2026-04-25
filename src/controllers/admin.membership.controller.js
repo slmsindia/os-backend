@@ -65,7 +65,7 @@ const adminMembershipController = {
       }
 
       const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
-      const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'ADMIN', 'SUB_ADMIN'];
+      const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'ADMIN', 'SUB_ADMIN', 'AGENT'];
       
       let fee = 0;
       if (PAID_ROLES.includes(targetIdentity)) {
@@ -81,14 +81,17 @@ const adminMembershipController = {
         } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'ADMIN_REGISTRATION_FEE' } });
           fee = setting ? parseFloat(setting.value) : 5000;
+        } else if (targetIdentity === 'AGENT') {
+          const setting = await prisma.globalSetting.findUnique({ where: { key: 'AGENT_REGISTRATION_FEE' } });
+          fee = setting ? parseFloat(setting.value) : 500; // Default 500
         }
       }
 
       // Validate Payment Method
       if (fee > 0) {
-        if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
+        if (SHARED_WALLET_ROLES.includes(targetIdentity) || targetIdentity === 'AGENT') {
           if (!['CASH', 'RAZORPAY'].includes(paymentMethod)) {
-            return res.status(400).json({ success: false, message: "Admins/Sub-Admins can only use CASH or RAZORPAY for registration fees." });
+            return res.status(400).json({ success: false, message: `${targetIdentity} can only use CASH or RAZORPAY for registration fees.` });
           }
         } else {
           if (!['WALLET', 'RAZORPAY'].includes(paymentMethod)) {
