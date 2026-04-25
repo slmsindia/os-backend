@@ -17,6 +17,7 @@ router.put("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN
 
 // Membership applications (Accessible by admins and delegated users)
 router.post("/membership/create-user", adminMembershipController.createUser);
+router.post("/agent/create", adminMembershipController.createUser); // Alias for agent creation
 router.get("/membership/applications", checkMembershipAccess, adminMembershipController.getMembershipApplications);
 router.get("/membership/applications/:applicationId", checkMembershipAccess, adminMembershipController.getApplicationDetails);
 router.post("/membership/applications/:applicationId/approve", checkMembershipAccess, adminMembershipController.approveApplication);

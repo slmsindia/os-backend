@@ -26,6 +26,12 @@ const businessPartnerController = {
         targetUser = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
         
         if (!targetUser) {
+          // Double check to ensure no race condition or existing mobile
+          const mobileExists = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
+          if (mobileExists) {
+            return res.status(409).json({ success: false, message: "User with this mobile number already exists." });
+          }
+
           // Create a new User account first
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;

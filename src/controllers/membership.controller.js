@@ -156,9 +156,11 @@ const membershipController = {
         });
       }
 
-      // Handle Wallet Payment for Method 2 (Skip if it's a paid resubmission)
+      // Handle Wallet Deduction for Method 2 (Skip if it's a paid resubmission or if paying via Razorpay)
       let walletTransaction = null;
-      if (isMethod2 && !isPaidResubmission) {
+      const isWalletPayment = (body.paymentMode === 2); // Assuming 2 is Wallet from your earlier JSON
+
+      if (isMethod2 && !isPaidResubmission && isWalletPayment) {
         try {
           // Deduct from the requester's (creator's) wallet (Smart Resolver handles Shared vs Personal)
           walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice, user.tenantId, requesterIdentity);
