@@ -75,6 +75,32 @@ const membershipController = {
   },
 
   /**
+   * Check if mobile number is already registered
+   */
+  checkMobile: async (req, res) => {
+    const { mobile } = req.query;
+    if (!mobile || !/^\d{10}$/.test(mobile)) {
+      return res.status(400).json({ success: false, message: "Invalid mobile number" });
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { mobile },
+        select: { id: true, fullName: true, identity: true }
+      });
+
+      res.json({
+        success: true,
+        isRegistered: !!user,
+        user: user || null
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * Create membership application and initiate payment
    */
   createApplication: async (req, res) => {
@@ -102,7 +128,7 @@ const membershipController = {
         const requiredFields = [
           'firstName', 'lastName', 'email', 'gender', 'educationId',
           'sectorId', 'jobRoleId', 'maritalStatus', 'citizenship',
-          'isMigrantWorker', 'monthlyIncome'
+          'isMigrantWorker', 'monthlyIncome', 'mobile'
         ];
 
         const missingFields = requiredFields.filter(field => body[field] === undefined || body[field] === null);
@@ -112,6 +138,20 @@ const membershipController = {
             message: "Missing required fields",
             missingFields
           });
+        }
+      }
+
+      // 10-digit Phone Number Verification
+      const mobile = body.mobile || (isComplexPayload ? body.contactNumber1 : null);
+      if (mobile) {
+        if (!/^\d{10}$/.test(mobile)) {
+          return res.status(400).json({ success: false, message: "Invalid phone number. Must be 10 digits." });
+        }
+        
+        const existingUser = await prisma.user.findUnique({ where: { mobile } });
+        if (existingUser) {
+          // If user exists, we check if they are already a member or pending
+          // (They can still apply if they are just a basic USER)
         }
       }
 

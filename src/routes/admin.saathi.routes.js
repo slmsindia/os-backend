@@ -19,6 +19,12 @@ router.post("/create-direct",
   adminSaathiController.createSaathiDirectly
 );
 
+// Alias for convenience
+router.post("/create-directly", 
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), 
+  adminSaathiController.createSaathiDirectly
+);
+
 // Management routes
 router.get("/applications", adminSaathiController.getSaathiApplications);
 router.post("/applications/:applicationId/approve", adminSaathiController.approveApplication);

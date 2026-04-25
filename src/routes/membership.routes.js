@@ -8,6 +8,7 @@ const router = express.Router();
 router.get("/debug-ping", (req, res) => res.json({ message: "Membership router is working" }));
 router.get("/price", membershipController.getMembershipPrice);
 router.get("/reference-data", membershipController.getReferenceData);
+router.get("/check-mobile", membershipController.checkMobile);
 
 // Protected routes require authentication
 router.use(authMiddleware);

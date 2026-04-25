@@ -1,5 +1,5 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
+const bcrypt = require("bcrypt");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
@@ -48,6 +48,7 @@ const adminSaathiController = {
           // Create new user record first
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+          const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
 
           targetUser = await prisma.user.create({
             data: {
@@ -56,6 +57,7 @@ const adminSaathiController = {
               fullName,
               gender: (gender || 'OTHER').toUpperCase(),
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              password: hashedPassword,
               identity: 'USER',
               tenantId,
               parentId: adminId,

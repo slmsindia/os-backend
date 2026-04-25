@@ -1,10 +1,8 @@
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 const bcrypt = require("bcrypt");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
-
-const prisma = new PrismaClient();
 
 const businessPartnerController = {
   createApplication: async (req, res) => {
@@ -14,6 +12,10 @@ const businessPartnerController = {
     try {
       let targetUserId = body.userId;
       let targetUser = null;
+
+      if (!prisma.user) {
+        throw new Error("Prisma Client is not fully initialized. Models (user) not found.");
+      }
 
       // Case 1: Existing User ID provided
       if (targetUserId) {
@@ -189,7 +191,7 @@ const businessPartnerController = {
       res.json({ success: true, message: "Business Partner approved successfully" });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 

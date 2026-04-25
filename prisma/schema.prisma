@@ -493,6 +493,7 @@ model MembershipApplication {
   firstName         String
   lastName          String
   email             String
+  mobile            String?
   gender            String
   educationId       String
   education         Education @relation(fields: [educationId], references: [id])
@@ -745,11 +746,11 @@ model SaathiApplication {
   user              User     @relation("UserSaathiApps", fields: [userId], references: [id])
   
   // Applicant details snapshot
-  fullName          String
-  mobile            String
-  gender            String
-  dateOfBirth       DateTime
-  address           String
+  fullName          String?
+  mobile            String?
+  gender            String?
+  dateOfBirth       DateTime?
+  address           String?
 
   // New API Fields
   maritalStatus         String?
