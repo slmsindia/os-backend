@@ -1,48 +1,89 @@
 const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
+const walletService = require("../services/wallet.service");
 
-const adminBusinessController = {
-  /**
-   * Get all business applications
-   */
-  getApplications: async (req, res) => {
-    const { status, page = 1, limit = 20 } = req.query;
-    const { tenant_id: tenantId } = req.user;
+const prisma = new PrismaClient();
+
+const businessPartnerController = {
+  createApplication: async (req, res) => {
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
+    const body = req.body;
 
     try {
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const where = {
-        ...(status ? { status } : {}),
-        user: { tenantId } // Admin only sees applications in their tenant
-      };
+      if (!body.userId) {
+        return res.status(400).json({ success: false, message: "userId is required" });
+      }
 
-      const [applications, total] = await Promise.all([
-        prisma.businessApplication.findMany({
-          where,
-          include: {
-            user: {
-              select: { fullName: true, mobile: true, identity: true }
-            },
-            sector: true
-          },
-          skip,
-          take: parseInt(limit),
-          orderBy: { createdAt: "desc" }
-        }),
-        prisma.businessApplication.count({ where })
-      ]);
+      // Check if user exists
+      const user = await prisma.user.findUnique({ where: { id: body.userId } });
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
 
-      res.json({
+      // Ensure no pending application exists
+      const existing = await prisma.businessPartnerApplication.findFirst({
+        where: { userId: body.userId, status: 'PENDING' }
+      });
+
+      if (existing) {
+        return res.status(400).json({ success: false, message: "User already has a pending Business Partner application" });
+      }
+
+      const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
+      const amount = feeSetting ? parseFloat(feeSetting.value) : 2000;
+      
+      const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
+
+      // If created by a Partner, deduct from their wallet
+      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      if (partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
+        const wallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
+        if (!wallet || wallet.balance < amount) {
+          return res.status(400).json({ success: false, message: "Insufficient partner wallet balance" });
+        }
+        await walletService.updateBalance(wallet.id, -amount);
+      }
+
+      const application = await prisma.businessPartnerApplication.create({
+        data: {
+          id: generateUuid(),
+          userId: body.userId,
+          
+          businessName: body.businessName || "N/A",
+          brandName: body.brandName || "N/A",
+          ownerName: body.ownerName || "N/A",
+          email: body.email,
+          contactNumber1: body.contactNumber1,
+          contactNumber2: body.contactNumber2,
+          
+          companyLogoName: body.companyLogoName,
+          companyLogoBase64: body.companyLogoBase64,
+          companyLogoUrl: body.companyLogoUrl,
+          
+          sectorId: body.sectorId,
+          bussinessType: body.bussinessType || 0,
+          employeerType: body.employeerType || 0,
+          
+          serviceCharges: body.serviceCharges ? parseFloat(body.serviceCharges) : 0,
+          gst: body.gst ? parseFloat(body.gst) : 0,
+          platformFees: body.platformFees ? parseFloat(body.platformFees) : 0,
+          amount: amount,
+          
+          razorPayReferenceNo: body.razorPayReferenceNo,
+          paymentMode: body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1,
+          
+          addressJson: body.address || null,
+          documentsJson: body.documents || null,
+          
+          status: 'PENDING',
+          createdById: adminId
+        }
+      });
+
+      res.status(201).json({
         success: true,
-        data: applications,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
+        message: "Business Partner application created successfully.",
+        data: { applicationId: application.id }
       });
     } catch (err) {
       console.error(err);
@@ -50,187 +91,65 @@ const adminBusinessController = {
     }
   },
 
-  /**
-   * Approve or Reject Business Application
-   */
-  processApplication: async (req, res) => {
-    const { id } = req.params;
-    const { status, rejectionReason } = req.body; // status: APPROVED or REJECTED
-    const { user_id: adminId, tenant_id: tenantId } = req.user;
-
-    if (!["APPROVED", "REJECTED"].includes(status)) {
-      return res.status(400).json({ success: false, message: "Invalid status" });
-    }
-
-    if (status === "REJECTED" && !rejectionReason) {
-      return res.status(400).json({ success: false, message: "Rejection reason is required" });
-    }
-
+  getApplications: async (req, res) => {
     try {
-      const application = await prisma.businessApplication.findUnique({
-        where: { id },
-        include: { user: true }
+      const applications = await prisma.businessPartnerApplication.findMany({
+        include: { user: true },
+        orderBy: { createdAt: 'desc' }
       });
-
-      if (!application) {
-        return res.status(404).json({ success: false, message: "Application not found" });
-      }
-
-      const result = await prisma.$transaction(async (tx) => {
-        // Update application status
-        const updatedApp = await tx.businessApplication.update({
-          where: { id },
-          data: {
-            status,
-            rejectionReason: status === "REJECTED" ? rejectionReason : null,
-            approvedBy: adminId
-          }
-        });
-
-        if (status === "APPROVED") {
-          // 1. Update user identity to BUSINESS_PARTNER (optional, but requested to gain rights)
-          // The user said: "become BUISNESS_PARTNER as well as they are USER,SAATHI, MEMBER"
-          // We can set identity to BUSINESS_PARTNER or use a different flag.
-          // Let's set it to BUSINESS_PARTNER to grant job posting rights.
-          await tx.user.update({
-            where: { id: application.userId },
-            data: { identity: "BUSINESS_PARTNER" }
-          });
-
-          // 2. Create Business Profile
-          await tx.businessProfile.upsert({
-            where: { userId: application.userId },
-            update: {
-              businessName: application.businessName,
-              brandName: application.brandName,
-              ownerName: application.ownerName,
-              email: application.email,
-              contactNumber1: application.contactNumber1,
-              contactNumber2: application.contactNumber2,
-              sectorId: application.sectorId,
-              address: application.address
-            },
-            create: {
-              id: generateUuid(),
-              userId: application.userId,
-              businessName: application.businessName,
-              brandName: application.brandName,
-              ownerName: application.ownerName,
-              email: application.email,
-              contactNumber1: application.contactNumber1,
-              contactNumber2: application.contactNumber2,
-              sectorId: application.sectorId,
-              address: application.address
-            }
-          });
-        }
-
-        return updatedApp;
-      });
-
-      await logAction({
-        userId: adminId,
-        action: `BUSINESS_APP_${status}`,
-        targetId: application.userId,
-        tenantId,
-        metadata: { applicationId: id, reason: rejectionReason }
-      });
-
-      res.json({ success: true, message: `Application ${status.toLowerCase()} successfully` });
+      res.json({ success: true, data: applications });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
 
-  /**
-   * Master Data Management (Skills, Facilities, Locations)
-   */
-  createMasterData: async (req, res, modelName) => {
-    const { name, code, countryId, stateId, districtId } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({ success: false, message: "Name is required" });
-    }
-
-    const modelMap = {
-      skill: 'skill',
-      jobFacility: 'jobFacility',
-      country: 'country',
-      state: 'state',
-      district: 'district',
-      municipality: 'municipality'
-    };
-
-    const prismaModel = modelMap[modelName] || modelName;
-    const capitalizedModel = prismaModel.charAt(0).toUpperCase() + prismaModel.slice(1);
+  approveApplication: async (req, res) => {
+    const { applicationId } = req.params;
+    const { user_id: adminId } = req.user;
 
     try {
-      // Try lowercase first, then capitalized
-      const model = prisma[prismaModel] || prisma[capitalizedModel];
-      
-      if (!model) {
-        throw new Error(`Model ${prismaModel} or ${capitalizedModel} not found in Prisma Client. Available: ${Object.keys(prisma).filter(k => !k.startsWith('_')).join(', ')}`);
+      const application = await prisma.businessPartnerApplication.findUnique({
+        where: { id: applicationId }
+      });
+
+      if (!application || application.status !== 'PENDING') {
+        return res.status(400).json({ success: false, message: "Application not eligible for approval" });
       }
 
-      const data = { 
-        id: generateUuid(), 
-        name, 
-        isActive: true,
-        ...(code ? { code } : {}),
-        ...(countryId ? { countryId } : {}),
-        ...(stateId ? { stateId } : {}),
-        ...(districtId ? { districtId } : {})
-      };
-      
-      const item = await model.create({ data });
-      res.status(201).json({ success: true, data: item });
+      await prisma.user.update({
+        where: { id: application.userId },
+        data: { identity: 'BUSINESS_PARTNER' }
+      });
+
+      await prisma.businessPartnerApplication.update({
+        where: { id: applicationId },
+        data: { status: 'APPROVED', approvedBy: adminId }
+      });
+
+      res.json({ success: true, message: "Business Partner approved successfully" });
     } catch (err) {
-      console.error(`Master Data Creation Error:`, err);
-      if (err.code === 'P2002') {
-        return res.status(400).json({ success: false, message: `${modelName} with this name already exists` });
-      }
-      res.status(500).json({ success: false, message: `Error creating ${modelName}`, error: err.message });
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
 
-  getMasterData: async (req, res, modelName) => {
-    // Mapping model names to Prisma Client properties if they differ
-    const modelMap = {
-      skill: 'skill',
-      jobFacility: 'jobFacility',
-      country: 'country',
-      state: 'state',
-      district: 'district',
-      municipality: 'municipality'
-    };
-
-    const prismaModel = modelMap[modelName] || modelName;
-    const capitalizedModel = prismaModel.charAt(0).toUpperCase() + prismaModel.slice(1);
+  rejectApplication: async (req, res) => {
+    const { applicationId } = req.params;
+    const { user_id: adminId } = req.user;
+    const { reason } = req.body;
 
     try {
-      const model = prisma[prismaModel] || prisma[capitalizedModel];
-
-      if (!model) {
-        throw new Error(`Model ${prismaModel} or ${capitalizedModel} not found in Prisma Client`);
-      }
-
-      const items = await model.findMany({
-        where: { isActive: true },
-        orderBy: { name: 'asc' }
+      await prisma.businessPartnerApplication.update({
+        where: { id: applicationId },
+        data: { status: 'REJECTED', rejectionReason: reason, approvedBy: adminId }
       });
-      res.json({ success: true, data: items });
+      res.json({ success: true, message: "Application rejected" });
     } catch (err) {
-      const availableModels = Object.keys(prisma).filter(k => !k.startsWith('_') && typeof prisma[k] === 'object');
-      console.error(`Master Data Fetch Error:`, err);
-      res.status(500).json({ 
-        success: false, 
-        message: `Error fetching ${modelName}`,
-        error: err.message,
-        debug: { availableModels }
-      });
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
 };
 
-module.exports = adminBusinessController;
+module.exports = businessPartnerController;

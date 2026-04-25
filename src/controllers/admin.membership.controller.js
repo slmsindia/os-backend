@@ -11,7 +11,7 @@ const adminMembershipController = {
    * Create a user directly (Admin/Partner led)
    */
   createUser: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, identity } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, identity, paymentMethod } = req.body;
     const { user_id: creatorId, tenant_id: tenantId } = req.user;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
@@ -64,6 +64,51 @@ const adminMembershipController = {
         return res.status(409).json({ success: false, message: "User with this mobile already exists" });
       }
 
+      const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'ADMIN', 'SUB_ADMIN'];
+      
+      let fee = 0;
+      if (PAID_ROLES.includes(targetIdentity)) {
+        if (targetIdentity === 'SAATHI') {
+          const setting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
+          fee = setting ? parseFloat(setting.value) : 1000;
+        } else if (targetIdentity === 'MEMBER') {
+          const config = await prisma.membershipConfig.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
+          fee = config ? config.membershipPrice : 500;
+        } else if (targetIdentity === 'BUSINESS_PARTNER') {
+          const setting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
+          fee = setting ? parseFloat(setting.value) : 2000;
+        } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
+          const setting = await prisma.globalSetting.findUnique({ where: { key: 'ADMIN_REGISTRATION_FEE' } });
+          fee = setting ? parseFloat(setting.value) : 5000;
+        }
+      }
+
+      // Validate Payment Method
+      if (fee > 0) {
+        if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
+          if (!['CASH', 'RAZORPAY'].includes(paymentMethod)) {
+            return res.status(400).json({ success: false, message: "Admins/Sub-Admins can only use CASH or RAZORPAY for registration fees." });
+          }
+        } else {
+          if (!['WALLET', 'RAZORPAY'].includes(paymentMethod)) {
+            return res.status(400).json({ success: false, message: "This role requires payment via WALLET or RAZORPAY." });
+          }
+        }
+      }
+
+      // Handle Wallet Deduction/Credit
+      let walletAction = null;
+      if (fee > 0 && paymentMethod === 'WALLET') {
+        try {
+          // Deduct from creator's wallet
+          const creator = await prisma.user.findUnique({ where: { id: creatorId } });
+          await walletService.deductBalanceIfSufficient(creatorId, fee, tenantId, creator.identity);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: err.message || "Insufficient wallet balance" });
+        }
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
       
       // Calculate hierarchy path for scalability
@@ -107,7 +152,6 @@ const adminMembershipController = {
       const user = await prisma.user.create({ data: userData });
 
       // Create wallet for the new user (unless they are USER or share a Corporate Wallet)
-      const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
       if (targetIdentity !== 'USER' && !SHARED_WALLET_ROLES.includes(targetIdentity)) {
         try {
           await walletService.createWallet(user.id, tenantId, false);
@@ -123,10 +167,28 @@ const adminMembershipController = {
         }
       }
 
+      // If target is Admin/Sub-Admin and they paid via Cash/Razorpay, CREDIT the shared wallet
+      if (SHARED_WALLET_ROLES.includes(targetIdentity) && fee > 0 && ['CASH', 'RAZORPAY'].includes(paymentMethod)) {
+        try {
+          const sharedWallet = await walletService.resolveWallet(user.id, tenantId, targetIdentity);
+          await walletService.updateBalance(sharedWallet.id, fee);
+          
+          await logAction({
+            userId: creatorId,
+            action: "ADMIN_FEE_CREDITED_TO_WALLET",
+            targetId: sharedWallet.id,
+            tenantId,
+            metadata: { amount: fee, paymentMethod, newUserId: user.id }
+          });
+        } catch (walletErr) {
+          console.error("Failed to credit corporate wallet:", walletErr);
+        }
+      }
+
       res.status(201).json({
         success: true,
-        message: "User created successfully under your hierarchy",
-        data: { userId: user.id, mobile: user.mobile }
+        message: `User created successfully as ${targetIdentity}. Fee of ${fee} processed via ${paymentMethod || 'NONE'}.`,
+        data: { userId: user.id, mobile: user.mobile, feeProcessed: fee }
       });
     } catch (err) {
       console.error("Direct User Creation Error:", err);

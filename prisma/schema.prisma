@@ -88,8 +88,9 @@ model User {
   saathiApprovalDelegatedBy String?
 
   // Relations
-  saathiApplications        SaathiApplication[] @relation("UserSaathiApps")
-  createdSaathiApplications SaathiApplication[] @relation("SaathiCreator")
+  saathiApplications     SaathiApplication[] @relation("UserSaathiApps")
+  createdSaathiApps      SaathiApplication[] @relation("SaathiCreator")
+  businessPartnerApps    BusinessPartnerApplication[]
 
   @@index([tenantId])
   @@index([parentId])
@@ -504,6 +505,20 @@ model MembershipApplication {
   isMigrantWorker   Boolean
   monthlyIncome     String
   
+  // New API Fields
+  profilePhoto      String?
+  imageName         String?
+  incomeAboveThreshold Boolean @default(false)
+  razorPayReferenceNo  String?
+  platformFees      Float   @default(0)
+  gst               Float   @default(0)
+  serviceCharge     Float   @default(0)
+  paymentMode       Int     @default(1)
+  tnxStatus         Int     @default(0)
+  
+  addressesJson     Json?
+  documentsJson     Json?
+  
   // Current Address
   currentCountry    String
   currentState      String
@@ -572,6 +587,50 @@ model MembershipDocument {
   
   @@index([applicationId])
 }
+
+// Business Partner System
+model BusinessPartnerApplication {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  
+  businessName        String
+  brandName           String
+  ownerName           String
+  email               String?
+  contactNumber1      String?
+  contactNumber2      String?
+  
+  companyLogoName     String?
+  companyLogoBase64   String?
+  companyLogoUrl      String?
+  
+  sectorId            String?
+  bussinessType       Int      @default(0)
+  employeerType       Int      @default(0)
+  
+  serviceCharges      Float    @default(0)
+  gst                 Float    @default(0)
+  platformFees        Float    @default(0)
+  amount              Float    @default(0)
+  
+  razorPayReferenceNo String?
+  paymentMode         Int      @default(1)
+  
+  addressJson         Json?
+  documentsJson       Json?
+  
+  status              String   @default("PENDING")
+  rejectionReason     String?
+  approvedBy          String?
+  createdById         String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([userId])
+}
+
 
 // Wallet System Models
 model Wallet {
@@ -691,6 +750,32 @@ model SaathiApplication {
   gender            String
   dateOfBirth       DateTime
   address           String
+
+  // New API Fields
+  maritalStatus         String?
+  citizenship           String?
+  isMigrantWorker       Boolean  @default(false)
+  incomeAboveThreshold  Boolean  @default(false)
+  membershipNumber      String?
+  sector                String?
+  jobRole               String?
+  aadhaarNumber         String?
+  panNumber             String?
+  
+  computerLiteracy      Boolean  @default(false)
+  internetAvailability  Boolean  @default(false)
+  pcLaptopAvailability  Boolean  @default(false)
+  kycStatus             Boolean  @default(false)
+  governmentSchemes     Boolean  @default(false)
+  travelServices        Boolean  @default(false)
+  bankingInsurance      Boolean  @default(false)
+  jobServices           Boolean  @default(false)
+  indoNepalServices     Boolean  @default(false)
+  
+  shopName              String?
+  
+  addressesJson         Json?    
+  documentsJson         Json?    
   
   // Status and Approval
   status            String   @default("PENDING") // PENDING, APPROVED, REJECTED

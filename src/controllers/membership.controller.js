@@ -95,22 +95,24 @@ const membershipController = {
       }
 
       // Validate required fields
-      const requiredFields = [
-        'firstName', 'lastName', 'email', 'gender', 'educationId',
-        'sectorId', 'jobRoleId', 'maritalStatus', 'citizenship',
-        'isMigrantWorker', 'monthlyIncome', 'currentCountry',
-        'currentState', 'currentDistrict', 'currentAddress', 'currentPincode',
-        'permanentCountry', 'permanentState', 'permanentDistrict',
-        'permanentAddress', 'permanentPincode', 'documents'
-      ];
+      // Support both old flat payload and new complex JSON payload
+      const isComplexPayload = Array.isArray(body.addresses) || Array.isArray(body.documents);
+      
+      if (!isComplexPayload) {
+        const requiredFields = [
+          'firstName', 'lastName', 'email', 'gender', 'educationId',
+          'sectorId', 'jobRoleId', 'maritalStatus', 'citizenship',
+          'isMigrantWorker', 'monthlyIncome'
+        ];
 
-      const missingFields = requiredFields.filter(field => body[field] === undefined || body[field] === null);
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Missing required fields",
-          missingFields
-        });
+        const missingFields = requiredFields.filter(field => body[field] === undefined || body[field] === null);
+        if (missingFields.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing required fields",
+            missingFields
+          });
+        }
       }
 
       // Check if this is Method 2 (Admin/Partner creating for someone else)
@@ -169,72 +171,81 @@ const membershipController = {
         }
       }
 
+      // Extract fields prioritizing the new complex JSON structure
+      const mapComplexToFlat = () => {
+        // Find specific addresses from the new array structure if provided
+        const currAddress = Array.isArray(body.addresses) ? body.addresses.find(a => a.addressType === 0) || body.addresses[0] || {} : {};
+        const permAddress = Array.isArray(body.addresses) ? body.addresses.find(a => a.addressType === 1) || body.addresses[0] || {} : {};
+        
+        return {
+          firstName: body.firstName,
+          lastName: body.lastName,
+          email: body.email,
+          gender: body.gender || body.genderId || "OTHER",
+          educationId: body.education || body.educationId || "1",
+          sectorId: body.sector || body.sectorId || "1",
+          jobRoleId: (Array.isArray(body.jobRoles) && body.jobRoles.length > 0) ? body.jobRoles[0] : (body.jobRoleId || "1"),
+          maritalStatus: body.maritalStatus || "SINGLE",
+          citizenship: body.citizen || body.citizenship || "Indian",
+          isMigrantWorker: Boolean(body.isMigrantWorker),
+          monthlyIncome: body.monthlyIncome || "0",
+          incomeAboveThreshold: Boolean(body.incomeAboveThreashold || body.incomeAboveThreshold),
+          
+          currentCountry: currAddress.country || body.currentCountry || "India",
+          currentState: currAddress.stateId || body.currentState || "State",
+          currentDistrict: currAddress.districtId || body.currentDistrict || "District",
+          currentAddress: currAddress.address || body.currentAddress || "Address",
+          currentPincode: currAddress.pinCode || body.currentPincode || "000000",
+          
+          permanentCountry: permAddress.country || body.permanentCountry || "India",
+          permanentState: permAddress.stateId || body.permanentState || "State",
+          permanentDistrict: permAddress.districtId || body.permanentDistrict || "District",
+          permanentAddress: permAddress.address || body.permanentAddress || "Address",
+          permanentPincode: permAddress.pinCode || body.permanentPincode || "000000",
+          
+          profilePhoto: body.profilePhoto,
+          imageName: body.imageName,
+          razorPayReferenceNo: body.razorPayReferenceNo,
+          platformFees: body.platformFees ? parseFloat(body.platformFees) : 0,
+          gst: body.gst ? parseFloat(body.gst) : 0,
+          serviceCharge: body.serviceCharge ? parseFloat(body.serviceCharge) : 0,
+          paymentMode: body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1,
+          tnxStatus: body.tnxStatus !== undefined ? parseInt(body.tnxStatus) : 0,
+          
+          addressesJson: body.addresses || null,
+          documentsJson: body.documents || null,
+        };
+      };
+
+      const mappedData = mapComplexToFlat();
+
       // Create or Update membership application
       let application;
       if (isPaidResubmission) {
         application = await prisma.membershipApplication.update({
           where: { id: existingApplication.id },
           data: {
-            firstName: body.firstName,
-            lastName: body.lastName,
-            email: body.email,
-            gender: body.gender,
-            educationId: body.educationId,
-            sectorId: body.sectorId,
-            jobRoleId: body.jobRoleId,
-            maritalStatus: body.maritalStatus,
-            citizenship: body.citizenship,
-            isMigrantWorker: body.isMigrantWorker,
-            monthlyIncome: body.monthlyIncome,
-            currentCountry: body.currentCountry,
-            currentState: body.currentState,
-            currentDistrict: body.currentDistrict,
-            currentAddress: body.currentAddress,
-            currentPincode: body.currentPincode,
-            permanentCountry: body.permanentCountry,
-            permanentState: body.permanentState,
-            permanentDistrict: body.permanentDistrict,
-            permanentAddress: body.permanentAddress,
-            permanentPincode: body.permanentPincode,
+            ...mappedData,
             status: 'PENDING',
-            rejectionReason: null, // Clear old reason
-            updatedAt: new Date()
+            createdById: isMethod2 ? userId : null
           }
         });
-
-        // Delete old documents
-        await prisma.membershipDocument.deleteMany({
-          where: { applicationId: application.id }
-        });
       } else {
+        // Delete old rejected application if any to avoid uniqueness constraint issues
+        if (existingApplication) {
+          await prisma.membershipPayment.deleteMany({ where: { applicationId: existingApplication.id } });
+          await prisma.membershipDocument.deleteMany({ where: { applicationId: existingApplication.id } });
+          await prisma.membershipApplication.delete({ where: { id: existingApplication.id } });
+        }
+
         application = await prisma.membershipApplication.create({
           data: {
             id: generateUuid(),
             userId: targetUserId,
-            firstName: body.firstName,
-            lastName: body.lastName,
-            email: body.email,
-            gender: body.gender,
-            educationId: body.educationId,
-            sectorId: body.sectorId,
-            jobRoleId: body.jobRoleId,
-            maritalStatus: body.maritalStatus,
-            citizenship: body.citizenship,
-            isMigrantWorker: body.isMigrantWorker,
-            monthlyIncome: body.monthlyIncome,
-            currentCountry: body.currentCountry,
-            currentState: body.currentState,
-            currentDistrict: body.currentDistrict,
-            currentAddress: body.currentAddress,
-            currentPincode: body.currentPincode,
-            permanentCountry: body.permanentCountry,
-            permanentState: body.permanentState,
-            permanentDistrict: body.permanentDistrict,
-            permanentAddress: body.permanentAddress,
-            permanentPincode: body.permanentPincode,
+            ...mappedData,
             status: 'PENDING',
-            paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY',
-            createdById: userId
+            createdById: isMethod2 ? userId : null,
+            paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY'
           }
         });
       }
