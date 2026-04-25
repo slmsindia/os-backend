@@ -10,19 +10,62 @@ const businessPartnerController = {
     const body = req.body;
 
     try {
-      if (!body.userId) {
-        return res.status(400).json({ success: false, message: "userId is required" });
+      let targetUserId = body.userId;
+      let targetUser = null;
+
+      // Case 1: Existing User ID provided
+      if (targetUserId) {
+        targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+        if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+      } 
+      // Case 2: No User ID provided, creating for a NEW person (Admin/Partner led)
+      else if (body.contactNumber1 && body.ownerName) {
+        // Check if a user with this contact number already exists
+        targetUser = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
+        
+        if (!targetUser) {
+          // Create a new User account first
+          const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
+          const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+
+          targetUser = await prisma.user.create({
+            data: {
+              id: generateUuid(),
+              mobile: body.contactNumber1,
+              fullName: body.ownerName,
+              email: body.email,
+              password: "DefaultPassword123", // They will be prompted to change this
+              gender: "OTHER",
+              dateOfBirth: new Date(),
+              identity: 'USER',
+              tenantId,
+              parentId: adminId,
+              path
+            }
+          });
+        }
+        targetUserId = targetUser.id;
       }
 
-      // Check if user exists
-      const user = await prisma.user.findUnique({ where: { id: body.userId } });
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
+      if (!targetUserId) {
+        return res.status(400).json({ success: false, message: "userId or contactNumber1/ownerName is required" });
+      }
+
+      // Hierarchy Check for Partners
+      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      if (partnerRoles.includes(adminIdentity)) {
+        // Must be in creator's path or directly under them
+        if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
+          return res.status(403).json({ 
+            success: false, 
+            message: "You can only create Business Partner applications for users in your own hierarchy." 
+          });
+        }
       }
 
       // Ensure no pending application exists
       const existing = await prisma.businessPartnerApplication.findFirst({
-        where: { userId: body.userId, status: 'PENDING' }
+        where: { userId: targetUserId, status: 'PENDING' }
       });
 
       if (existing) {
@@ -35,7 +78,6 @@ const businessPartnerController = {
       const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
 
       // If created by a Partner, deduct from their wallet
-      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
         const wallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
         if (!wallet || wallet.balance < amount) {
@@ -47,7 +89,7 @@ const businessPartnerController = {
       const application = await prisma.businessPartnerApplication.create({
         data: {
           id: generateUuid(),
-          userId: body.userId,
+          userId: targetUserId,
           
           businessName: body.businessName || "N/A",
           brandName: body.brandName || "N/A",
