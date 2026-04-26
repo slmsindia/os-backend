@@ -1,5 +1,16 @@
 const express = require('express');
 const imeController = require('./ime.controller');
+const { 
+  validateTransactionRequest, 
+  sendTransactionMiddleware, 
+  confirmTransactionMiddleware 
+} = require('./ime.transaction.middleware');
+const { 
+  validateCustomerRegistrationRequest,
+  registerCustomerMiddleware,
+  confirmCustomerRegistrationMiddleware,
+  checkCustomerEligibilityMiddleware
+} = require('./ime.customer.middleware');
 
 const router = express.Router();
 
@@ -21,11 +32,24 @@ router.get('/customers/:customerId', imeController.getCustomer);
 router.post('/customers/validate', imeController.validateCustomer);
 
 /**
+ * Complete Customer Registration Flow Middleware
+ */
+router.post('/customers/register-complete', validateCustomerRegistrationRequest, registerCustomerMiddleware);
+router.post('/customers/confirm-registration', confirmCustomerRegistrationMiddleware);
+router.post('/customers/check-eligibility', checkCustomerEligibilityMiddleware);
+
+/**
  * Remittance/Transaction Operations
  */
 router.post('/transactions/send', imeController.sendMoney);
 router.get('/transactions/:transactionId/status', imeController.getTransactionStatus);
 router.post('/transactions/:transactionId/cancel', imeController.cancelTransaction);
+
+/**
+ * Complete Transaction Flow Middleware
+ */
+router.post('/transactions/send-complete', validateTransactionRequest, sendTransactionMiddleware);
+router.post('/transactions/confirm', confirmTransactionMiddleware);
 
 /**
  * Receiver Management

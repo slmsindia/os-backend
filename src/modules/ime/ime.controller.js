@@ -177,10 +177,33 @@ const createCustomer = async (req, res) => {
 
     const registrationMeta = getImeResponseMeta(result);
     if (registrationMeta.code && registrationMeta.code !== '0') {
-      return res.status(400).json({
+      // Handle specific IME error codes based on documentation
+      let errorMessage = registrationMeta.message || 'Customer registration failed in IME';
+      let statusCode = 400;
+      
+      switch (registrationMeta.code) {
+        case '503':
+          errorMessage = 'Parameter Missing - Required field is missing';
+          break;
+        case '504':
+          errorMessage = 'Bad Request (Invalid Input Value) - Invalid data provided';
+          statusCode = 422;
+          break;
+        case '901':
+          errorMessage = 'Technical Error - Server-side error occurred';
+          statusCode = 500;
+          break;
+        case '999':
+          errorMessage = 'Internal Server Error - Serious server error';
+          statusCode = 500;
+          break;
+      }
+
+      return res.status(statusCode).json({
         success: false,
-        message: registrationMeta.message || 'Customer registration failed in IME',
+        message: errorMessage,
         imeCode: registrationMeta.code,
+        error: registrationMeta.code,
         ...result
       });
     }

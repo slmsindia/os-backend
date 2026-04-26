@@ -4053,5 +4053,6 @@ module.exports = {
       },
     },
   },
+
   paths,
 };
