@@ -810,21 +810,58 @@ const walletController = {
    * Get ALL Wallet Transactions (Admin View)
    */
   getAllWalletTransactions: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
+    const { user_id: currentUserId, identity: adminIdentity, tenant_id: tenantId } = req.user;
     const { page = 1, limit = 20, type, category, userId, identity } = req.query;
 
     try {
       const where = { tenantId };
       
+      // Hierarchy Visibility:
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      if (!topRoles.includes(adminIdentity)) {
+        // Partners can only see: 
+        // 1. Their own wallet transactions (including corporate if they use it)
+        // 2. Their descendants' wallet transactions
+        
+        // Note: Corporate wallet doesn't have a userId, so it might be tricky.
+        // We'll allow them to see corporate transactions if they are the "creator" (linked via referenceId or similar? No)
+        // Actually, we'll just let them see all corporate transactions for now if they are a partner, 
+        // or we filter corporate transactions strictly.
+        
+        // For now, let's filter by descendant IDs + self
+        const creator = await prisma.user.findUnique({ where: { id: currentUserId }, select: { path: true } });
+        const path = creator?.path ? `${creator.path}/${currentUserId}` : `/${currentUserId}`;
+
+        where.wallet = {
+          OR: [
+            { userId: currentUserId },
+            { user: { path: { contains: currentUserId } } },
+            { isCorporate: true } // Partners need to see corporate credits they triggered
+          ]
+        };
+      }
+      
       if (type) where.type = type;
       if (category) where.category = category;
-      if (userId) where.wallet = { userId: userId };
+      if (userId) {
+        // If specific userId requested, combine with hierarchy (if restricted)
+        if (where.wallet && where.wallet.OR) {
+           where.wallet = {
+             AND: [
+               { userId: userId },
+               { OR: where.wallet.OR }
+             ]
+           };
+        } else {
+          where.wallet = { userId: userId };
+        }
+      }
       
       // Filter by user identity or corporate status
       if (identity) {
-        const CORPORATE_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN'];
-        if (CORPORATE_ROLES.includes(identity)) {
+        if (topRoles.includes(identity)) {
           where.wallet = {
+            ...where.wallet,
             OR: [
               { user: { identity: identity } },
               { isCorporate: true }
@@ -832,6 +869,7 @@ const walletController = {
           };
         } else {
           where.wallet = {
+            ...where.wallet,
             user: { identity: identity }
           };
         }

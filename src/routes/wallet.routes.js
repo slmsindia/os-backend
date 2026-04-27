@@ -52,6 +52,6 @@ router.put("/admin/qr-codes/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", 
 
 // Wallet Transaction History (Comprehensive)
 router.get("/history", authMiddleware, walletController.getWalletTransactions);
-router.get("/admin/history", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.getAllWalletTransactions);
+router.get("/admin/history", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), walletController.getAllWalletTransactions);
 
 module.exports = router;
