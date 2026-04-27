@@ -496,21 +496,28 @@ const membershipController = {
     }
 
     try {
-      // Find the application
+      // Find the application (Admins can verify any app, Users only their own)
+      const AUTHORIZED_CREATOR_ROLES = [
+        'SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN',
+        'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'
+      ];
+      const isPrivileged = AUTHORIZED_CREATOR_ROLES.includes(req.user.identity);
+
       const application = await prisma.membershipApplication.findFirst({
         where: {
           id: applicationId,
-          userId
+          ...(isPrivileged ? {} : { userId }) // Strict check only for regular users
         },
         include: {
-          payment: true
+          payment: true,
+          user: true
         }
       });
 
       if (!application) {
         return res.status(404).json({
           success: false,
-          message: "Application not found"
+          message: "Application not found or access denied."
         });
       }
 
