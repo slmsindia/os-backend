@@ -22,12 +22,7 @@ const businessPartnerController = {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
         if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
-        
-        // Upgrade existing user
-        await prisma.user.update({
-          where: { id: targetUser.id },
-          data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
-        });
+        // No immediate upgrade, wait for admin approval
       } 
       // Case 2: No User ID provided, creating for a NEW person (Admin/Partner led)
       else if (body.contactNumber1 && body.ownerName) {
@@ -36,12 +31,7 @@ const businessPartnerController = {
         
         if (targetUser) {
           if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
-          
-          // Existing user → upgrade identity to BUSINESS_PARTNER immediately
-          await prisma.user.update({
-            where: { id: targetUser.id },
-            data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
-          });
+          // Existing user → no immediate upgrade, wait for approval
         } else {
           // Double check to ensure no race condition or existing mobile
           const mobileExists = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
@@ -63,9 +53,7 @@ const businessPartnerController = {
               password: hashedPassword,
               gender: "OTHER",
               dateOfBirth: new Date(),
-              identity: 'BUSINESS_PARTNER',  // Set directly — admin is creating, no approval step needed
-              approvalStatus: 'APPROVED',
-              approvedAt: new Date(),
+              identity: 'USER',  // Wait for admin approval
               tenantId,
               parentId: adminId,
               path
@@ -142,7 +130,7 @@ const businessPartnerController = {
           paymentMode: body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1,
           addressJson: body.address || null,
           documentsJson: body.documents || null,
-          status: 'APPROVED',    // Admin direct creation → auto-approved, no separate approval step needed
+          status: 'PENDING',    // Wait for Admin approval
           createdById: adminId
         };
 

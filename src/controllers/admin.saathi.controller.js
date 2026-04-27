@@ -43,21 +43,12 @@ const adminSaathiController = {
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
         if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
         
-        // Upgrade existing user
-        await prisma.user.update({
-          where: { id: targetUser.id },
-          data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
-        });
+        // No immediate upgrade, wait for admin approval
       } else if (mobile) {
         targetUser = await prisma.user.findUnique({ where: { mobile } });
         if (targetUser) {
           if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
-          
-          // Existing user → upgrade identity to SAATHI immediately
-          await prisma.user.update({
-            where: { id: targetUser.id },
-            data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
-          });
+          // Existing user → no immediate upgrade, wait for approval
         } else {
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
@@ -71,9 +62,7 @@ const adminSaathiController = {
               gender: (gender || 'OTHER').toUpperCase(),
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
               password: hashedPassword,
-              identity: 'SAATHI',   // Set directly — admin is creating, no approval step needed
-              approvalStatus: 'APPROVED',
-              approvedAt: new Date(),
+              identity: 'USER',   // Wait for admin approval to become SAATHI
               tenantId,
               parentId: adminId,
               path
@@ -153,7 +142,7 @@ const adminSaathiController = {
           documentsJson: req.body.documents || null,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: 'APPROVED'   // Admin direct creation → auto-approved, no separate approval step needed
+          status: 'PENDING'   // Send to Admin for approval
         };
 
         if (isPaidResubmission) {
