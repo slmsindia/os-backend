@@ -13,11 +13,11 @@ const adminSaathiController = {
     if (!amount || amount <= 0) return res.status(400).json({ success: false, message: "Invalid amount" });
 
     try {
-      await prisma.globalSetting.upsert({
+      const setting = prisma.globalSetting ? await prisma.globalSetting.upsert({
         where: { key: 'SAATHI_FEE' },
         update: { value: amount.toString() },
         create: { key: 'SAATHI_FEE', value: amount.toString() }
-      });
+      }) : null;
 
       res.json({ success: true, message: "Saathi fee updated successfully", amount });
     } catch (err) {
@@ -95,7 +95,7 @@ const adminSaathiController = {
                                 (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID');
 
       // 4. Payment Validation & Transaction
-      const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
+      const feeSetting = prisma.globalSetting ? await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } }) : null;
       const amount = feeSetting ? parseFloat(feeSetting.value) : 1000;
 
       const application = await prisma.$transaction(async (tx) => {

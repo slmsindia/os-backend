@@ -453,6 +453,12 @@ model MembershipConfig {
   updatedAt       DateTime @updatedAt
 }
 
+model GlobalSetting {
+  key   String @id
+  value String
+}
+
+
 // Reference Data Models
 model Education {
   id        String   @id @default(uuid())
