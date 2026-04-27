@@ -3,6 +3,7 @@ const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const razorpayService = require("../services/razorpay.service");
 const walletService = require("../services/wallet.service");
+const bcrypt = require("bcrypt");
 
 const prisma = new PrismaClient();
 
@@ -188,10 +189,29 @@ const membershipController = {
           if (userByMobile) {
             targetUserId = userByMobile.id;
           } else {
-            return res.status(400).json({ 
-              success: false, 
-              message: "User with this mobile number is not registered. Please create the user first." 
+            // Auto-create the user as MEMBER since an Admin is creating them
+            const creator = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, path: true } });
+            const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+            const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
+
+            const newUser = await prisma.user.create({
+              data: {
+                id: generateUuid(),
+                mobile: lookupMobile,
+                fullName: body.firstName + (body.lastName ? " " + body.lastName : ""),
+                email: body.email || null,
+                gender: (body.gender || "OTHER").toUpperCase(),
+                dateOfBirth: body.birthDate ? new Date(body.birthDate) : new Date(),
+                password: hashedPassword,
+                identity: 'MEMBER',
+                approvalStatus: 'APPROVED',
+                approvedAt: new Date(),
+                tenantId,
+                parentId: userId,
+                path
+              }
             });
+            targetUserId = newUser.id;
           }
         }
       }

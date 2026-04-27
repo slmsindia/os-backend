@@ -41,9 +41,24 @@ const adminSaathiController = {
       if (targetUserId) {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+        if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
+        
+        // Upgrade existing user
+        await prisma.user.update({
+          where: { id: targetUser.id },
+          data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
+        });
       } else if (mobile) {
         targetUser = await prisma.user.findUnique({ where: { mobile } });
-        if (!targetUser) {
+        if (targetUser) {
+          if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
+          
+          // Existing user → upgrade identity to SAATHI immediately
+          await prisma.user.update({
+            where: { id: targetUser.id },
+            data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
+          });
+        } else {
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
           const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
@@ -64,12 +79,6 @@ const adminSaathiController = {
               path
             }
           });
-        } else {
-          // Existing user → upgrade identity to SAATHI immediately
-          await prisma.user.update({
-            where: { id: targetUser.id },
-            data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
-          });
         }
         targetUserId = targetUser.id;
       }
@@ -79,9 +88,6 @@ const adminSaathiController = {
       }
 
       // 2. Hierarchy and Role Validation
-      if (targetUser.identity === 'SAATHI') {
-        return res.status(400).json({ success: false, message: "User is already a SAATHI" });
-      }
 
       const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (partnerRoles.includes(adminIdentity)) {

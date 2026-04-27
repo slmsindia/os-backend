@@ -21,13 +21,28 @@ const businessPartnerController = {
       if (targetUserId) {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+        if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
+        
+        // Upgrade existing user
+        await prisma.user.update({
+          where: { id: targetUser.id },
+          data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
+        });
       } 
       // Case 2: No User ID provided, creating for a NEW person (Admin/Partner led)
       else if (body.contactNumber1 && body.ownerName) {
         // Check if a user with this contact number already exists
         targetUser = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
         
-        if (!targetUser) {
+        if (targetUser) {
+          if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
+          
+          // Existing user → upgrade identity to BUSINESS_PARTNER immediately
+          await prisma.user.update({
+            where: { id: targetUser.id },
+            data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
+          });
+        } else {
           // Double check to ensure no race condition or existing mobile
           const mobileExists = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
           if (mobileExists) {
@@ -56,12 +71,6 @@ const businessPartnerController = {
               path
             }
           });
-        } else {
-          // Existing user → upgrade identity to BUSINESS_PARTNER immediately
-          await prisma.user.update({
-            where: { id: targetUser.id },
-            data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
-          });
         }
         targetUserId = targetUser.id;
       }
@@ -81,9 +90,7 @@ const businessPartnerController = {
           });
         }
       }
-      if (targetUser.identity === 'BUSINESS_PARTNER') {
-        return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
-      }
+
 
 
 
