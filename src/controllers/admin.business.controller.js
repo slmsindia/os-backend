@@ -48,11 +48,19 @@ const businessPartnerController = {
               password: hashedPassword,
               gender: "OTHER",
               dateOfBirth: new Date(),
-              identity: 'USER',
+              identity: 'BUSINESS_PARTNER',  // Set directly — admin is creating, no approval step needed
+              approvalStatus: 'APPROVED',
+              approvedAt: new Date(),
               tenantId,
               parentId: adminId,
               path
             }
+          });
+        } else {
+          // Existing user → upgrade identity to BUSINESS_PARTNER immediately
+          await prisma.user.update({
+            where: { id: targetUser.id },
+            data: { identity: 'BUSINESS_PARTNER', approvalStatus: 'APPROVED', approvedAt: new Date() }
           });
         }
         targetUserId = targetUser.id;
@@ -127,7 +135,7 @@ const businessPartnerController = {
           paymentMode: body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1,
           addressJson: body.address || null,
           documentsJson: body.documents || null,
-          status: 'PENDING',
+          status: 'APPROVED',    // Admin direct creation → auto-approved, no separate approval step needed
           createdById: adminId
         };
 

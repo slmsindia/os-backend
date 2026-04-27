@@ -124,13 +124,24 @@ const adminMembershipController = {
           }
         }
 
-        // Upgrade the existing user's identity
+        // Calculate updated hierarchy path so this user appears under the creator in hierarchy queries
+        const creatorRecord = await prisma.user.findUnique({
+          where: { id: creatorId },
+          select: { id: true, path: true }
+        });
+        const updatedPath = creatorRecord
+          ? (creatorRecord.path ? `${creatorRecord.path}/${creatorRecord.id}` : `/${creatorRecord.id}`)
+          : (existing.path || '');
+
+        // Upgrade the existing user's identity AND fix hierarchy (parentId + path)
         const upgradedUser = await prisma.user.update({
           where: { id: existing.id },
           data: {
             identity: targetIdentity,
             approvalStatus: 'APPROVED',
-            approvedAt: new Date()
+            approvedAt: new Date(),
+            parentId: creatorId,    // Link to creator so hierarchy queries work
+            path: updatedPath       // Set correct path so descendant queries work
           }
         });
 
@@ -157,6 +168,7 @@ const adminMembershipController = {
           data: { userId: upgradedUser.id, mobile: upgradedUser.mobile, previousIdentity: existing.identity, newIdentity: targetIdentity, feeProcessed: fee }
         });
       }
+
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
 

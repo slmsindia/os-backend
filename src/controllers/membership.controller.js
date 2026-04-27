@@ -384,6 +384,22 @@ const membershipController = {
           }
         });
 
+        // Admin is creating directly → set identity to MEMBER immediately (no approval step needed)
+        await prisma.user.update({
+          where: { id: targetUserId },
+          data: {
+            identity: 'MEMBER',
+            approvalStatus: 'APPROVED',
+            approvedAt: new Date()
+          }
+        });
+
+        // Also mark the application as APPROVED immediately
+        await prisma.membershipApplication.update({
+          where: { id: application.id },
+          data: { status: 'APPROVED', approvedAt: new Date(), approvedBy: userId }
+        });
+
         await logAction({
           userId,
           action: `MEMBERSHIP_APPLICATION_CREATED_${paymentTypeStr}`,
@@ -396,7 +412,8 @@ const membershipController = {
           message: `Membership application created successfully via ${paymentTypeStr.toLowerCase()} payment.`,
           data: {
             applicationId: application.id,
-            status: 'PENDING'
+            status: 'APPROVED',
+            identity: 'MEMBER'
           }
         });
       }

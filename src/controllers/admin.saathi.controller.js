@@ -56,11 +56,19 @@ const adminSaathiController = {
               gender: (gender || 'OTHER').toUpperCase(),
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
               password: hashedPassword,
-              identity: 'USER',
+              identity: 'SAATHI',   // Set directly — admin is creating, no approval step needed
+              approvalStatus: 'APPROVED',
+              approvedAt: new Date(),
               tenantId,
               parentId: adminId,
               path
             }
+          });
+        } else {
+          // Existing user → upgrade identity to SAATHI immediately
+          await prisma.user.update({
+            where: { id: targetUser.id },
+            data: { identity: 'SAATHI', approvalStatus: 'APPROVED', approvedAt: new Date() }
           });
         }
         targetUserId = targetUser.id;
@@ -139,7 +147,7 @@ const adminSaathiController = {
           documentsJson: req.body.documents || null,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: 'PENDING'
+          status: 'APPROVED'   // Admin direct creation → auto-approved, no separate approval step needed
         };
 
         if (isPaidResubmission) {
