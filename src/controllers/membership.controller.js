@@ -196,22 +196,17 @@ const membershipController = {
         }
       }
 
-      // Application resubmission logic: 
-      // Look up existing application for the target user to see if it needs to be replaced.
+      // Every submission creates a NEW independent application record.
+      // No old application is ever deleted — all show up in admin pending list separately.
+      // isPaidResubmission: if the last app was REJECTED but payment was already SUCCESS, reuse it (no extra charge).
       const existingApplication = await prisma.membershipApplication.findFirst({
-        where: {
-          userId: targetUserId,
-        },
+        where: { userId: targetUserId },
         include: { payment: true },
         orderBy: { createdAt: 'desc' }
       });
 
-      // Restriction removed: allow replacing/resubmitting even if an application is pending or approved.
-      // The transaction logic below handles deleting the old application if a new one is created.
-
-      // Special Check: If the application was REJECTED but the payment was SUCCESSFUL, we allow for free
-      const isPaidResubmission = existingApplication && 
-                               existingApplication.status === 'REJECTED' && 
+      const isPaidResubmission = existingApplication &&
+                               existingApplication.status === 'REJECTED' &&
                                existingApplication.payment?.status === 'SUCCESS';
 
       // Get membership price
@@ -322,13 +317,8 @@ const membershipController = {
             }
           });
         } else {
-          // Delete old rejected application if any to avoid uniqueness constraint issues
-          if (existingApplication) {
-            await tx.membershipPayment.deleteMany({ where: { applicationId: existingApplication.id } });
-            await tx.membershipDocument.deleteMany({ where: { applicationId: existingApplication.id } });
-            await tx.membershipApplication.delete({ where: { id: existingApplication.id } });
-          }
-
+          // Always create a brand new application — never delete old ones.
+          // This ensures every submission appears separately in the admin pending list.
           app = await tx.membershipApplication.create({
             data: {
               id: generateUuid(),
