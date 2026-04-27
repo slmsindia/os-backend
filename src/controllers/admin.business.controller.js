@@ -417,7 +417,8 @@ const businessPartnerController = {
 
       // Log in Wallet History (Credit Admin, Log for Partner)
       try {
-        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId);
+        const creator = await prisma.user.findUnique({ where: { id: application.createdById } });
+        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity);
         const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
         if (partnerWallet && adminWallet) {

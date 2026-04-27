@@ -471,7 +471,8 @@ const adminSaathiController = {
 
       // Log in Wallet History (Credit Admin, Log for Partner)
       try {
-        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId); // Admin/Partner who created it
+        const creator = await prisma.user.findUnique({ where: { id: application.createdById } });
+        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity); // Pass identity!
         const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
         if (partnerWallet && adminWallet) {

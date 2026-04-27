@@ -564,7 +564,11 @@ const membershipController = {
 
       // NEW: Log Razorpay payment in Wallet History
       try {
-        const partnerWallet = await walletService.resolveWallet(application.userId, tenantId, application.user.identity);
+        // Resolve the person who actually paid/initiated (Creator if Admin-led, otherwise the User)
+        const partnerId = application.createdById || application.userId;
+        const partner = await prisma.user.findUnique({ where: { id: partnerId } });
+        
+        const partnerWallet = await walletService.resolveWallet(partnerId, tenantId, partner?.identity);
         const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
         if (partnerWallet && adminWallet) {

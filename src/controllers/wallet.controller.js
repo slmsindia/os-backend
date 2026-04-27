@@ -820,14 +820,21 @@ const walletController = {
       if (category) where.category = category;
       if (userId) where.wallet = { userId: userId };
       
-      // Filter by user identity if provided
+      // Filter by user identity or corporate status
       if (identity) {
-        where.wallet = {
-          ...where.wallet,
-          user: {
-            identity: identity
-          }
-        };
+        const CORPORATE_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN'];
+        if (CORPORATE_ROLES.includes(identity)) {
+          where.wallet = {
+            OR: [
+              { user: { identity: identity } },
+              { isCorporate: true }
+            ]
+          };
+        } else {
+          where.wallet = {
+            user: { identity: identity }
+          };
+        }
       }
 
       const [txns, total] = await Promise.all([
