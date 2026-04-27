@@ -77,14 +77,7 @@ const businessPartnerController = {
         return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
       }
 
-      // Ensure no pending application exists
-      const existing = await prisma.businessPartnerApplication.findFirst({
-        where: { userId: targetUserId, status: 'PENDING' }
-      });
 
-      if (existing) {
-        return res.status(400).json({ success: false, message: "User already has a pending Business Partner application" });
-      }
 
       // 3. Check for previous paid but rejected application
       const existingApplication = await prisma.businessPartnerApplication.findFirst({

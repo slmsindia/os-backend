@@ -121,7 +121,7 @@ const membershipController = {
    * Create membership application and initiate payment
    */
   createApplication: async (req, res) => {
-    const { user_id: userId } = req.user;
+    const { user_id: userId, tenant_id: tenantId } = req.user;
     const body = req.body;
 
     try {
@@ -196,7 +196,8 @@ const membershipController = {
         }
       }
 
-      // Check if target user already has a pending application
+      // Application resubmission logic: 
+      // Look up existing application for the target user to see if it needs to be replaced.
       const existingApplication = await prisma.membershipApplication.findFirst({
         where: {
           userId: targetUserId,
@@ -205,12 +206,8 @@ const membershipController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      if (existingApplication && existingApplication.status === 'PENDING') {
-        return res.status(400).json({
-          success: false,
-          message: "User already has a pending membership application"
-        });
-      }
+      // Restriction removed: allow replacing/resubmitting even if an application is pending or approved.
+      // The transaction logic below handles deleting the old application if a new one is created.
 
       // Special Check: If the application was REJECTED but the payment was SUCCESSFUL, we allow for free
       const isPaidResubmission = existingApplication && 

@@ -41,22 +41,6 @@ const saathiController = {
     }
 
     try {
-      // 1. Check if already Saathi (Removed restriction - allowed to re-apply)
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      /* 
-      if (user.identity === 'SAATHI') {
-        return res.status(400).json({ success: false, message: "You are already a Saathi" });
-      }
-      */
-
-      // 2. Check for pending applications
-      const existingApp = await prisma.saathiApplication.findFirst({
-        where: { userId, status: 'PENDING' }
-      });
-      if (existingApp) {
-        return res.status(400).json({ success: false, message: "You already have a pending application" });
-      }
-
       // 3. Validate payment method based on identity
       if (userIdentity === 'USER' && paymentMethod !== 'RAZORPAY') {
         return res.status(400).json({ 
