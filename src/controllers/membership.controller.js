@@ -89,13 +89,30 @@ const membershipController = {
         select: { id: true, fullName: true, identity: true }
       });
 
+      // Also check for existing membership application for this user
+      let application = null;
+      if (user) {
+        application = await prisma.membershipApplication.findFirst({
+          where: { userId: user.id },
+          include: { payment: true },
+          orderBy: { createdAt: 'desc' }
+        });
+      }
+
       res.json({
         success: true,
         isRegistered: !!user,
-        user: user || null
+        user: user || null,
+        application: application ? {
+          id: application.id,
+          status: application.status,
+          paymentStatus: application.payment?.status || 'NONE',
+          createdAt: application.createdAt,
+          rejectionReason: application.rejectionReason
+        } : null
       });
     } catch (err) {
-      console.error(err);
+      console.error('Check Mobile Error:', err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
@@ -155,12 +172,25 @@ const membershipController = {
         }
       }
 
-      // Check if this is Method 2 (Admin/Partner creating for someone else)
-      const requesterIdentity = req.user.identity;
-      const isMethod2 = AUTHORIZED_CREATOR_ROLES.includes(requesterIdentity);
+      // For Method 2, targetUserId can be from body, or looked up by mobile if provided
+      let targetUserId = userId;
       
-      // For Method 2, targetUserId can be from body, otherwise it's self-application
-      const targetUserId = (isMethod2 && body.userId) ? body.userId : userId;
+      if (isMethod2) {
+        if (body.userId) {
+          targetUserId = body.userId;
+        } else if (body.mobile || body.contactNumber1) {
+          const lookupMobile = body.mobile || body.contactNumber1;
+          const userByMobile = await prisma.user.findUnique({ where: { mobile: lookupMobile } });
+          if (userByMobile) {
+            targetUserId = userByMobile.id;
+          } else {
+            return res.status(400).json({ 
+              success: false, 
+              message: "User with this mobile number is not registered. Please create the user first." 
+            });
+          }
+        }
+      }
 
       // Check if target user already has a pending application
       const existingApplication = await prisma.membershipApplication.findFirst({
