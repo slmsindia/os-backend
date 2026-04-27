@@ -14,6 +14,7 @@ router.post("/membership/delegate-approval", checkIdentity(["SUPER_ADMIN", "WHIT
 
 // Membership price management (Only for top admins)
 router.put("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminMembershipController.updateMembershipPrice);
+router.post("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminMembershipController.updateMembershipPrice);
 
 // Membership applications (Accessible by admins and delegated users)
 router.post("/membership/create-user", adminMembershipController.createUser);

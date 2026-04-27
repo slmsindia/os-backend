@@ -7,6 +7,16 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+// Fee Management (Top Admins only)
+router.put("/fee", 
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
+  businessPartnerController.updateBusinessPartnerFee
+);
+router.post("/fee", 
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
+  businessPartnerController.updateBusinessPartnerFee
+);
+
 // Apply for Business Partner
 router.post("/apply", businessPartnerController.createApplication);
 

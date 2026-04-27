@@ -6,6 +6,27 @@ const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
 
 const businessPartnerController = {
+  /**
+   * Set Business Partner Fee
+   */
+  updateBusinessPartnerFee: async (req, res) => {
+    const { amount } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ success: false, message: "Invalid amount" });
+
+    try {
+      const setting = await prisma.globalSetting.upsert({
+        where: { key: 'BUSINESS_PARTNER_FEE' },
+        update: { value: amount.toString() },
+        create: { key: 'BUSINESS_PARTNER_FEE', value: amount.toString() }
+      });
+
+      res.json({ success: true, message: "Business Partner fee updated successfully", data: setting });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
   createApplication: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const body = req.body;
