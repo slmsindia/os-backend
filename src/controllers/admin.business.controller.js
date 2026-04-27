@@ -102,10 +102,12 @@ const businessPartnerController = {
         let partnerWallet = null;
         let adminWallet = null;
 
-        if (!isPaidResubmission && partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
+        if (!isPaidResubmission && partnerRoles.includes(adminIdentity)) {
           partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
-          if (!partnerWallet || partnerWallet.balance < amount) {
-            throw new Error("Insufficient partner wallet balance");
+          if (paymentMethod === 'WALLET') {
+            if (!partnerWallet || partnerWallet.balance < amount) {
+              throw new Error("Insufficient partner wallet balance");
+            }
           }
           adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
@@ -163,8 +165,8 @@ const businessPartnerController = {
           });
         }
 
-        // Record history for Wallet payments
-        if (partnerWallet && adminWallet) {
+        // Record history for Wallet/Cash payments immediately
+        if (partnerWallet && adminWallet && (paymentMethod === 'WALLET' || paymentMethod === 'CASH')) {
           await walletService.payCreationFeeWithHistory(
             partnerWallet.id,
             adminWallet.id,
@@ -172,6 +174,7 @@ const businessPartnerController = {
             "Business Partner Application Fee",
             appResult.id,
             tenantId,
+            paymentMethod,
             tx
           );
         }
@@ -329,6 +332,84 @@ const businessPartnerController = {
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message });
+    }
+  },
+
+  /**
+   * Verify Razorpay Payment for Business Partner
+   */
+  verifyPayment: async (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, applicationId } = req.body;
+    const { tenant_id: tenantId } = req.user;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !applicationId) {
+      return res.status(400).json({ success: false, message: "Missing required payment details" });
+    }
+
+    try {
+      const application = await prisma.businessPartnerApplication.findUnique({
+        where: { id: applicationId }
+      });
+
+      if (!application) {
+        return res.status(404).json({ success: false, message: "Application not found" });
+      }
+
+      if (application.razorPayReferenceNo !== razorpay_order_id) {
+        return res.status(400).json({ success: false, message: "Order ID mismatch" });
+      }
+
+      // Verify signature
+      const isValid = razorpayService.verifyPaymentSignature({
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature
+      });
+
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: "Invalid payment signature" });
+      }
+
+      // Update application (since BP doesn't have a separate payment model, we use BP app fields)
+      await prisma.businessPartnerApplication.update({
+        where: { id: applicationId },
+        data: {
+          razorPayReferenceNo: razorpay_payment_id, // Store payment ID now
+          paymentMode: 1 // RAZORPAY
+        }
+      });
+
+      // Log in Wallet History (Credit Admin, Log for Partner)
+      try {
+        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId);
+        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        
+        if (partnerWallet && adminWallet) {
+          await walletService.payCreationFeeWithHistory(
+            partnerWallet.id,
+            adminWallet.id,
+            application.amount,
+            "Business Partner Application Fee",
+            application.id,
+            tenantId,
+            "RAZORPAY"
+          );
+        }
+      } catch (logErr) {
+        console.error("Failed to log Business Razorpay in wallet history:", logErr);
+      }
+
+      await logAction({
+        userId: req.user.user_id,
+        action: "BUSINESS_PARTNER_PAYMENT_SUCCESS",
+        targetId: application.id,
+        metadata: { paymentId: razorpay_payment_id }
+      });
+
+      res.json({ success: true, message: "Payment verified successfully." });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
 };

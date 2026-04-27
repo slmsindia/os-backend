@@ -804,6 +804,70 @@ const walletController = {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * Get ALL Wallet Transactions (Admin View)
+   */
+  getAllWalletTransactions: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
+    const { page = 1, limit = 20, type, category, userId, identity } = req.query;
+
+    try {
+      const where = { tenantId };
+      
+      if (type) where.type = type;
+      if (category) where.category = category;
+      if (userId) where.wallet = { userId: userId };
+      
+      // Filter by user identity if provided
+      if (identity) {
+        where.wallet = {
+          ...where.wallet,
+          user: {
+            identity: identity
+          }
+        };
+      }
+
+      const [txns, total] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          skip: (parseInt(page) - 1) * parseInt(limit),
+          take: parseInt(limit),
+          orderBy: { createdAt: "desc" },
+          include: {
+            wallet: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    mobile: true,
+                    identity: true
+                  }
+                }
+              }
+            }
+          }
+        }),
+        prisma.walletTransaction.count({ where })
+      ]);
+
+      res.json({
+        success: true,
+        data: txns,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err) {
+      console.error("Get All Wallet Transactions Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
   }
 };
 

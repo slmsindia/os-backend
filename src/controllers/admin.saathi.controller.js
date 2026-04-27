@@ -106,10 +106,12 @@ const adminSaathiController = {
         let partnerWallet = null;
         let adminWallet = null;
 
-        if (!isPaidResubmission && partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
+        if (!isPaidResubmission && partnerRoles.includes(adminIdentity)) {
           partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
-          if (!partnerWallet || partnerWallet.balance < amount) {
-            throw new Error("Insufficient partner wallet balance");
+          if (paymentMethod === 'WALLET') {
+            if (!partnerWallet || partnerWallet.balance < amount) {
+              throw new Error("Insufficient partner wallet balance");
+            }
           }
           adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
@@ -184,8 +186,8 @@ const adminSaathiController = {
           });
         }
 
-        // Record history for Wallet payments
-        if (partnerWallet && adminWallet) {
+        // Record history for Wallet/Cash payments immediately
+        if (partnerWallet && adminWallet && (paymentMethod === 'WALLET' || paymentMethod === 'CASH')) {
           await walletService.payCreationFeeWithHistory(
             partnerWallet.id,
             adminWallet.id,
@@ -193,6 +195,7 @@ const adminSaathiController = {
             "Saathi Application Fee",
             appResult.id,
             tenantId,
+            paymentMethod,
             tx
           );
         }
@@ -394,6 +397,91 @@ const adminSaathiController = {
         data: { canApproveSaathi: canApprove }
       });
       res.json({ success: true, message: "Saathi approval delegation updated" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Verify Razorpay Payment for Saathi
+   */
+  verifyPayment: async (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, applicationId } = req.body;
+    const { tenant_id: tenantId } = req.user;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !applicationId) {
+      return res.status(400).json({ success: false, message: "Missing required payment details" });
+    }
+
+    try {
+      const application = await prisma.saathiApplication.findUnique({
+        where: { id: applicationId },
+        include: { payment: true, user: true }
+      });
+
+      if (!application || !application.payment) {
+        return res.status(404).json({ success: false, message: "Application or payment record not found" });
+      }
+
+      if (application.payment.razorpayOrderId !== razorpay_order_id) {
+        return res.status(400).json({ success: false, message: "Order ID mismatch" });
+      }
+
+      // Verify signature
+      const isValid = razorpayService.verifyPaymentSignature({
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature
+      });
+
+      if (!isValid) {
+        await prisma.saathiPayment.update({
+          where: { id: application.payment.id },
+          data: { status: 'FAILED' }
+        });
+        return res.status(400).json({ success: false, message: "Invalid payment signature" });
+      }
+
+      // Update payment record
+      await prisma.saathiPayment.update({
+        where: { id: application.payment.id },
+        data: {
+          status: 'SUCCESS',
+          razorpayPaymentId: razorpay_payment_id,
+          razorpaySignature: razorpay_signature,
+          paidAt: new Date()
+        }
+      });
+
+      // Log in Wallet History (Credit Admin, Log for Partner)
+      try {
+        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId); // Admin/Partner who created it
+        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        
+        if (partnerWallet && adminWallet) {
+          await walletService.payCreationFeeWithHistory(
+            partnerWallet.id,
+            adminWallet.id,
+            application.payment.amount,
+            "Saathi Application Fee",
+            application.id,
+            tenantId,
+            "RAZORPAY"
+          );
+        }
+      } catch (logErr) {
+        console.error("Failed to log Saathi Razorpay in wallet history:", logErr);
+      }
+
+      await logAction({
+        userId: req.user.user_id,
+        action: "SAATHI_PAYMENT_SUCCESS",
+        targetId: application.id,
+        metadata: { paymentId: razorpay_payment_id }
+      });
+
+      res.json({ success: true, message: "Payment verified successfully." });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

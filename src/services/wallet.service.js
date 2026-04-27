@@ -139,37 +139,41 @@ const walletService = {
 
   /**
    * Pay Creation Fee and Record History
-   * @param {string} partnerWalletId - Partner's wallet ID (null if paid via Razorpay)
+   * @param {string} partnerWalletId - Partner's wallet ID
    * @param {string} adminWalletId - Admin's wallet ID
    * @param {number} amount - Fee amount
    * @param {string} description - Transaction description
    * @param {string} referenceId - Associated application ID
    * @param {string} tenantId - Tenant ID
+   * @param {string} paymentMethod - WALLET, RAZORPAY, CASH
    * @param {object} tx - Prisma transaction object
    */
-  payCreationFeeWithHistory: async (partnerWalletId, adminWalletId, amount, description, referenceId, tenantId, tx) => {
+  payCreationFeeWithHistory: async (partnerWalletId, adminWalletId, amount, description, referenceId, tenantId, paymentMethod, tx) => {
     const db = tx || prisma;
     
-    // 1. Deduct from Partner (if wallet payment)
+    // 1. Partner Log (Deduct only if WALLET)
     if (partnerWalletId) {
-      await db.wallet.update({
-        where: { id: partnerWalletId },
-        data: { balance: { decrement: amount } }
-      });
+      if (paymentMethod === 'WALLET') {
+        await db.wallet.update({
+          where: { id: partnerWalletId },
+          data: { balance: { decrement: amount } }
+        });
+      }
+      
       await db.walletTransaction.create({
         data: {
           walletId: partnerWalletId,
           amount: amount,
           type: "DEBIT",
           category: "SERVICE_CHARGE",
-          description: description + " (Fee Deduction)",
+          description: `${description} (Fee Paid via ${paymentMethod})`,
           referenceId: referenceId,
           tenantId: tenantId
         }
       });
     }
 
-    // 2. Credit to Admin (for both Wallet and Razorpay)
+    // 2. Credit to Admin (Always increment balance)
     if (adminWalletId) {
       await db.wallet.update({
         where: { id: adminWalletId },
@@ -181,7 +185,7 @@ const walletService = {
           amount: amount,
           type: "CREDIT",
           category: "COMMISSION",
-          description: description + " (Fee Received)",
+          description: `${description} (Fee Received via ${paymentMethod})`,
           referenceId: referenceId,
           tenantId: tenantId
         }

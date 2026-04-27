@@ -349,8 +349,9 @@ const membershipController = {
           });
         }
 
-        // Record wallet transaction history
-        if (partnerWallet && adminWallet) {
+        // Record wallet transaction history immediately for Wallet/Cash
+        if (partnerWallet && adminWallet && (isWalletPayment || body.paymentMode === 3)) {
+          const paymentMethod = body.paymentMode === 3 ? 'CASH' : 'WALLET';
           await walletService.payCreationFeeWithHistory(
             partnerWallet.id,
             adminWallet.id,
@@ -358,6 +359,7 @@ const membershipController = {
             "Membership Application Fee",
             app.id,
             tenantId,
+            paymentMethod,
             tx
           );
         }
@@ -550,6 +552,26 @@ const membershipController = {
           paidAt: new Date()
         }
       });
+
+      // NEW: Log Razorpay payment in Wallet History
+      try {
+        const partnerWallet = await walletService.resolveWallet(application.userId, tenantId, application.user.identity);
+        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        
+        if (partnerWallet && adminWallet) {
+          await walletService.payCreationFeeWithHistory(
+            partnerWallet.id,
+            adminWallet.id,
+            application.payment.amount,
+            "Membership Application Fee",
+            application.id,
+            tenantId,
+            "RAZORPAY"
+          );
+        }
+      } catch (logErr) {
+        console.error("Failed to log Razorpay in wallet history:", logErr);
+      }
 
       await logAction({
         userId,
