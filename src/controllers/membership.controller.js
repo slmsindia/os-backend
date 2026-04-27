@@ -172,6 +172,10 @@ const membershipController = {
         }
       }
 
+      // Check if this is Method 2 (Admin/Partner creating for someone else)
+      const requesterIdentity = req.user.identity;
+      const isMethod2 = AUTHORIZED_CREATOR_ROLES.includes(requesterIdentity);
+
       // For Method 2, targetUserId can be from body, or looked up by mobile if provided
       let targetUserId = userId;
       
@@ -335,7 +339,7 @@ const membershipController = {
               ...mappedData,
               status: 'PENDING',
               createdById: isMethod2 ? userId : null,
-              paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY'
+              paymentType: isMethod2 ? (body.paymentMode === 3 ? 'CASH' : 'WALLET') : 'RAZORPAY'
             }
           });
         }
@@ -376,13 +380,16 @@ const membershipController = {
         });
       }
 
-      // For Method 2 (Wallet), we mark payment as success immediately
+      // For Method 2 (Wallet or Cash), we mark payment as success immediately
       if (isMethod2) {
+        const isCash = body.paymentMode === 3;
+        const paymentTypeStr = isCash ? 'CASH' : 'WALLET';
+
         await prisma.membershipPayment.create({
           data: {
             id: generateUuid(),
             applicationId: application.id,
-            razorpayOrderId: `wallet_${application.id.slice(0, 20)}`,
+            razorpayOrderId: `${paymentTypeStr.toLowerCase()}_${application.id.slice(0, 20)}`,
             amount: config.membershipPrice,
             currency: config.currency,
             status: 'SUCCESS',
@@ -392,14 +399,14 @@ const membershipController = {
 
         await logAction({
           userId,
-          action: "MEMBERSHIP_APPLICATION_CREATED_WALLET",
+          action: `MEMBERSHIP_APPLICATION_CREATED_${paymentTypeStr}`,
           targetId: application.id,
           metadata: { amount: config.membershipPrice, targetUserId }
         });
 
         return res.status(201).json({
           success: true,
-          message: "Membership application created successfully via wallet payment.",
+          message: `Membership application created successfully via ${paymentTypeStr.toLowerCase()} payment.`,
           data: {
             applicationId: application.id,
             status: 'PENDING'
