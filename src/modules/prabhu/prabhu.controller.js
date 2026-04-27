@@ -9,11 +9,31 @@ const cspUniqueRefPoll = async (req, res) => {
   return res.json({ success: true, status: 'POLL_OK', partnerUniqueRefNo, branchCode });
 };
 
+// Get transaction history for logged-in user
+const getTransactionHistory = async (req, res) => {
+  try {
+    const appUserId = req.user?.user_id || req.user?.id;
+    if (!appUserId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+
+    const transactions = await remittanceService.getPrabhuTransactionsByUserId(appUserId);
+    
+    return ok(res, 'Transaction history fetched successfully', { data: transactions });
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
 const prabhuService = require('./prabhu.service');
 const prabhuDataService = require('./prabhu-data.service');
 const prabhuReceiverService = require('./prabhu-receiver.service');
 const prabhuSenderService = require('./prabhu-sender.service');
 const walletService = require('../../services/wallet.service');
+const remittanceService = require('../remittance/remittance.service');
 
 const ok = (res, message, payload) => {
   return res.json({
@@ -631,6 +651,7 @@ module.exports = {
   unverifiedTransactions: proxyOperation('UnverifiedTransactions', 'Get unverified transactions success'),
   complianceTransactions: proxyOperation('ComplianceTransactions', 'Compliance transactions success'),
   uploadDocument: proxyOperation('UploadDocument', 'Upload document success'),
+  getTransactionHistory, // Add user-specific transaction history endpoint
   sendTransaction: async (req, res) => {
     let deductedWallet = null;
     let transferAmount = 0;
@@ -671,6 +692,14 @@ module.exports = {
           message: result?.data?.message || 'Send transaction failed',
           data: result.data
         });
+      }
+
+      // Save transaction to database with userId
+      try {
+        await remittanceService.savePrabhuTransaction(result.data, appUserId);
+      } catch (saveError) {
+        console.error('Failed to save transaction to database:', saveError);
+        // Continue with response even if save fails
       }
 
       return ok(res, 'Send transaction success', {

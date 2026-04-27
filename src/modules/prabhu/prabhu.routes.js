@@ -17,6 +17,7 @@ router.post('/SendOTP', prabhuController.sendOTP);
 router.post('/GetServiceCharge', prabhuController.getServiceCharge);
 router.post('/GetServiceChargeByCollection', prabhuController.getServiceChargeByCollection);
 router.post('/CancelTransaction', prabhuController.cancelTransaction);
+router.get('/transaction-history', authMiddleware, prabhuController.getTransactionHistory);
 router.post('/UnverifiedTransactions', prabhuController.unverifiedTransactions);
 router.post('/ComplianceTransactions', prabhuController.complianceTransactions);
 router.post('/UploadDocument', prabhuController.uploadDocument);

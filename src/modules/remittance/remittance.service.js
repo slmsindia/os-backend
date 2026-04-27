@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 class RemittanceService {
     // Save Prabhu Transaction to database
-    async savePrabhuTransaction(transactionData) {
+    async savePrabhuTransaction(transactionData, userId) {
         try {
             // Extract relevant fields from the transaction data
             const {
@@ -42,9 +42,10 @@ class RemittanceService {
                 createdAt
             } = transactionData;
 
-            // Create transaction record in database
+            // Create transaction record in database with userId
             const transaction = await prisma.prabhuTransaction.create({
                 data: {
+                    userId: userId || null, // Add userId to track which user created this transaction
                     customerId: customerId || null,
                     senderName: senderName || '',
                     senderMobile: senderMobile || '',
@@ -93,7 +94,7 @@ class RemittanceService {
         try {
             const transactions = await prisma.prabhuTransaction.findMany({
                 where: {
-                    customerId: userId
+                    userId: userId  // Filter by userId instead of customerId
                 },
                 orderBy: {
                     createdAt: 'desc'

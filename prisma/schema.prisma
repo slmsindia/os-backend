@@ -612,6 +612,7 @@ model WalletTopUpRequest {
 // Prabhu Transaction Model
 model PrabhuTransaction {
   id                  String   @id @default(uuid())
+  userId              String?  // Add userId field to track which user created this transaction
   customerId          String?
   senderName          String
   senderMobile        String
@@ -646,6 +647,7 @@ model PrabhuTransaction {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  @@index([userId])
   @@index([customerId])
   @@index([pinNo])
   @@index([transactionStatus])
