@@ -184,7 +184,7 @@ const walletService = {
    * @param {string} identity - User identity
    * @returns {Promise<Object>} Updated wallet
    */
-  deductBalanceIfSufficient: async (userId, amount, tenantId, identity) => {
+  deductBalanceIfSufficient: async (userId, amount, tenantId, identity, creditWalletId = null) => {
     const requiredAmount = normalizeAmount(amount);
 
     try {
@@ -236,6 +236,18 @@ const walletService = {
               requiredAmount
             }
           );
+        }
+
+        // Optional: Credit another wallet (e.g., Admin) in the same transaction
+        if (creditWalletId) {
+          await tx.wallet.update({
+            where: { id: creditWalletId },
+            data: {
+              balance: {
+                increment: requiredAmount
+              }
+            }
+          });
         }
 
         return tx.wallet.findUnique({

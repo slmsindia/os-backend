@@ -260,55 +260,47 @@ const adminMembershipController = {
    */
   delegateApproval: async (req, res) => {
     const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
-    const { targetUserId, canApprove } = req.body;
+    const { targetUserId, canApprove, type } = req.body; // type: 'MEMBERSHIP', 'SAATHI', 'BOTH'
 
     if (adminIdentity !== 'ADMIN' && adminIdentity !== 'SUPER_ADMIN' && adminIdentity !== 'WHITE_LABEL_ADMIN') {
-      return res.status(403).json({
-        success: false,
-        message: "Only Admins can delegate approval functionality"
-      });
+      return res.status(403).json({ success: false, message: "Only Admins can delegate approval functionality" });
     }
 
     try {
-      const targetUser = await prisma.user.findUnique({
-        where: { id: targetUserId }
-      });
-
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
       if (!targetUser || targetUser.tenantId !== tenantId) {
-        return res.status(404).json({
-          success: false,
-          message: "Target user not found in your tenant"
-        });
+        return res.status(404).json({ success: false, message: "Target user not found" });
       }
 
-      // Check if target user role is eligible
       const ELIGIBLE_ROLES = ['SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (!ELIGIBLE_ROLES.includes(targetUser.identity)) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot delegate to role: ${targetUser.identity}. Eligible roles: ${ELIGIBLE_ROLES.join(', ')}`
-        });
+        return res.status(400).json({ success: false, message: `Cannot delegate to role: ${targetUser.identity}` });
+      }
+
+      const updateData = {};
+      if (type === 'MEMBERSHIP' || type === 'BOTH') {
+        updateData.canApproveMembership = !!canApprove;
+      }
+      if (type === 'SAATHI' || type === 'BOTH') {
+        updateData.canApproveSaathi = !!canApprove;
       }
 
       await prisma.user.update({
         where: { id: targetUserId },
-        data: {
-          canApproveMembership: !!canApprove,
-          membershipApprovalDelegatedBy: canApprove ? adminId : null
-        }
+        data: updateData
       });
 
       await logAction({
         userId: adminId,
-        action: "MEMBERSHIP_APPROVAL_DELEGATED",
+        action: "APPROVAL_DELEGATED",
         targetId: targetUserId,
         tenantId,
-        metadata: { canApprove }
+        metadata: { type, canApprove }
       });
 
       res.json({
         success: true,
-        message: `Approval functionality ${canApprove ? 'delegated to' : 'removed from'} user successfully`
+        message: `Approval permissions (${type}) ${canApprove ? 'granted to' : 'withdrawn from'} user successfully`
       });
     } catch (err) {
       console.error(err);
@@ -636,14 +628,23 @@ const adminMembershipController = {
       }
 
       const application = await prisma.membershipApplication.findUnique({
-        where: { id: applicationId }
+        where: { id: applicationId },
+        include: { user: true }
       });
 
       if (!application) {
-        return res.status(404).json({
-          success: false,
-          message: "Application not found"
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
+      }
+
+      // Hierarchy Check for Delegated Partners
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      if (!topRoles.includes(adminIdentity)) {
+        if (application.user.parentId !== adminId && (!application.user.path || !application.user.path.includes(adminId))) {
+          return res.status(403).json({
+            success: false,
+            message: "You can only reject applications from users in your own hierarchy"
+          });
+        }
       }
 
       if (application.status === 'REJECTED') {

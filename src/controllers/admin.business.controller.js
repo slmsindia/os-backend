@@ -73,6 +73,9 @@ const businessPartnerController = {
           });
         }
       }
+      if (targetUser.identity === 'BUSINESS_PARTNER') {
+        return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
+      }
 
       // Ensure no pending application exists
       const existing = await prisma.businessPartnerApplication.findFirst({
@@ -83,53 +86,71 @@ const businessPartnerController = {
         return res.status(400).json({ success: false, message: "User already has a pending Business Partner application" });
       }
 
+      // 3. Check for previous paid but rejected application
+      const existingApplication = await prisma.businessPartnerApplication.findFirst({
+        where: { userId: targetUserId },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // For BP, since payment is inside the same table/model, we check its own status or a linked payment
+      // Note: In BP model, status is 'REJECTED' and we assume if it's there it was paid or handled
+      const isPaidResubmission = existingApplication && existingApplication.status === 'REJECTED';
+
       const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
       const amount = feeSetting ? parseFloat(feeSetting.value) : 2000;
       
       const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
 
-      // If created by a Partner, deduct from their wallet
-      if (partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
-        const wallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
-        if (!wallet || wallet.balance < amount) {
-          return res.status(400).json({ success: false, message: "Insufficient partner wallet balance" });
-        }
-        await walletService.updateBalance(wallet.id, -amount);
-      }
-
-      const application = await prisma.businessPartnerApplication.create({
-        data: {
-          id: generateUuid(),
-          userId: targetUserId,
+      const application = await prisma.$transaction(async (tx) => {
+        if (!isPaidResubmission && partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
+          const wallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
+          if (!wallet || wallet.balance < amount) {
+            throw new Error("Insufficient partner wallet balance");
+          }
+          await walletService.updateBalance(wallet.id, -amount, tx);
           
+          const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+          await walletService.updateBalance(adminWallet.id, amount, tx);
+        }
+
+        const appData = {
           businessName: body.businessName || "N/A",
           brandName: body.brandName || "N/A",
           ownerName: body.ownerName || "N/A",
           email: body.email,
           contactNumber1: body.contactNumber1,
           contactNumber2: body.contactNumber2,
-          
           companyLogoName: body.companyLogoName,
           companyLogoBase64: body.companyLogoBase64,
           companyLogoUrl: body.companyLogoUrl,
-          
           sectorId: body.sectorId,
           bussinessType: body.bussinessType || 0,
           employeerType: body.employeerType || 0,
-          
           serviceCharges: body.serviceCharges ? parseFloat(body.serviceCharges) : 0,
           gst: body.gst ? parseFloat(body.gst) : 0,
           platformFees: body.platformFees ? parseFloat(body.platformFees) : 0,
           amount: amount,
-          
           razorPayReferenceNo: body.razorPayReferenceNo,
           paymentMode: body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1,
-          
           addressJson: body.address || null,
           documentsJson: body.documents || null,
-          
           status: 'PENDING',
           createdById: adminId
+        };
+
+        if (isPaidResubmission) {
+          return await tx.businessPartnerApplication.update({
+            where: { id: existingApplication.id },
+            data: { ...appData, rejectionReason: null }
+          });
+        } else {
+          return await tx.businessPartnerApplication.create({
+            data: {
+              ...appData,
+              id: generateUuid(),
+              userId: targetUserId
+            }
+          });
         }
       });
 
@@ -167,28 +188,49 @@ const businessPartnerController = {
 
   approveApplication: async (req, res) => {
     const { applicationId } = req.params;
-    const { user_id: adminId } = req.user;
+    const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
 
     try {
       const application = await prisma.businessPartnerApplication.findUnique({
-        where: { id: applicationId }
+        where: { id: applicationId },
+        include: { user: true }
       });
 
       if (!application || application.status !== 'PENDING') {
         return res.status(400).json({ success: false, message: "Application not eligible for approval" });
       }
 
-      await prisma.user.update({
-        where: { id: application.userId },
-        data: { identity: 'BUSINESS_PARTNER' }
-      });
+      // 1. Permission Check (Admin or Delegated Partner)
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity);
+      if (!isTopAdmin) {
+        const approver = await prisma.user.findUnique({ where: { id: adminId } });
+        if (!approver.canApproveSaathi) { 
+          return res.status(403).json({ success: false, message: "No approval permission" });
+        }
+        if (application.user.parentId !== adminId && (!application.user.path || !application.user.path.includes(adminId))) {
+          return res.status(403).json({ success: false, message: "You can only approve applications within your own hierarchy." });
+        }
+      }
 
-      await prisma.businessPartnerApplication.update({
-        where: { id: applicationId },
-        data: { status: 'APPROVED', approvedBy: adminId }
-      });
+      // 2. Financial Credit to Admin Wallet (If Razorpay was used)
+      if (application.paymentMode === 1) { 
+        const sharedWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        await walletService.updateBalance(sharedWallet.id, application.amount);
+      }
 
-      res.json({ success: true, message: "Business Partner approved successfully" });
+      // 3. Finalize Approval
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: application.userId },
+          data: { identity: 'BUSINESS_PARTNER' }
+        }),
+        prisma.businessPartnerApplication.update({
+          where: { id: applicationId },
+          data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() }
+        })
+      ]);
+
+      res.json({ success: true, message: "Business Partner approved successfully. Identity updated to BUSINESS_PARTNER." });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message });
@@ -197,18 +239,48 @@ const businessPartnerController = {
 
   rejectApplication: async (req, res) => {
     const { applicationId } = req.params;
-    const { user_id: adminId } = req.user;
+    const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
     const { reason } = req.body;
 
+    if (!reason) return res.status(400).json({ success: false, message: "Rejection reason required" });
+
     try {
+      const application = await prisma.businessPartnerApplication.findUnique({
+        where: { id: applicationId },
+        include: { user: true }
+      });
+
+      if (!application) return res.status(404).json({ success: false, message: "Application not found" });
+
+      // 1. Permission Check
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity);
+      if (!isTopAdmin) {
+        const approver = await prisma.user.findUnique({ where: { id: adminId } });
+        if (!approver.canApproveSaathi) { // Using same delegation for BP
+          return res.status(403).json({ success: false, message: "No rejection permission" });
+        }
+        if (application.user.parentId !== adminId && (!application.user.path || !application.user.path.includes(adminId))) {
+          return res.status(403).json({ success: false, message: "You can only reject applications within your own hierarchy." });
+        }
+      }
+
       await prisma.businessPartnerApplication.update({
         where: { id: applicationId },
         data: { status: 'REJECTED', rejectionReason: reason, approvedBy: adminId }
       });
-      res.json({ success: true, message: "Application rejected" });
+
+      await logAction({
+        userId: adminId,
+        action: "BUSINESS_APPLICATION_REJECTED",
+        targetId: applicationId,
+        tenantId,
+        metadata: { reason, userId: application.userId }
+      });
+
+      res.json({ success: true, message: "Application rejected successfully" });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   }
 };

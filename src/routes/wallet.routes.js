@@ -42,4 +42,15 @@ router.post("/admin/top-up/:requestId/approve", authMiddleware, checkIdentity(["
 // Reject top-up request
 router.post("/admin/top-up/:requestId/reject", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.rejectTopUpRequest);
 
+// Admin Manual Deduction
+router.post("/admin/deduct", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.adminWalletDeduct);
+
+// QR Code Management
+router.post("/admin/qr-codes", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.addQRCode);
+router.get("/qr-codes", authMiddleware, walletController.getQRCodes);
+router.put("/admin/qr-codes/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.toggleQRCode);
+
+// Wallet Transaction History (Comprehensive)
+router.get("/history", authMiddleware, walletController.getWalletTransactions);
+
 module.exports = router;

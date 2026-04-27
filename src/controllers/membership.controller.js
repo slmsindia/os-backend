@@ -198,12 +198,26 @@ const membershipController = {
 
       // Handle Wallet Deduction for Method 2 (Skip if it's a paid resubmission or if paying via Razorpay)
       let walletTransaction = null;
-      const isWalletPayment = (body.paymentMode === 2); // Assuming 2 is Wallet from your earlier JSON
+      const isWalletPayment = (body.paymentMode === 2); 
+
+      // USER identity must use Razorpay
+      if (req.user.identity === 'USER' && isWalletPayment) {
+        return res.status(400).json({ success: false, message: "Basic users must use Razorpay for payment. Wallet option is not available." });
+      }
 
       if (isMethod2 && !isPaidResubmission && isWalletPayment) {
         try {
-          // Deduct from the requester's (creator's) wallet (Smart Resolver handles Shared vs Personal)
-          walletTransaction = await walletService.deductBalanceIfSufficient(userId, config.membershipPrice, user.tenantId, requesterIdentity);
+          // Resolve Admin Corporate Wallet for Credit
+          const adminWallet = await walletService.resolveWallet(null, user.tenantId, 'ADMIN');
+          
+          // Deduct from the requester's (creator's) wallet and credit Admin
+          walletTransaction = await walletService.deductBalanceIfSufficient(
+            userId, 
+            config.membershipPrice, 
+            user.tenantId, 
+            requesterIdentity,
+            adminWallet.id
+          );
         } catch (walletErr) {
           return res.status(400).json({
             success: false,
@@ -223,8 +237,11 @@ const membershipController = {
           firstName: body.firstName,
           lastName: body.lastName,
           email: body.email,
+          mobile: body.mobile || (Array.isArray(body.documents) ? body.contactNumber1 : null),
           gender: body.gender || body.genderId || "OTHER",
+          birthDate: body.birthDate ? new Date(body.birthDate) : null,
           educationId: body.education || body.educationId || "1",
+          occupation: body.occupation || "N/A",
           sectorId: body.sector || body.sectorId || "1",
           jobRoleId: (Array.isArray(body.jobRoles) && body.jobRoles.length > 0) ? body.jobRoles[0] : (body.jobRoleId || "1"),
           maritalStatus: body.maritalStatus || "SINGLE",
@@ -261,52 +278,57 @@ const membershipController = {
 
       const mappedData = mapComplexToFlat();
 
-      // Create or Update membership application
-      let application;
-      if (isPaidResubmission) {
-        application = await prisma.membershipApplication.update({
-          where: { id: existingApplication.id },
-          data: {
-            ...mappedData,
-            status: 'PENDING',
-            createdById: isMethod2 ? userId : null
+      // Create or Update membership application and documents in a TRANSACTION
+      const result = await prisma.$transaction(async (tx) => {
+        let app;
+        if (isPaidResubmission) {
+          app = await tx.membershipApplication.update({
+            where: { id: existingApplication.id },
+            data: {
+              ...mappedData,
+              status: 'PENDING',
+              createdById: isMethod2 ? userId : null
+            }
+          });
+        } else {
+          // Delete old rejected application if any to avoid uniqueness constraint issues
+          if (existingApplication) {
+            await tx.membershipPayment.deleteMany({ where: { applicationId: existingApplication.id } });
+            await tx.membershipDocument.deleteMany({ where: { applicationId: existingApplication.id } });
+            await tx.membershipApplication.delete({ where: { id: existingApplication.id } });
           }
-        });
-      } else {
-        // Delete old rejected application if any to avoid uniqueness constraint issues
-        if (existingApplication) {
-          await prisma.membershipPayment.deleteMany({ where: { applicationId: existingApplication.id } });
-          await prisma.membershipDocument.deleteMany({ where: { applicationId: existingApplication.id } });
-          await prisma.membershipApplication.delete({ where: { id: existingApplication.id } });
+
+          app = await tx.membershipApplication.create({
+            data: {
+              id: generateUuid(),
+              userId: targetUserId,
+              ...mappedData,
+              status: 'PENDING',
+              createdById: isMethod2 ? userId : null,
+              paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY'
+            }
+          });
         }
 
-        application = await prisma.membershipApplication.create({
-          data: {
+        // Create documents
+        if (body.documents && body.documents.length > 0) {
+          const documentData = body.documents.map(doc => ({
             id: generateUuid(),
-            userId: targetUserId,
-            ...mappedData,
-            status: 'PENDING',
-            createdById: isMethod2 ? userId : null,
-            paymentType: isMethod2 ? 'WALLET' : 'RAZORPAY'
-          }
-        });
-      }
+            applicationId: app.id,
+            documentTypeId: doc.documentTypeId || doc.id || doc.type || "1", // Fallback mapping
+            documentNumber: doc.documentNumber || "N/A",
+            frontImageUrl: doc.frontImageUrl || doc.documentUrl || "",
+            backImageUrl: doc.backImageUrl || null
+          }));
 
-      // Create documents
-      if (body.documents && body.documents.length > 0) {
-        const documentData = body.documents.map(doc => ({
-          id: generateUuid(),
-          applicationId: application.id,
-          documentTypeId: doc.documentTypeId,
-          documentNumber: doc.documentNumber,
-          frontImageUrl: doc.frontImageUrl,
-          backImageUrl: doc.backImageUrl || null
-        }));
+          await tx.membershipDocument.createMany({
+            data: documentData
+          });
+        }
+        return app;
+      });
 
-        await prisma.membershipDocument.createMany({
-          data: documentData
-        });
-      }
+      application = result;
 
       // If it's a paid resubmission, we are done
       if (isPaidResubmission) {

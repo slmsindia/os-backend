@@ -647,6 +647,163 @@ const walletController = {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * Admin Wallet Deduction (Manual)
+   */
+  adminWalletDeduct: async (req, res) => {
+    const { user_id: adminId, tenant_id: tenantId, identity } = req.user;
+    const { targetUserId, amount, reason } = req.body;
+
+    const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+    if (!ELIGIBLE_ROLES.includes(identity)) {
+      return res.status(403).json({ success: false, message: "Permission denied" });
+    }
+
+    if (!targetUserId || !amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid target user or amount" });
+    }
+
+    try {
+      const targetWallet = await prisma.wallet.findUnique({
+        where: { userId: targetUserId }
+      });
+
+      if (!targetWallet) {
+        return res.status(404).json({ success: false, message: "Target user wallet not found" });
+      }
+
+      if (targetWallet.balance < amount) {
+        return res.status(400).json({ success: false, message: "Insufficient balance in target wallet" });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedWallet = await tx.wallet.update({
+          where: { id: targetWallet.id },
+          data: { balance: { decrement: amount } }
+        });
+
+        const txn = await tx.walletTransaction.create({
+          data: {
+            walletId: targetWallet.id,
+            amount: amount,
+            type: "DEBIT",
+            category: "ADMIN_ADJUSTMENT",
+            description: reason || "Admin manual deduction",
+            tenantId
+          }
+        });
+
+        return { updatedWallet, txn };
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "ADMIN_WALLET_DEDUCT",
+        targetId: targetUserId,
+        metadata: { amount, reason }
+      });
+
+      res.json({ success: true, message: "Balance deducted successfully", data: result });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * QR Code Management
+   */
+  addQRCode: async (req, res) => {
+    const { tenant_id: tenantId, user_id: adminId } = req.user;
+    const { title, imageUrl } = req.body;
+
+    try {
+      const qr = await prisma.qRCode.create({
+        data: { title, imageUrl, tenantId }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "ADD_QR_CODE",
+        targetId: qr.id,
+        metadata: { title }
+      });
+
+      res.status(201).json({ success: true, data: qr });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  getQRCodes: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
+    try {
+      const codes = await prisma.qRCode.findMany({
+        where: { tenantId, isActive: true }
+      });
+      res.json({ success: true, data: codes });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  toggleQRCode: async (req, res) => {
+    const { id } = req.params;
+    const { isActive } = req.body;
+    try {
+      const qr = await prisma.qRCode.update({
+        where: { id },
+        data: { isActive }
+      });
+      res.json({ success: true, data: qr });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Wallet Transactions History
+   */
+  getWalletTransactions: async (req, res) => {
+    const { user_id: userId, tenant_id: tenantId, identity } = req.user;
+    const { page = 1, limit = 20, type, category } = req.query;
+
+    try {
+      const wallet = await walletService.resolveWallet(userId, tenantId, identity);
+      if (!wallet) return res.status(404).json({ success: false, message: "Wallet not found" });
+
+      const where = { walletId: wallet.id };
+      if (type) where.type = type;
+      if (category) where.category = category;
+
+      const [txns, total] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          skip: (parseInt(page) - 1) * parseInt(limit),
+          take: parseInt(limit),
+          orderBy: { createdAt: "desc" }
+        }),
+        prisma.walletTransaction.count({ where })
+      ]);
+
+      res.json({
+        success: true,
+        data: txns,
+        pagination: {
+          page: parseInt(page),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
   }
 };
 

@@ -15,6 +15,15 @@ model Tenant {
   createdAt DateTime @default(now())
   users     User[]
   wallets   Wallet[] // Opposite relation for shared wallets
+  
+  // App & Admin Management
+  appSections     AppSection[]
+  posters         Poster[]
+  announcements   Announcement[]
+  notices         Notice[]
+  surveyQuestions SurveyQuestion[]
+  qrCodes         QRCode[]
+  walletTransactions WalletTransaction[]
 }
 
 enum Gender {
@@ -92,12 +101,19 @@ model User {
   createdSaathiApps      SaathiApplication[] @relation("SaathiCreator")
   businessPartnerApps    BusinessPartnerApplication[]
 
+  // Commission
+  commissionSchemeId String?
+  commissionScheme   CommissionScheme? @relation("UserCommissionScheme", fields: [commissionSchemeId], references: [id])
+
+  surveyAnswers      SurveyAnswer[]
+
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
   @@index([path])
   @@index([canApproveMembership])
   @@index([canApproveSaathi])
+  @@index([commissionSchemeId])
 }
 
 // ... (existing models)
@@ -505,6 +521,8 @@ model MembershipApplication {
   citizenship       String
   isMigrantWorker   Boolean
   monthlyIncome     String
+  birthDate         DateTime?
+  occupation        String?
   
   // New API Fields
   profilePhoto      String?
@@ -649,6 +667,7 @@ model Wallet {
   updatedAt   DateTime @updatedAt
 
   topUpRequests WalletTopUpRequest[]
+  transactions  WalletTransaction[]
 
   @@index([userId])
   @@index([tenantId])
@@ -819,4 +838,277 @@ model SaathiPayment {
   updatedAt         DateTime @updatedAt
 
   @@index([applicationId])
+}
+
+// ============================================
+// 📘 Commission System Models
+// ============================================
+
+model CommissionScheme {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  tenantId  String
+  users     User[]   @relation("UserCommissionScheme")
+  shares    CommissionShare[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model CommissionService {
+  id          String   @id @default(uuid())
+  name        String
+  isActive    Boolean  @default(true)
+  subServices CommissionSubService[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CommissionSubService {
+  id          String   @id @default(uuid())
+  name        String
+  serviceId   String
+  service     CommissionService @relation(fields: [serviceId], references: [id])
+  isActive    Boolean  @default(true)
+  shares      CommissionShare[]
+  transactions TransactionLog[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([serviceId])
+}
+
+model CommissionShare {
+  id                String   @id @default(uuid())
+  schemeId          String
+  scheme            CommissionScheme @relation(fields: [schemeId], references: [id])
+  subServiceId      String
+  subService        CommissionSubService @relation(fields: [subServiceId], references: [id])
+  
+  commissionType    Int      @default(1) // 1 = Percentage, 2 = Flat
+  baseType          Int      @default(1) 
+  
+  admin             Float    @default(0)
+  statePartner      Float    @default(0)
+  districtPartner   Float    @default(0)
+  saathi            Float    @default(0)
+  member            Float    @default(0)
+  referral          Float    @default(0)
+  referralMinAmount Float    @default(0)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([schemeId, subServiceId])
+  @@index([schemeId])
+  @@index([subServiceId])
+}
+
+model TransactionLog {
+  id                  String   @id @default(uuid())
+  subServiceId        String
+  subService          CommissionSubService @relation(fields: [subServiceId], references: [id])
+  amount              Float
+  transactionDoneById String
+  transactionDoneForId String?
+  status              String   @default("SUCCESS")
+  commissionHistory   CommissionHistory[]
+  adminIncome         AdminIncome[]
+  createdAt           DateTime @default(now())
+
+  @@index([subServiceId])
+  @@index([transactionDoneById])
+}
+
+model CommissionHistory {
+  id              String   @id @default(uuid())
+  userId          String
+  transactionId   String
+  transaction     TransactionLog @relation(fields: [transactionId], references: [id])
+  amount          Float
+  accountType     String   @default("commission") // commission, main
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([transactionId])
+}
+
+model AdminIncome {
+  id              String   @id @default(uuid())
+  transactionId   String
+  transaction     TransactionLog @relation(fields: [transactionId], references: [id])
+  amount          Float
+  type            String   @default("credit") // credit, debit
+  createdAt       DateTime @default(now())
+
+  @@index([transactionId])
+}
+
+// ============================================
+// 📱 App Services & UI Management
+// ============================================
+
+model AppSection {
+  id           String       @id @default(uuid())
+  name         String
+  iconUrl      String?
+  order        Int          @default(0)
+  isActive     Boolean      @default(true)
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  services     AppService[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([tenantId])
+}
+
+model AppService {
+  id            String       @id @default(uuid())
+  name          String
+  iconUrl       String?
+  sectionId     String
+  section       AppSection   @relation(fields: [sectionId], references: [id])
+  componentName String?      // For frontend routing
+  arguments     Json?        // Dynamic config for the service
+  order         Int          @default(0)
+  isActive      Boolean      @default(true)
+  
+  permissions   RoleServicePermission[]
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([sectionId])
+}
+
+model RoleServicePermission {
+  id          String     @id @default(uuid())
+  serviceId   String
+  service     AppService @relation(fields: [serviceId], references: [id])
+  identity    Identity   // Role that can see this service
+  
+  createdAt   DateTime   @default(now())
+
+  @@unique([serviceId, identity])
+}
+
+// ============================================
+// 📢 Admin Content Management
+// ============================================
+
+model Poster {
+  id          String   @id @default(uuid())
+  title       String?
+  imageUrl    String
+  linkUrl     String?
+  screen      String?  @default("HOME") // Where to show
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  text        String
+  type        String   @default("TICKER") // TICKER, BANNER
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Notice {
+  id          String   @id @default(uuid())
+  title       String
+  message     String
+  imageUrl    String?
+  isPopup     Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ============================================
+// 📝 Survey & Membership Questions
+// ============================================
+
+model SurveyQuestion {
+  id          String         @id @default(uuid())
+  question    String
+  type        String         @default("TEXT") // TEXT, SELECT, MULTI_SELECT, RADIO
+  options     Json?          // Options for select/radio
+  order       Int            @default(0)
+  isRequired  Boolean        @default(true)
+  isActive    Boolean        @default(true)
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  answers     SurveyAnswer[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([tenantId])
+}
+
+model SurveyAnswer {
+  id          String         @id @default(uuid())
+  questionId  String
+  question    SurveyQuestion @relation(fields: [questionId], references: [id])
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  answer      String
+  createdAt   DateTime       @default(now())
+
+  @@index([questionId])
+  @@index([userId])
+}
+
+// ============================================
+// 💳 Wallet Enhancements
+// ============================================
+
+model QRCode {
+  id          String   @id @default(uuid())
+  title       String
+  imageUrl    String
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model WalletTransaction {
+  id          String   @id @default(uuid())
+  walletId    String
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+  amount      Float
+  type        String   // CREDIT, DEBIT
+  category    String   // TOPUP, REFUND, SERVICE_CHARGE, ADMIN_ADJUSTMENT, COMMISSION
+  status      String   @default("SUCCESS")
+  referenceId String?  // ID of the related object (e.g. TransactionLog ID)
+  description String?
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([walletId])
+  @@index([category])
+  @@index([tenantId])
 }
