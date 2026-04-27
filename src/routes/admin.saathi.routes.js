@@ -27,6 +27,7 @@ router.post("/create-directly",
 
 // Management routes
 router.get("/applications", adminSaathiController.getSaathiApplications);
+router.get("/applications/:applicationId", adminSaathiController.getSaathiApplicationById);
 router.post("/applications/:applicationId/approve", adminSaathiController.approveApplication);
 router.post("/applications/:applicationId/reject", adminSaathiController.rejectApplication);
 

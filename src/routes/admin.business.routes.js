@@ -12,6 +12,7 @@ router.post("/apply", businessPartnerController.createApplication);
 
 // Admin controls
 router.get("/applications", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), businessPartnerController.getApplications);
+router.get("/applications/:applicationId", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), businessPartnerController.getApplicationById);
 router.post("/applications/:applicationId/approve", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), businessPartnerController.approveApplication);
 router.post("/applications/:applicationId/reject", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), businessPartnerController.rejectApplication);
 

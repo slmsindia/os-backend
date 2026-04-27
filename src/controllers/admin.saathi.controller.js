@@ -210,6 +210,36 @@ const adminSaathiController = {
   },
 
   /**
+   * Get Single Saathi Application
+   */
+  getSaathiApplicationById: async (req, res) => {
+    const { user_id: adminId, identity: adminIdentity } = req.user;
+    const { applicationId } = req.params;
+
+    try {
+      const admin = await prisma.user.findUnique({ where: { id: adminId } });
+      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity) || 
+                       admin.canApproveSaathi;
+
+      if (!canView) {
+        return res.status(403).json({ success: false, message: "Permission denied" });
+      }
+
+      const application = await prisma.saathiApplication.findUnique({
+        where: { id: applicationId },
+        include: { user: true, payment: true }
+      });
+
+      if (!application) return res.status(404).json({ success: false, message: "Application not found" });
+
+      res.json({ success: true, data: application });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * Approve Saathi Application
    */
   approveApplication: async (req, res) => {

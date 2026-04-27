@@ -182,6 +182,21 @@ const businessPartnerController = {
     }
   },
 
+  getApplicationById: async (req, res) => {
+    const { applicationId } = req.params;
+    try {
+      const application = await prisma.businessPartnerApplication.findUnique({
+        where: { id: applicationId },
+        include: { user: true }
+      });
+      if (!application) return res.status(404).json({ success: false, message: "Application not found" });
+      res.json({ success: true, data: application });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
+    }
+  },
+
   approveApplication: async (req, res) => {
     const { applicationId } = req.params;
     const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
