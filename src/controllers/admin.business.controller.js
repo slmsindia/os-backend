@@ -3,6 +3,7 @@ const { generateUuid } = require("../utils/id");
 const bcrypt = require("bcrypt");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
+const razorpayService = require("../services/razorpay.service");
 
 const businessPartnerController = {
   createApplication: async (req, res) => {
@@ -134,6 +135,17 @@ const businessPartnerController = {
           createdById: adminId
         };
 
+        // Pre-create Razorpay Order if needed
+        let razorpayOrder = null;
+        if (paymentMethod === 'RAZORPAY') {
+          try {
+            razorpayOrder = await razorpayService.createOrder(amount, 'INR', `biz_direct_${targetUserId.slice(0, 8)}`);
+          } catch (err) {
+            console.error("Razorpay Order Error:", err);
+            throw new Error("Failed to create Razorpay order. Please check configuration.");
+          }
+        }
+
         let appResult;
         if (isPaidResubmission) {
           appResult = await tx.businessPartnerApplication.update({
@@ -145,7 +157,8 @@ const businessPartnerController = {
             data: {
               ...appData,
               id: generateUuid(),
-              userId: targetUserId
+              userId: targetUserId,
+              razorPayReferenceNo: razorpayOrder ? razorpayOrder.id : null
             }
           });
         }
@@ -168,8 +181,16 @@ const businessPartnerController = {
 
       res.status(201).json({
         success: true,
-        message: "Business Partner application created successfully.",
-        data: { applicationId: application.id }
+        message: paymentMethod === 'RAZORPAY' ? "Business Partner application created. Please complete payment." : "Business Partner application created successfully.",
+        data: { 
+          applicationId: application.id,
+          razorpayOrder: application.razorPayReferenceNo ? {
+            id: application.razorPayReferenceNo,
+            amount: application.amount,
+            currency: 'INR',
+            key: process.env.RAZORPAY_KEY_ID
+          } : null
+        }
       });
 
       await logAction({

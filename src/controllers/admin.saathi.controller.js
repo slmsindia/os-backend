@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
+const razorpayService = require("../services/razorpay.service");
 
 const adminSaathiController = {
   /**
@@ -145,6 +146,17 @@ const adminSaathiController = {
           status: 'PENDING'   // Send to Admin for approval
         };
 
+        // Pre-create Razorpay Order if needed
+        let razorpayOrder = null;
+        if (paymentMethod === 'RAZORPAY') {
+          try {
+            razorpayOrder = await razorpayService.createOrder(amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
+          } catch (err) {
+            console.error("Razorpay Order Error:", err);
+            throw new Error("Failed to create Razorpay order. Please check configuration.");
+          }
+        }
+
         let appResult;
         if (isPaidResubmission) {
           appResult = await tx.saathiApplication.update({
@@ -162,11 +174,13 @@ const adminSaathiController = {
                   id: generateUuid(),
                   amount,
                   method: paymentMethod,
+                  razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
                   status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
                   paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
                 }
               }
-            }
+            },
+            include: { payment: true }
           });
         }
 
@@ -188,8 +202,17 @@ const adminSaathiController = {
 
       res.status(201).json({
         success: true,
-        message: "Saathi application created successfully.",
-        data: { applicationId: application.id, userId: targetUserId }
+        message: paymentMethod === 'RAZORPAY' ? "Saathi application created. Please complete payment." : "Saathi application created successfully.",
+        data: { 
+          applicationId: application.id, 
+          userId: targetUserId,
+          razorpayOrder: application.payment?.razorpayOrderId ? {
+            id: application.payment.razorpayOrderId,
+            amount: application.payment.amount,
+            currency: application.payment.currency,
+            key: process.env.RAZORPAY_KEY_ID
+          } : null
+        }
       });
 
     } catch (err) {
