@@ -27,6 +27,21 @@ const businessPartnerController = {
     }
   },
 
+  /**
+   * Get Business Partner Fee
+   */
+  getBusinessPartnerFee: async (req, res) => {
+    try {
+      const setting = await prisma.globalSetting.findUnique({
+        where: { key: 'BUSINESS_PARTNER_FEE' }
+      });
+      res.json({ success: true, amount: setting ? parseFloat(setting.value) : 2000 });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
   createApplication: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const body = req.body;

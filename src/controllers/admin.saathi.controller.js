@@ -28,6 +28,21 @@ const adminSaathiController = {
   },
 
   /**
+   * Get Current Saathi Fee
+   */
+  getSaathiFee: async (req, res) => {
+    try {
+      const setting = await prisma.globalSetting.findUnique({
+        where: { key: 'SAATHI_FEE' }
+      });
+      res.json({ success: true, amount: setting ? parseFloat(setting.value) : 1000 });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * Admin/Partner Direct Saathi Creation
    */
   createSaathiDirectly: async (req, res) => {

@@ -16,6 +16,7 @@ router.post("/fee",
   checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
   adminSaathiController.updateSaathiFee
 );
+router.get("/fee", adminSaathiController.getSaathiFee);
 
 // Only Admins/Partners can create Saathi directly
 router.post("/create-direct", 

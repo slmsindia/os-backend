@@ -16,6 +16,7 @@ router.post("/fee",
   checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
   businessPartnerController.updateBusinessPartnerFee
 );
+router.get("/fee", businessPartnerController.getBusinessPartnerFee);
 
 // Apply for Business Partner
 router.post("/apply", businessPartnerController.createApplication);
