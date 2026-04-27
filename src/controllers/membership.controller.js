@@ -367,6 +367,9 @@ const membershipController = {
           });
         }
         return app;
+      }, {
+        maxWait: 10000, // 10 seconds to wait to acquire transaction
+        timeout: 20000  // 20 seconds for the transaction to complete
       });
 
       application = result;
