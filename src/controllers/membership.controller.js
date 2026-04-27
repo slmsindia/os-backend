@@ -240,37 +240,6 @@ const membershipController = {
         });
       }
 
-      // Handle Wallet Deduction for Method 2 (Skip if it's a paid resubmission or if paying via Razorpay)
-      let walletTransaction = null;
-      const isWalletPayment = (body.paymentMode === 2); 
-
-      // USER identity must use Razorpay
-      if (req.user.identity === 'USER' && isWalletPayment) {
-        return res.status(400).json({ success: false, message: "Basic users must use Razorpay for payment. Wallet option is not available." });
-      }
-
-      if (isMethod2 && !isPaidResubmission && isWalletPayment) {
-        try {
-          // Resolve Admin Corporate Wallet for Credit
-          const adminWallet = await walletService.resolveWallet(null, user.tenantId, 'ADMIN');
-          
-          // Deduct from the requester's (creator's) wallet and credit Admin
-          walletTransaction = await walletService.deductBalanceIfSufficient(
-            userId, 
-            config.membershipPrice, 
-            user.tenantId, 
-            requesterIdentity,
-            adminWallet.id
-          );
-        } catch (walletErr) {
-          return res.status(400).json({
-            success: false,
-            message: walletErr.message || "Insufficient wallet balance",
-            code: walletErr.code
-          });
-        }
-      }
-
       // Extract fields prioritizing the new complex JSON structure
       const mapComplexToFlat = () => {
         // Find specific addresses from the new array structure if provided
@@ -322,8 +291,23 @@ const membershipController = {
 
       const mappedData = mapComplexToFlat();
 
+      const isWalletPayment = (body.paymentMode === 2);
+      if (req.user.identity === 'USER' && isWalletPayment) {
+        return res.status(400).json({ success: false, message: "Basic users must use Razorpay for payment. Wallet option is not available." });
+      }
+
       // Create or Update membership application and documents in a TRANSACTION
       const result = await prisma.$transaction(async (tx) => {
+        let partnerWallet = null;
+        let adminWallet = null;
+
+        if (isMethod2 && !isPaidResubmission && isWalletPayment) {
+          partnerWallet = await walletService.resolveWallet(userId, tenantId, requesterIdentity);
+          if (!partnerWallet || partnerWallet.balance < config.membershipPrice) {
+            throw new Error("Insufficient partner wallet balance");
+          }
+          adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        }
         let app;
         if (isPaidResubmission) {
           app = await tx.membershipApplication.update({
@@ -364,6 +348,20 @@ const membershipController = {
             data: documentData
           });
         }
+
+        // Record wallet transaction history
+        if (partnerWallet && adminWallet) {
+          await walletService.payCreationFeeWithHistory(
+            partnerWallet.id,
+            adminWallet.id,
+            config.membershipPrice,
+            "Membership Application Fee",
+            app.id,
+            tenantId,
+            tx
+          );
+        }
+
         return app;
       }, {
         maxWait: 10000, // 10 seconds to wait to acquire transaction

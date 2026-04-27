@@ -138,6 +138,58 @@ const walletService = {
   },
 
   /**
+   * Pay Creation Fee and Record History
+   * @param {string} partnerWalletId - Partner's wallet ID (null if paid via Razorpay)
+   * @param {string} adminWalletId - Admin's wallet ID
+   * @param {number} amount - Fee amount
+   * @param {string} description - Transaction description
+   * @param {string} referenceId - Associated application ID
+   * @param {string} tenantId - Tenant ID
+   * @param {object} tx - Prisma transaction object
+   */
+  payCreationFeeWithHistory: async (partnerWalletId, adminWalletId, amount, description, referenceId, tenantId, tx) => {
+    const db = tx || prisma;
+    
+    // 1. Deduct from Partner (if wallet payment)
+    if (partnerWalletId) {
+      await db.wallet.update({
+        where: { id: partnerWalletId },
+        data: { balance: { decrement: amount } }
+      });
+      await db.walletTransaction.create({
+        data: {
+          walletId: partnerWalletId,
+          amount: amount,
+          type: "DEBIT",
+          category: "SERVICE_CHARGE",
+          description: description + " (Fee Deduction)",
+          referenceId: referenceId,
+          tenantId: tenantId
+        }
+      });
+    }
+
+    // 2. Credit to Admin (for both Wallet and Razorpay)
+    if (adminWalletId) {
+      await db.wallet.update({
+        where: { id: adminWalletId },
+        data: { balance: { increment: amount } }
+      });
+      await db.walletTransaction.create({
+        data: {
+          walletId: adminWalletId,
+          amount: amount,
+          type: "CREDIT",
+          category: "COMMISSION",
+          description: description + " (Fee Received)",
+          referenceId: referenceId,
+          tenantId: tenantId
+        }
+      });
+    }
+  },
+
+  /**
    * Ensure a user wallet exists and has sufficient balance
    * @param {string} userId - Current user ID
    * @param {number|string} amount - Amount to validate
@@ -184,7 +236,7 @@ const walletService = {
    * @param {string} identity - User identity
    * @returns {Promise<Object>} Updated wallet
    */
-  deductBalanceIfSufficient: async (userId, amount, tenantId, identity, creditWalletId = null) => {
+  deductBalanceIfSufficient: async (userId, amount, tenantId, identity, creditWalletId = null, description = null, referenceId = null) => {
     const requiredAmount = normalizeAmount(amount);
 
     try {
@@ -238,6 +290,18 @@ const walletService = {
           );
         }
 
+        const deductionResult = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: requiredAmount,
+            type: "DEBIT",
+            category: "SERVICE_CHARGE",
+            description: description || "Wallet deduction",
+            referenceId: referenceId,
+            tenantId: tenantId
+          }
+        });
+
         // Optional: Credit another wallet (e.g., Admin) in the same transaction
         if (creditWalletId) {
           await tx.wallet.update({
@@ -246,6 +310,18 @@ const walletService = {
               balance: {
                 increment: requiredAmount
               }
+            }
+          });
+          
+          await tx.walletTransaction.create({
+            data: {
+              walletId: creditWalletId,
+              amount: requiredAmount,
+              type: "CREDIT",
+              category: "COMMISSION",
+              description: description ? description.replace("deduction", "credit") : "Wallet credit",
+              referenceId: referenceId,
+              tenantId: tenantId
             }
           });
         }

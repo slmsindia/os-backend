@@ -98,15 +98,15 @@ const businessPartnerController = {
       const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
 
       const application = await prisma.$transaction(async (tx) => {
+        let partnerWallet = null;
+        let adminWallet = null;
+
         if (!isPaidResubmission && partnerRoles.includes(adminIdentity) && paymentMethod === 'WALLET') {
-          const wallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
-          if (!wallet || wallet.balance < amount) {
+          partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
+          if (!partnerWallet || partnerWallet.balance < amount) {
             throw new Error("Insufficient partner wallet balance");
           }
-          await walletService.updateBalance(wallet.id, -amount, tx);
-          
-          const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
-          await walletService.updateBalance(adminWallet.id, amount, tx);
+          adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
 
         const appData = {
@@ -134,13 +134,14 @@ const businessPartnerController = {
           createdById: adminId
         };
 
+        let appResult;
         if (isPaidResubmission) {
-          return await tx.businessPartnerApplication.update({
+          appResult = await tx.businessPartnerApplication.update({
             where: { id: existingApplication.id },
             data: { ...appData, rejectionReason: null }
           });
         } else {
-          return await tx.businessPartnerApplication.create({
+          appResult = await tx.businessPartnerApplication.create({
             data: {
               ...appData,
               id: generateUuid(),
@@ -148,6 +149,21 @@ const businessPartnerController = {
             }
           });
         }
+
+        // Record history for Wallet payments
+        if (partnerWallet && adminWallet) {
+          await walletService.payCreationFeeWithHistory(
+            partnerWallet.id,
+            adminWallet.id,
+            amount,
+            "Business Partner Application Fee",
+            appResult.id,
+            tenantId,
+            tx
+          );
+        }
+
+        return appResult;
       });
 
       res.status(201).json({
