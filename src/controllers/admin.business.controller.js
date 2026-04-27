@@ -227,7 +227,7 @@ const businessPartnerController = {
         }),
         prisma.businessPartnerApplication.update({
           where: { id: applicationId },
-          data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() }
+          data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
 

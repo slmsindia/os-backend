@@ -258,7 +258,7 @@ const adminSaathiController = {
         }),
         prisma.saathiApplication.update({
           where: { id: applicationId },
-          data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() }
+          data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
 
