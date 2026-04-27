@@ -1,6 +1,6 @@
 const { prisma } = require("../lib/prisma");
 const { v4: generateUuid } = require("uuid");
-const { logAction } = require("../services/log.service");
+const { logAction } = require("../utils/audit");
 
 const commissionController = {
   /**

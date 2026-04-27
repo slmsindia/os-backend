@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const commissionController = require("../controllers/commission.controller");
-const { authenticate } = require("../middleware/auth.middleware"); // Adjust if name differs
+const authenticate = require("../middleware/auth.middleware"); // Adjust if name differs
 
 // All routes require authentication
 router.use(authenticate);

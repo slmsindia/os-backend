@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const adminContentController = require("../controllers/admin.content.controller");
-const { authenticate } = require("../middleware/auth.middleware");
+const authenticate = require("../middleware/auth.middleware");
 
 router.use(authenticate);
 
