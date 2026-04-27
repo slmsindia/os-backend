@@ -93,7 +93,7 @@ const imeSendMoneyBody = {
         type: "object",
         required: [
           "SenderCustomerId",
-          "ReceiverCustomerId",
+          "ReceiverCustomerId", 
           "Amount",
           "SourceCurrency",
           "DestinationCurrency",
@@ -108,6 +108,70 @@ const imeSendMoneyBody = {
           PaymentMode: { type: "string", enum: ["CASH", "BANK"], example: "BANK" },
           Purpose: { type: "string", example: "Family support" },
           Notes: { type: "string", example: "Monthly transfer" }
+        }
+      }
+    }
+  }
+};
+
+const imeSendTransactionBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "SenderName",
+          "SenderMobileNo", 
+          "ReceiverName",
+          "ReceiverAddress",
+          "ReceiverGender",
+          "ReceiverMobileNo",
+          "ReceiverCountry",
+          "ReceiverState",
+          "ReceiverDistrict", 
+          "ReceiverMunicipality",
+          "ForexSessionId",
+          "CollectAmount",
+          "PayoutAmount",
+          "SourceOfFund",
+          "Relationship",
+          "PurposeOfRemittance",
+          "PaymentType",
+          "CalcBy"
+        ],
+        properties: {
+          // Sender Details
+          SenderName: { type: "string", example: "Hemraj Thapa", description: "Sender's full name" },
+          SenderMobileNo: { type: "string", example: "7041897207", description: "Registered customer mobile number" },
+          Occupation: { type: "string", example: "8081", description: "Occupation ID from IME Static Data (WSST-OCPV1)" },
+          
+          // Receiver Details  
+          ReceiverName: { type: "string", example: "Sita Sharma", description: "Receiver full name in Nepal" },
+          ReceiverAddress: { type: "string", example: "Kathmandu, Nepal", description: "Receiver address" },
+          ReceiverGender: { type: "string", example: "F", description: "Receiver gender (M/F)" },
+          ReceiverMobileNo: { type: "string", example: "9801234567", description: "Receiver mobile number in Nepal" },
+          ReceiverCity: { type: "string", example: "Kathmandu", description: "Receiver's city (optional)" },
+          ReceiverCountry: { type: "string", example: "NPL", description: "Always NPL for Nepal" },
+          ReceiverState: { type: "string", example: "1001", description: "Receiver State ID from IME Static Data" },
+          ReceiverDistrict: { type: "string", example: "5025", description: "Receiver District ID from IME Static Data" },
+          ReceiverMunicipality: { type: "string", example: "9285", description: "Receiver Municipality ID from IME Static Data" },
+          
+          // Transaction Details
+          ForexSessionId: { type: "string", example: "ABC123XYZ", description: "From GetCalculation response - must be unique each transaction" },
+          AgentTxnRefId: { type: "string", example: "TXN20240425001", description: "Your own unique transaction reference ID" },
+          CollectAmount: { type: "string", example: "10500", description: "Amount collected from sender including service charge" },
+          PayoutAmount: { type: "string", example: "16000", description: "Amount to be paid in Nepal" },
+          SourceOfFund: { type: "string", example: "8051", description: "Source of Fund ID from IME Static Data (WSST-SOFV1)" },
+          Relationship: { type: "string", example: "7001", description: "Relationship ID from IME Static Data (WSST-RELV1)" },
+          PurposeOfRemittance: { type: "string", example: "7001", description: "Purpose ID from IME Static Data (WSST-PORV1)" },
+          PaymentType: { type: "string", example: "C", description: "C = Cash, B = Bank Deposit" },
+          CalcBy: { type: "string", example: "P", description: "C = Collection Amount, P = Payout Amount" },
+          
+          // Bank Details (required if PaymentType = B)
+          BankId: { type: "string", example: "NABIL", description: "Bank ID - mandatory if PaymentType = B" },
+          BankBranchId: { type: "string", example: "123", description: "Bank Branch ID - mandatory if PaymentType = B" },
+          BankAccountNumber: { type: "string", example: "001100220033", description: "Beneficiary account - mandatory if PaymentType = B" }
         }
       }
     }
@@ -886,6 +950,16 @@ const paths = {
         401: { description: "Unauthorized" },
       },
     },
+    put: {
+      tags: ["Users"],
+      summary: "Update logged-in profile",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Profile updated" },
+        401: { description: "Unauthorized" },
+      },
+    },
   },
 
   "/api/users/approvals/pending": {
@@ -959,6 +1033,58 @@ const paths = {
     },
   },
 
+  "/api/admin/create-white-label-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create white-label admin (SUPER_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create admin (SUPER_ADMIN/WHITE_LABEL_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-sub-admin": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create sub-admin (SUPER_ADMIN/WHITE_LABEL_ADMIN/ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/create-country-head": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create country head (SUPER_ADMIN/WHITE_LABEL_ADMIN/ADMIN/SUB_ADMIN)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
   "/api/admin/create-district": {
     post: {
       tags: ["Admin"],
@@ -1007,6 +1133,219 @@ const paths = {
     },
   },
 
+  "/api/super-admin/tenants": {
+    get: {
+      tags: ["Super Admin"],
+      summary: "List all tenants (SUPER_ADMIN)",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Tenant list" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // Admin Business Endpoints
+  "/api/admin/business/applications": {
+    get: {
+      tags: ["Admin", "Business"],
+      summary: "List business applications",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Applications list" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/applications/{id}/process": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Process business application",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Application processed" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/skills": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create business skill master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/facilities": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create job facility master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/countries": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create country master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/states": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create state master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/districts": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create district master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  "/api/admin/business/municipalities": {
+    post: {
+      tags: ["Admin", "Business"],
+      summary: "Create municipality master data",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Created" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // Business Endpoints
+  "/api/business/apply": {
+    post: {
+      tags: ["Business"],
+      summary: "Apply for Business Partner",
+      description: "Submit a business partner application",
+      security: bearerSecurity,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["businessName", "brandName", "ownerName", "email", "contactNumber1", "sectorId"],
+              properties: {
+                businessName: { type: "string", example: "ABC Enterprises" },
+                brandName: { type: "string", example: "ABC Brand" },
+                ownerName: { type: "string", example: "John Doe" },
+                email: { type: "string", example: "john@example.com" },
+                contactNumber1: { type: "string", example: "9800000000" },
+                contactNumber2: { type: "string", example: "9800000001" },
+                sectorId: { type: "string", example: "sector-uuid" },
+                amount: { type: "number", example: 10000 },
+                paymentMode: { type: "number", example: 1 },
+                address: { type: "object" },
+                documents: { type: "object" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        201: { description: "Application submitted successfully" },
+        400: { description: "Invalid input" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden - insufficient permissions" }
+      }
+    }
+  },
+
+  "/api/business/status": {
+    get: {
+      tags: ["Business"],
+      summary: "Get Business Application Status",
+      description: "Check the status of your business application",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Business status retrieved" },
+        401: { description: "Unauthorized" },
+        404: { description: "No application found" }
+      }
+    }
+  },
+
+  "/api/business/jobs": {
+    post: {
+      tags: ["Business"],
+      summary: "Post a Job",
+      description: "Create a new job posting (Business Partner or Super Admin only)",
+      security: bearerSecurity,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["jobDescription", "offeredAmount", "educationId", "sectorId", "jobRoleId"],
+              properties: {
+                jobDescription: { type: "string", example: "Software Developer" },
+                jobType: { type: "number", example: 0 },
+                payStructure: { type: "number", example: 0 },
+                offeredAmount: { type: "number", example: 50000 },
+                educationId: { type: "string", example: "edu-uuid" },
+                experience: { type: "number", example: 2 },
+                gender: { type: "string", enum: ["MALE", "FEMALE", "OTHER"], example: "OTHER" },
+                minAge: { type: "number", example: 18 },
+                maxAge: { type: "number", example: 60 },
+                sectorId: { type: "string", example: "sector-uuid" },
+                jobRoleId: { type: "string", example: "role-uuid" },
+                address: { type: "object" },
+                facilities: { type: "array", items: { type: "string" } },
+                noOfOpenings: { type: "number", example: 5 }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        201: { description: "Job posted successfully" },
+        400: { description: "Invalid input" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden - Business Partner or Super Admin only" }
+      }
+    }
+  },
+
   "/api/ime/authenticate": {
     post: {
       tags: ["IME"],
@@ -1035,7 +1374,7 @@ const paths = {
     post: {
       tags: ["IME"],
       summary: "Create IME Customer",
-      requestBody: jsonBody,
+      requestBody: imeCreateCustomerBody,
       responses: {
         201: { description: "Customer created" },
         400: { description: "Invalid input" },
@@ -1140,7 +1479,7 @@ const paths = {
     post: {
       tags: ["IME"],
       summary: "Send Money via IME",
-      requestBody: jsonBody,
+      requestBody: imeSendMoneyBody,
       responses: {
         200: { description: "Money sent successfully" },
         400: { description: "Invalid transaction data" },
@@ -1335,6 +1674,1042 @@ const paths = {
         200: { description: "Exchange rate" },
       },
     },
+  },
+
+  // ==================== IME REPORTS ====================
+  "/api/ime/reports/soa": {
+    get: {
+      tags: ["IME Reports"],
+      summary: "Get Statement of Account (SOA) Report",
+      parameters: [
+        { name: "fromDate", in: "query", required: true, schema: { type: "string", example: "2024/01/01", description: "Start date in YYYY/MM/DD format" } },
+        { name: "toDate", in: "query", required: true, schema: { type: "string", example: "2024/12/31", description: "End date in YYYY/MM/DD format" } },
+      ],
+      responses: {
+        200: { description: "SOA report retrieved" },
+        400: { description: "Invalid date format" },
+      },
+    },
+  },
+
+  "/api/ime/static-data": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME static reference data",
+      description: "Retrieve static reference data by type code (e.g., WSST-MUNV1 for municipalities)",
+      parameters: [
+        { name: "typeCode", in: "query", required: true, schema: { type: "string" }, description: "Type code for static data (e.g., WSST-MUNV1)" },
+        { name: "DistrictId", in: "query", required: false, schema: { type: "string" }, description: "District ID filter (required for municipality data)" }
+      ],
+      responses: {
+        200: { description: "Static data retrieved successfully" },
+        400: { description: "Missing typeCode parameter" },
+        500: { description: "Server error" }
+      }
+    }
+  },
+
+  "/api/ime/bank-branches": {
+    get: {
+      tags: ["IME"],
+      summary: "Get bank branches",
+      description: "Retrieve list of bank branches filtered by bank ID",
+      parameters: [
+        { name: "bankId", in: "query", required: true, schema: { type: "string" } }
+      ],
+      responses: {
+        200: { description: "Bank branches retrieved successfully" },
+        400: { description: "Missing bankId parameter" },
+        500: { description: "Server error" }
+      }
+    }
+  },
+
+  "/api/ime/id-issue-places": {
+    get: {
+      tags: ["IME"],
+      summary: "Get ID issue places",
+      description: "Retrieve list of places where IDs can be issued",
+      responses: {
+        200: { description: "ID issue places retrieved successfully" },
+        500: { description: "Server error" }
+      }
+    }
+  },
+
+  // ==================== IME PHASE 2 eKYC ENDPOINTS ====================
+  "/api/ime/ekyc/generate-ott": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Generate OTT (One-Time Token) for Aadhar Validation",
+      description: "Generates OTT and returns URL for Aadhar number entry. For customers (203), OTP and OTPToken are required.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId", "Owner"],
+              properties: {
+                EntityType: { type: "string", example: "203", description: "201=CSP, 203=Customer" },
+                EntityId: { type: "string", example: "9812345678", description: "PartnerBranchId for CSP, MobileNo for Customer" },
+                Owner: { type: "string", example: "Owner Name" },
+                OTPToken: { type: "string", example: "OTP_TOKEN_123", description: "Required only for Customer (203)" },
+                OTP: { type: "string", example: "1234", description: "Required only for Customer (203)" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: "OTT generated successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  message: { type: "string" },
+                  url: { type: "string", description: "URL to open for Aadhar validation" }
+                }
+              }
+            }
+          }
+        },
+        400: { description: "Missing required fields" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/get-unique-id": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Get Unique Identifier After Aadhar Validation",
+      description: "Called after user opens OTT URL and completes Aadhar number entry",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId"],
+              properties: {
+                EntityType: { type: "string", example: "203" },
+                EntityId: { type: "string", example: "9812345678" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Unique ID retrieved" },
+        400: { description: "Invalid request" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/bio-kyc": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Submit Biometric Fingerprint Data for KYC",
+      description: "Submits biometric fingerprint data captured from biometric device",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId", "Pid"],
+              properties: {
+                EntityType: { type: "string", example: "203" },
+                EntityId: { type: "string", example: "9812345678" },
+                Pid: { type: "string", description: "Base64 encoded PID XML from biometric device" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Bio KYC completed" },
+        400: { description: "Invalid biometric data" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/customer-onboarding": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Complete Customer Registration After eKYC",
+      description: "Final step after biometric KYC to complete customer registration",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["MobileNo"],
+              properties: {
+                MobileNo: { type: "string", example: "9812345678" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Customer onboarding completed" },
+        400: { description: "Invalid request" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/customer-requery": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Get Full Customer Details from IME",
+      description: "Retrieves comprehensive customer information from IME system",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["MobileNo"],
+              properties: {
+                MobileNo: { type: "string", example: "9812345678" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Customer details retrieved" },
+        404: { description: "Customer not found" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/check-entity-status": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Check Entity Onboarding Status",
+      description: "Check the current stage in the onboarding process for CSP or Customer",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId"],
+              properties: {
+                EntityType: { type: "string", example: "203" },
+                EntityId: { type: "string", example: "9812345678" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: "Entity status retrieved",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  status: { type: "string" },
+                  isEligibleForTxn: { type: "string", example: "Y" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/aadhar-registration": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Register Customer via Aadhar (SOAP-based)",
+      description: "Alternative method to register customer using Aadhar number instead of manual registration",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["MobileNo", "FullName", "MaritalStatus", "DOB", "Gender", "Email", "Occupation", "SourceOfFund", "EstimatedAnnualIncome", "Country", "State", "District", "Address", "PinCode", "AadharNo"],
+              properties: {
+                MobileNo: { type: "string", example: "9812345678" },
+                FullName: { type: "string", example: "Ram Bahadur Thapa" },
+                MaritalStatus: { type: "string", example: "1902", description: "Marital Status ID from static data" },
+                DOB: { type: "string", example: "1995/06/15", description: "Date of Birth in YYYY/MM/DD format" },
+                Gender: { type: "string", example: "1801", description: "Gender ID (1801=Male, 1802=Female)" },
+                Email: { type: "string", example: "ram@example.com" },
+                Occupation: { type: "string", example: "8081", description: "Occupation ID" },
+                SourceOfFund: { type: "string", example: "8051", description: "Source of Fund ID" },
+                EstimatedAnnualIncome: { type: "string", example: "6", description: "Annual Income ID from WSST-CAIV1" },
+                Country: { type: "string", example: "104", description: "Country ID" },
+                State: { type: "string", example: "1041", description: "State ID" },
+                District: { type: "string", example: "5705", description: "District ID" },
+                Address: { type: "string", example: "Sector 55, Noida" },
+                PinCode: { type: "string", example: "201301" },
+                AadharNo: { type: "string", example: "707139067873", description: "12-digit Aadhar number" },
+                PhotoData: { type: "string", description: "Base64 encoded photo (optional)" },
+                PhotoDataType: { type: "string", example: "jpg" },
+                IdData: { type: "string", description: "Base64 encoded ID document (optional)" },
+                IdDataType: { type: "string", example: "pdf" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Aadhar registration initiated" },
+        400: { description: "Missing required fields" }
+      }
+    }
+  },
+
+  "/api/ime/ekyc/aadhar-reprocess": {
+    post: {
+      tags: ["IME Phase 2 eKYC"],
+      summary: "Reset/Clear Aadhar KYC Process",
+      description: "Used to clear/reset the Aadhar KYC process for a CSP or Customer that needs to restart",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId", "ReprocessState"],
+              properties: {
+                EntityType: { type: "string", example: "203", description: "201=CSP, 203=Customer" },
+                EntityId: { type: "string", example: "9812345678", description: "PartnerBranchId for CSP, MobileNo for Customer" },
+                ReprocessState: { type: "string", description: "Value from GetStaticData where TYPE CODE = WSST-AERV1" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Aadhar entity reprocessed" },
+        400: { description: "Invalid request" }
+      }
+    }
+  },
+
+  // ==================== IME LEGACY SOAP ENDPOINTS ====================
+  "/api/ime/GetCalculation": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Get Exchange Rate and Service Charge Calculation",
+      description: "Calculate exchange rate and service charges. Returns ForexSessionId required for SendTransaction.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
+              properties: {
+                PayoutAgentId: { type: "string", description: "Bank ID - Mandatory if PaymentType=B" },
+                RemitAmount: { type: "string", example: "10000", description: "Amount in INR" },
+                PaymentType: { type: "string", example: "C", description: "C=Cash, B=Bank" },
+                PayoutCountry: { type: "string", example: "NPL" },
+                CalcBy: { type: "string", example: "C", description: "C=Collection Amount, P=Payout Amount" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: "Calculation result with ForexSessionId",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  ForexSessionId: { type: "string", description: "Must be used immediately in SendTransaction" },
+                  CollectAmount: { type: "string" },
+                  ServiceCharge: { type: "string" },
+                  ExchangeRate: { type: "string" },
+                  PayoutAmount: { type: "string" },
+                  PayoutCurrency: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/SendTransaction": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Create Money Transfer Transaction",
+      description: "Creates a new transaction. ForexSessionId from GetCalculation must be used immediately.",
+      requestBody: imeSendTransactionBody,
+      responses: {
+        200: {
+          description: "Transaction created",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  RefNo: { type: "string", description: "Reference number for OTP confirmation" },
+                  AgentTxnRefId: { type: "string" },
+                  CollectAmount: { type: "string" },
+                  ServiceCharge: { type: "string" },
+                  ExchangeRate: { type: "string" },
+                  PayoutAmount: { type: "string" },
+                  PayoutCurrency: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/SendOTP": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Send OTP to Customer",
+      description: "Sends OTP for various modules: CR (Customer Registration), ST (Send Transaction), MT (Modify Transaction), CT (Cancel Transaction)",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["Module", "ReferenceValue"],
+              properties: {
+                Module: { type: "string", example: "CR", description: "CR/ST/MT/CT" },
+                ReferenceValue: { type: "string", description: "CustomerToken (CR), RefNo (ST), or ICN (MT/CT)" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: "OTP sent",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  OTPToken: { type: "string", description: "Required for confirmation" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/ConfirmSendTransaction": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Confirm Transaction with OTP",
+      description: "Finalizes the transaction after OTP verification. Returns ICN for payout.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RefNo", "OTPToken", "OTP"],
+              properties: {
+                RefNo: { type: "string", description: "From SendTransaction response" },
+                OTPToken: { type: "string", description: "From SendOTP response" },
+                OTP: { type: "string", example: "123456" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: "Transaction confirmed",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  RefNo: { type: "string", description: "ICN - give to beneficiary for payout" },
+                  AgentTxnRefId: { type: "string" },
+                  CollectAmount: { type: "string" },
+                  ServiceCharge: { type: "string" },
+                  ExchangeRate: { type: "string" },
+                  PayoutAmount: { type: "string" },
+                  PayoutCurrency: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/CustomerRegistration": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Register Customer (SOAP)",
+      description: "Register a new customer in IME system via SOAP",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["MobileNo", "FirstName", "LastName", "Nationality", "MaritalStatus", "DOB", "Gender", "FatherOrMotherName", "Occupation"],
+              properties: {
+                MobileNo: { type: "string", example: "9812345678" },
+                MembershipId: { type: "string" },
+                FirstName: { type: "string", example: "Ram" },
+                MiddleName: { type: "string", example: "Bahadur" },
+                LastName: { type: "string", example: "Thapa" },
+                Nationality: { type: "string", example: "NPL" },
+                MaritalStatus: { type: "string", example: "1901" },
+                DOB: { type: "string", example: "1990/01/15" },
+                Gender: { type: "string", example: "1801" },
+                FatherOrMotherName: { type: "string", example: "Hari Thapa" },
+                Email: { type: "string", example: "ram@example.com" },
+                Occupation: { type: "string", example: "8081" },
+                SourceOfFund: { type: "string", example: "8051" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Customer registration initiated" }
+      }
+    }
+  },
+
+  "/api/ime/ConfirmCustomerRegistration": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Confirm Customer Registration with OTP",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["OTP", "CustomerToken", "OTPToken"],
+              properties: {
+                OTP: { type: "string", example: "123456" },
+                CustomerToken: { type: "string" },
+                OTPToken: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Customer registration confirmed" }
+      }
+    }
+  },
+
+  "/api/ime/CheckCustomer/{mobileNo}": {
+    get: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Check if Customer is Registered",
+      description: "Verify if customer exists and is eligible for transactions",
+      parameters: [
+        { name: "mobileNo", in: "path", required: true, schema: { type: "string", example: "9812345678" } }
+      ],
+      responses: {
+        200: {
+          description: "Customer details",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  Name: { type: "string" },
+                  MobileNo: { type: "string" },
+                  AMLStatus: { type: "boolean", description: "True=eligible for transactions" },
+                  KYCStatus: { type: "string", example: "Approved" },
+                  RejectedReason: { type: "string" },
+                  NewMobileNo: { type: "string" },
+                  AmendmentStatus: { type: "string" },
+                  AmendmentMessage: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/TransactionInquiry": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Look Up Transaction Details",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RefNoType", "RefNo"],
+              properties: {
+                RefNoType: { type: "string", example: "1", description: "1=IME ICN, 2=AgentTxnRefId" },
+                RefNo: { type: "string", example: "ICN123456" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Transaction details" }
+      }
+    }
+  },
+
+  "/api/ime/TransactionInquiryDefault": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Default Transaction Inquiry",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Transaction details" }
+      }
+    }
+  },
+
+  "/api/ime/AmendTransaction": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Modify Existing Transaction",
+      description: "Modify receiver details or other info. Flow: TransactionInquiry → SendOTP(MT) → AmendmentTransaction",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RefNo", "OTP", "OTPToken"],
+              properties: {
+                RefNo: { type: "string", description: "ICN from ConfirmSendTransaction" },
+                ReceiverName: { type: "string" },
+                ReceiverGender: { type: "string" },
+                ReceiverAddress: { type: "string" },
+                RelationWithSender: { type: "string" },
+                PurposeOfRemittance: { type: "string" },
+                SourceOfFund: { type: "string" },
+                ReceiverMobileNo: { type: "string" },
+                BankId: { type: "string" },
+                BankBranchId: { type: "string" },
+                AccountNo: { type: "string" },
+                OTP: { type: "string", example: "123456" },
+                OTPToken: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Transaction amended" }
+      }
+    }
+  },
+
+  "/api/ime/CustomerMobileAmendment": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Amend Customer Mobile Number",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Mobile amended" }
+      }
+    }
+  },
+
+  "/api/ime/BalanceInquiry": {
+    get: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Check Agent Account Balance",
+      responses: {
+        200: {
+          description: "Balance details",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  Balance: { type: "string", description: "Current balance amount" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "/api/ime/CSPRegistration": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Register CSP (Customer Service Point)",
+      description: "Register a new CSP/branch in IME system",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["PartnerCSPCode", "CSPName", "RegistrationType", "RegistrationNumber", "BusinessType", "ContractExpiryDate", "ContractRenewalDate", "PANNumber"],
+              properties: {
+                PartnerCSPCode: { type: "string", example: "CSP001" },
+                CSPName: { type: "string", example: "My CSP Center" },
+                RegistrationType: { type: "string", example: "4501", description: "From WSST-REGV1" },
+                RegistrationNumber: { type: "string", example: "REG12345" },
+                BusinessType: { type: "string", example: "6200", description: "From WSST-BUSV1" },
+                ContractExpiryDate: { type: "string", example: "2025/12/31" },
+                ContractRenewalDate: { type: "string", example: "2026/01/01" },
+                PANNumber: { type: "string", example: "123456789" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "CSP registered" }
+      }
+    }
+  },
+
+  "/api/ime/CheckCSP": {
+    get: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Check CSP Registration Status",
+      responses: {
+        200: { description: "CSP status and document upload status" }
+      }
+    }
+  },
+
+  "/api/ime/CSPDocumentUpload": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Upload CSP Document",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["DocumentType", "ReferenceId", "DocumentData", "DocumentFormat"],
+              properties: {
+                DocumentType: { type: "string", example: "17001", description: "From WSST-ADOV1" },
+                ReferenceId: { type: "string", description: "CSPCode/BankId/OwnerId from CSPRegistration" },
+                DocumentData: { type: "string", description: "Base64 encoded document (max 2MB)" },
+                DocumentFormat: { type: "string", example: "pdf", description: "pdf, jpg, jpeg, or png" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Document uploaded" }
+      }
+    }
+  },
+
+  "/api/ime/CancelTransaction": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Cancel Transaction",
+      description: "Flow: TransactionInquiry → SendOTP(CT) → CancelTransaction",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RefNo", "CancelReason", "OTP", "OTPToken"],
+              properties: {
+                RefNo: { type: "string", description: "ICN of transaction to cancel" },
+                CancelReason: { type: "string", example: "7701", description: "From WSST-TCRV1" },
+                OTP: { type: "string", example: "123456" },
+                OTPToken: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Transaction cancelled" }
+      }
+    }
+  },
+
+  "/api/ime/AadharEntityReprocess": {
+    post: {
+      tags: ["IME Legacy SOAP"],
+      summary: "Reset Aadhar KYC Process",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["EntityType", "EntityId", "ReprocessState"],
+              properties: {
+                EntityType: { type: "string", example: "203" },
+                EntityId: { type: "string", example: "9812345678" },
+                ReprocessState: { type: "string", description: "From WSST-AERV1" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: { description: "Aadhar entity reprocessed" }
+      }
+    }
+  },
+
+  // Static Data Endpoints
+  "/api/ime/GetAccountType": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Account Type List (WSST-ACCV1)",
+      responses: { 200: { description: "Account types" } }
+    }
+  },
+
+  "/api/ime/Countries": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Country List (WSST-CONV1)",
+      responses: { 200: { description: "Countries" } }
+    }
+  },
+
+  "/api/ime/States/{CountryId}": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get State List by Country (WSST-STTV1)",
+      parameters: [
+        { name: "CountryId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "States" } }
+    }
+  },
+
+  "/api/ime/Districts/{StateId}": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get District List by State (WSST-DISV1)",
+      parameters: [
+        { name: "StateId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Districts" } }
+    }
+  },
+
+  "/api/ime/Genders": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Gender List (WSST-GDRV1)",
+      responses: { 200: { description: "Genders" } }
+    }
+  },
+
+  "/api/ime/MaritalStatus": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Marital Status List (WSST-MSSV1)",
+      responses: { 200: { description: "Marital statuses" } }
+    }
+  },
+
+  "/api/ime/Occupation": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Occupation List (WSST-OCPV1)",
+      responses: { 200: { description: "Occupations" } }
+    }
+  },
+
+  "/api/ime/PurposeOfRemittance": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Purpose of Remittance List (WSST-PORV1)",
+      responses: { 200: { description: "Purposes" } }
+    }
+  },
+
+  "/api/ime/TransactionCancelReason": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Transaction Cancel Reason List (WSST-TCRV1)",
+      responses: { 200: { description: "Cancel reasons" } }
+    }
+  },
+
+  "/api/ime/GetIdTypes": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get ID Type List (WSST-IDTV1)",
+      responses: { 200: { description: "ID types" } }
+    }
+  },
+
+  "/api/ime/GetIdentityTypes": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Identity Types (Alternative endpoint)",
+      responses: { 200: { description: "Identity types" } }
+    }
+  },
+
+  "/api/ime/BankList/{CountryId}": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Bank List by Country (WSST-BKLV1)",
+      parameters: [
+        { name: "CountryId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Banks" } }
+    }
+  },
+
+  "/api/ime/BankBranchList/{BankId}": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Bank Branch List by Bank (WSST-BBLV1)",
+      parameters: [
+        { name: "BankId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Bank branches" } }
+    }
+  },
+
+  "/api/ime/CSPRegistrationTypeList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get CSP Registration Type List (WSST-REGV1)",
+      responses: { 200: { description: "CSP registration types" } }
+    }
+  },
+
+  "/api/ime/CSPAddressProofTypeList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get CSP Address Proof Type List (WSST-ADPV1)",
+      responses: { 200: { description: "CSP address proof types" } }
+    }
+  },
+
+  "/api/ime/CSPOwnerAddressProofTypeList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get CSP Owner Address Proof Type List (WSST-OAPV1)",
+      responses: { 200: { description: "Owner address proof types" } }
+    }
+  },
+
+  "/api/ime/CSPBusinessTypeList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get CSP Business Type List (WSST-BUSV1)",
+      responses: { 200: { description: "CSP business types" } }
+    }
+  },
+
+  "/api/ime/CSPDocumentTypeList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get CSP Document Type List (WSST-ADOV1)",
+      responses: { 200: { description: "CSP document types" } }
+    }
+  },
+
+  "/api/ime/OwnerCategoryTypes": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Owner Category Type List (WSST-CATV1)",
+      responses: { 200: { description: "Owner categories" } }
+    }
+  },
+
+  "/api/ime/EducationalQualificationList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Educational Qualification List (WSST-EDQV1)",
+      responses: { 200: { description: "Educational qualifications" } }
+    }
+  },
+
+  "/api/ime/Municipalities/{DistrictId}": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Municipality List by District (WSST-MUNV1)",
+      parameters: [
+        { name: "DistrictId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Municipalities" } }
+    }
+  },
+
+  "/api/ime/RelationshipList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Relationship List (WSST-RELV1)",
+      responses: { 200: { description: "Relationships" } }
+    }
+  },
+
+  "/api/ime/IDPlaceofIssue": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get ID Place of Issue List (WSST-POIV1)",
+      responses: { 200: { description: "Places of issue" } }
+    }
+  },
+
+  "/api/ime/SourceOfFundList": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Source of Fund List (WSST-SOFV1)",
+      responses: { 200: { description: "Source of funds" } }
+    }
+  },
+
+  "/api/ime/bank-branches": {
+    get: {
+      tags: ["IME Static Data"],
+      summary: "Get Bank Branches (Query parameter version)",
+      parameters: [
+        { name: "bankId", in: "query", required: false, schema: { type: "string" } },
+        { name: "countryCode", in: "query", required: false, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Bank branches" } }
+    }
   },
 
   // ==================== WALLET ENDPOINTS ====================
@@ -1763,6 +3138,21 @@ const paths = {
     },
   },
 
+  "/api/admin/users/{id}": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get user by id",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      responses: {
+        200: { description: "User details" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+        404: { description: "User not found" },
+      },
+    },
+  },
+
   "/api/admin/members": {
     get: {
       tags: ["Admin"],
@@ -2025,6 +3415,714 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
   });
 });
 
+// ==================== IME ENDPOINTS ====================
+
+// Authentication & Session Management
+paths["/api/ime/authenticate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "IME Authentication",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Authentication successful" },
+      401: { description: "Authentication failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/login"] = {
+  post: {
+    tags: ["IME"],
+    summary: "IME Login",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Login successful" },
+      401: { description: "Login failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Customer Operations
+paths["/api/ime/customers/send-otp"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Send OTP to customer",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["ReferenceValue"],
+            properties: {
+              ReferenceValue: { type: "string", example: "9841234567" },
+              Module: { type: "string", example: "CustomerRegistration" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "OTP sent successfully" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/confirm"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm customer with OTP",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["CustomerToken", "OTPToken", "OTP"],
+            properties: {
+              CustomerToken: { type: "string", example: "CUST-TOKEN-123" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Customer confirmed successfully" },
+      400: { description: "Invalid OTP or token" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Create new customer",
+    requestBody: imeCreateCustomerBody,
+    responses: {
+      200: { description: "Customer created successfully" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/search/mobile/{mobile}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Search customer by mobile number",
+    parameters: [
+      { name: "mobile", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer found" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/requery"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Requery customer information",
+    parameters: [
+      { name: "entityId", in: "query", required: false, schema: { type: "string" } },
+      { name: "mobile", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer information retrieved" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/{customerId}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get customer by ID",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer details" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/validate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Validate customer",
+    requestBody: imeValidateCustomerBody,
+    responses: {
+      200: { description: "Customer validated" },
+      400: { description: "Validation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Customer Registration Flow Middleware
+paths["/api/ime/customers/register-complete"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Complete customer registration",
+    requestBody: imeCreateCustomerBody,
+    responses: {
+      200: { description: "Registration completed" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/confirm-registration"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm customer registration",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["CustomerToken", "OTPToken", "OTP"],
+            properties: {
+              CustomerToken: { type: "string", example: "CUST-TOKEN-123" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Registration confirmed" },
+      400: { description: "Confirmation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/check-eligibility"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Check customer eligibility",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Eligibility checked" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Transaction Operations
+paths["/api/ime/transactions/send"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Send money/transaction",
+    requestBody: imeSendMoneyBody,
+    responses: {
+      200: { description: "Transaction sent successfully" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/{transactionId}/status"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get transaction status",
+    parameters: [
+      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Transaction status" },
+      404: { description: "Transaction not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/{transactionId}/cancel"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Cancel transaction",
+    parameters: [
+      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: imeCancelTransactionBody,
+    responses: {
+      200: { description: "Transaction cancelled" },
+      400: { description: "Cancellation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Transaction Flow Middleware
+paths["/api/ime/transactions/send-complete"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Complete transaction sending",
+    requestBody: imeSendTransactionBody,
+    responses: {
+      200: { description: "Transaction completed" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/confirm"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm transaction",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["RefNo", "OTPToken", "OTP"],
+            properties: {
+              RefNo: { type: "string", example: "TXN123456" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Transaction confirmed" },
+      400: { description: "Confirmation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Receiver Management
+paths["/api/ime/receivers"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Create receiver",
+    requestBody: imeCreateReceiverBody,
+    responses: {
+      200: { description: "Receiver created" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/receivers/{receiverId}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get receiver by ID",
+    parameters: [
+      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Receiver details" },
+      404: { description: "Receiver not found" },
+      500: { description: "Server error" }
+    }
+  },
+  patch: {
+    tags: ["IME"],
+    summary: "Update receiver",
+    parameters: [
+      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Receiver updated" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// IME Data Storage Operations
+paths["/api/ime/data"] = {
+  get: {
+    tags: ["IME"],
+    summary: "List IME data",
+    responses: {
+      200: { description: "IME data list" },
+      500: { description: "Server error" }
+    }
+  },
+  post: {
+    tags: ["IME"],
+    summary: "Create IME data",
+    requestBody: imeDataBody,
+    responses: {
+      200: { description: "IME data created" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/data/{id}"] = {
+  patch: {
+    tags: ["IME"],
+    summary: "Update IME data",
+    parameters: [
+      { name: "id", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: imeDataBody,
+    responses: {
+      200: { description: "IME data updated" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  },
+  delete: {
+    tags: ["IME"],
+    summary: "Delete IME data",
+    parameters: [
+      { name: "id", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "IME data deleted" },
+      404: { description: "Data not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Bank & Payment Operations
+paths["/api/ime/payment-modes"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get payment modes",
+    responses: {
+      200: { description: "Payment modes retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/bank-accounts/validate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Validate bank account",
+    requestBody: imeValidateBankAccountBody,
+    responses: {
+      200: { description: "Bank account validated" },
+      400: { description: "Validation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/banks"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get bank list",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Bank list retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/bank-branches"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get bank branches",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } },
+      { name: "countryCode", in: "query", required: false, schema: { type: "string" } },
+      { name: "bank", in: "query", required: false, schema: { type: "string" } },
+      { name: "bankId", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Bank branches retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/static-data"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get static data",
+    parameters: [
+      { name: "type", in: "query", required: true, schema: { type: "string" } },
+      { name: "reference", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Static data retrieved" },
+      400: { description: "Type parameter required" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/id-issue-places"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get ID issue places",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } },
+      { name: "idType", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "ID issue places retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Compliance & Verification
+paths["/api/ime/kyc/verify"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Verify KYC",
+    requestBody: imeVerifyKycBody,
+    responses: {
+      200: { description: "KYC verified" },
+      400: { description: "Verification failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/compliance/{customerId}/status"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get compliance status",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Compliance status retrieved" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Reporting & Queries
+paths["/api/ime/customers/{customerId}/transactions"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get customer transaction history",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Transaction history retrieved" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/exchange-rate"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get exchange rate",
+    parameters: [
+      { name: "from", in: "query", required: true, schema: { type: "string" } },
+      { name: "to", in: "query", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Exchange rate retrieved" },
+      400: { description: "Invalid currency parameters" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/reports/soa"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get SOA report",
+    responses: {
+      200: { description: "SOA report generated" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Phase 2 eKYC Endpoints
+paths["/api/ime/ekyc/generate-ott"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Generate OTT",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "OTT generated" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/get-unique-id"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Get unique ID",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Unique ID retrieved" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/bio-kyc"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Bio KYC verification",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Bio KYC completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/customer-onboarding"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Customer onboarding",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Customer onboarded" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/customer-requery"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Customer requery",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Customer requeried" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/check-entity-status"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Check entity status",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Entity status checked" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/aadhar-registration"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Aadhar customer registration",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Aadhar registration completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/aadhar-reprocess"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Aadhar entity reprocess",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Aadhar reprocess completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Legacy IME Contract Compatibility Routes
+const imeLegacyRoutes = [
+  "AmendTransaction", "BalanceInquiry", "CSPDocumentUpload", "GetAccountType",
+  "Countries", "States", "Districts", "Genders", "MaritalStatus", "Occupation",
+  "PurposeOfRemittance", "TransactionCancelReason", "GetIdTypes", "GetIdentityTypes",
+  "BankList", "BankBranchList", "CSPRegistrationTypeList", "CSPAddressProofTypeList",
+  "CSPOwnerAddressProofTypeList", "CSPBusinessTypeList", "CSPDocumentTypeList",
+  "OwnerCategoryTypes", "EducationalQualificationList", "Municipalities",
+  "RelationshipList", "IDPlaceofIssue", "SourceOfFundList", "CSPRegistration",
+  "CancelTransaction", "CheckCSP", "CheckCustomer", "ConfirmCustomerRegistration",
+  "ConfirmSendTransaction", "CustomerMobileAmendment", "CustomerRegistration",
+  "GetCalculation", "SendOTP", "SendTransaction", "TransactionInquiry",
+  "TransactionInquiryDefault"
+];
+
+imeLegacyRoutes.forEach(routeName => {
+  const path = `/api/ime/${routeName}`;
+  paths[path] = {
+    post: {
+      tags: ["IME Legacy"],
+      summary: `${routeName} (Legacy)`,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Success" },
+        400: { description: "Bad request" },
+        500: { description: "Server error" }
+      }
+    }
+  };
+});
+
+// Legacy GET routes with parameters
+["States/{CountryId}", "Districts/{StateId}", "BankList/{CountryId}", "BankBranchList/{BankId}", 
+ "Municipalities/{DistrictId}"].forEach(routeTemplate => {
+  const path = `/api/ime/${routeTemplate}`;
+  const paramName = routeTemplate.match(/\{([^}]+)\}/)[1];
+  paths[path] = {
+    get: {
+      tags: ["IME Legacy"],
+      summary: `${routeTemplate.split('{')[0]} (Legacy)`,
+      parameters: [
+        { name: paramName, in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: {
+        200: { description: "Success" },
+        400: { description: "Bad request" },
+        500: { description: "Server error" }
+      }
+    }
+  };
+});
+
+// Update existing IME paths with proper request bodies
 paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
 paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
 paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
@@ -2137,8 +4235,328 @@ paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
   post: { tags: ["Prabhu Workflow"], summary: "Workflow step 2 receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
 };
 
+// IME Legacy Endpoints (SOAP-based compatibility routes)
+// Uppercase legacy base `/api/IME/*` was removed; legacy contract routes are served under `/api/ime/*` only.
+
 // Remittance Endpoints
 const remittancePrefix = "/api/Remittance";
+
+// Location endpoints
+const locationPrefix = "/api/locations";
+
+paths[`${locationPrefix}/countries`] = {
+  get: {
+    tags: ["Locations"],
+    summary: "Get all active countries",
+    description: "Retrieve a list of all active countries for dropdown selection",
+    responses: {
+      200: {
+        description: "Countries retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string", example: "india-uuid" },
+                      name: { type: "string", example: "India" },
+                      code: { type: "string", example: "IN" },
+                      isActive: { type: "boolean", example: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths[`${locationPrefix}/states`] = {
+  get: {
+    tags: ["Locations"],
+    summary: "Get all active states",
+    description: "Retrieve a list of all active states, optionally filtered by countryId",
+    parameters: [
+      {
+        name: "countryId",
+        in: "query",
+        required: false,
+        schema: { type: "string" },
+        description: "Filter states by country ID"
+      }
+    ],
+    responses: {
+      200: {
+        description: "States retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      countryId: { type: "string" },
+                      isActive: { type: "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths[`${locationPrefix}/districts`] = {
+  get: {
+    tags: ["Locations"],
+    summary: "Get all active districts",
+    description: "Retrieve a list of all active districts, optionally filtered by stateId",
+    parameters: [
+      {
+        name: "stateId",
+        in: "query",
+        required: false,
+        schema: { type: "string" },
+        description: "Filter districts by state ID"
+      }
+    ],
+    responses: {
+      200: {
+        description: "Districts retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      stateId: { type: "string" },
+                      isActive: { type: "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths[`${locationPrefix}/municipalities`] = {
+  get: {
+    tags: ["Locations"],
+    summary: "Get all active municipalities",
+    description: "Retrieve a list of all active municipalities, optionally filtered by districtId",
+    parameters: [
+      {
+        name: "districtId",
+        in: "query",
+        required: false,
+        schema: { type: "string" },
+        description: "Filter municipalities by district ID"
+      }
+    ],
+    responses: {
+      200: {
+        description: "Municipalities retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      districtId: { type: "string" },
+                      isActive: { type: "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// RD Device endpoints
+const rdPrefix = "/api/rd";
+
+paths[`${rdPrefix}/capture`] = {
+  post: {
+    tags: ["RD Device"],
+    summary: "Capture biometric data from RD device",
+    description: "Capture biometric (Aadhaar) data from RD service running on client machine",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              xml: {
+                type: "string",
+                description: "XML string for RD device capture request"
+              }
+            },
+            required: ["xml"]
+          }
+        }
+      }
+    },
+    responses: {
+      200: {
+        description: "Biometric data captured successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "object",
+                  properties: {
+                    EncryptedPid: { type: "string" },
+                    EncryptedHmac: { type: "string" },
+                    SessionKeyValue: { type: "string" },
+                    CertificateIdentifier: { type: "string" },
+                    RegisteredDeviceProviderId: { type: "string" },
+                    RegisteredDeviceServiceId: { type: "string" },
+                    RegisteredDeviceCode: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      400: { description: "Invalid request or device error" },
+      500: { description: "Device not found or RD service error" }
+    }
+  }
+};
+
+paths[`${rdPrefix}/info`] = {
+  get: {
+    tags: ["RD Device"],
+    summary: "Get RD device information",
+    description: "Retrieve information about the RD service running on client machine",
+    responses: {
+      200: {
+        description: "RD device info retrieved successfully"
+      },
+      500: { description: "Device not found or RD service not reachable" }
+    }
+  }
+};
+
+// Device Management endpoints
+const devicePrefix = "/api/devices";
+
+paths[`${devicePrefix}`] = {
+  get: {
+    tags: ["Devices"],
+    summary: "Get current device information",
+    description: "Retrieve information about the current logged-in device",
+    security: bearerSecurity,
+    responses: {
+      200: {
+        description: "Device information retrieved successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  _id: { type: "string", example: "current" },
+                  deviceType: { type: "string", enum: ["mobile", "tablet", "desktop"], example: "desktop" },
+                  deviceName: { type: "string", example: "Current Device" },
+                  os: { type: "string", example: "Windows" },
+                  location: { type: "string", example: "Unknown" },
+                  lastActive: { type: "string", format: "date-time" }
+                }
+              }
+            }
+          }
+        }
+      },
+      401: { description: "Unauthorized" }
+    }
+  }
+};
+
+paths[`${devicePrefix}/{id}`] = {
+  delete: {
+    tags: ["Devices"],
+    summary: "Remove a device",
+    description: "Remove a device from the active devices list",
+    security: bearerSecurity,
+    parameters: [
+      {
+        name: "id",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+        description: "Device ID to remove"
+      }
+    ],
+    responses: {
+      200: {
+        description: "Device removed successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                message: { type: "string", example: "Device removed" }
+              }
+            }
+          }
+        }
+      },
+      400: { description: "Device ID is required" },
+      401: { description: "Unauthorized" }
+    }
+  }
+};
 
 // SendPrabhuTransaction endpoint
 paths[`${remittancePrefix}/SendPrabhuTransaction`] = {
@@ -2315,17 +4733,23 @@ module.exports = {
     { name: "Users" },
     { name: "Admin" },
     { name: "Super Admin" },
+    { name: "Business" },
     { name: "Wallet" },
     { name: "Wallet Admin" },
     { name: "Membership" },
     { name: "Devices" },
+    { name: "RD Device" },
     { name: "RD" },
+    { name: "Locations" },
     { name: "Prabhu" },
     { name: "Prabhu CSP" },
     { name: "Prabhu E-KYC" },
     { name: "Prabhu Workflow" },
     { name: "Prabhu Data" },
     { name: "IME" },
+    { name: "IME Legacy" },
+    { name: "IME Reports" },
+    { name: "IME Phase 2 eKYC" },
     { name: "Remittance" },
   ],
   components: {
@@ -2337,5 +4761,6 @@ module.exports = {
       },
     },
   },
+
   paths,
 };
