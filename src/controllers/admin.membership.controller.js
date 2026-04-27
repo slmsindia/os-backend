@@ -28,6 +28,25 @@ const adminMembershipController = {
       const creatorIdentity = req.user.identity;
       const targetIdentity = sanitizedIdentity;
 
+      // All roles allowed to directly create/upgrade lower-level identities
+      const AUTHORIZED_CREATOR_ROLES = [
+        'SUPER_ADMIN',
+        'WHITE_LABEL_ADMIN',
+        'ADMIN',
+        'SUB_ADMIN',
+        'COUNTRY_HEAD',
+        'STATE_PARTNER',
+        'DISTRICT_PARTNER'
+      ];
+
+      // Block if caller is not one of the authorized roles
+      if (!AUTHORIZED_CREATOR_ROLES.includes(creatorIdentity)) {
+        return res.status(403).json({
+          success: false,
+          message: `Your role (${creatorIdentity}) is not allowed to create members directly.`
+        });
+      }
+
       const ROLE_HIERARCHY = {
         'SUPER_ADMIN': 100,
         'WHITE_LABEL_ADMIN': 90,
@@ -43,26 +62,17 @@ const adminMembershipController = {
       };
 
       const creatorLevel = ROLE_HIERARCHY[creatorIdentity] || 0;
-      const targetLevel = ROLE_HIERARCHY[targetIdentity] || 0;
+      const targetLevel  = ROLE_HIERARCHY[targetIdentity]  || 0;
 
-      // Rule: You can only create roles with a level STRICTLY LOWER than yours
-      // Exception: Admins/Super Admins can create roles of their same level or lower (except Super Admin)
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
-      
-      if (!isTopAdmin && targetLevel >= creatorLevel) {
+      // Every authorized role can ONLY create identities strictly BELOW their own level
+      if (targetLevel >= creatorLevel) {
         return res.status(403).json({
           success: false,
-          message: `Your role (${creatorIdentity}) is not authorized to create a ${targetIdentity}. You can only create lower-tier roles.`
+          message: `Your role (${creatorIdentity}) cannot create a ${targetIdentity}. You can only create lower-tier roles.`
         });
       }
 
-      // 2. Check if mobile exists
-      const existing = await prisma.user.findUnique({ where: { mobile } });
-      if (existing) {
-        return res.status(409).json({ success: false, message: "User with this mobile already exists" });
-      }
-
-      // 3. Fee & Payment Logic
+      // 2. Fee & Payment Logic (calculated before checking if user exists, used in both upgrade and create paths)
       const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'AGENT'];
       const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'ADMIN', 'SUB_ADMIN', 'AGENT'];
       
@@ -89,23 +99,70 @@ const adminMembershipController = {
       // Validate Payment Method
       if (fee > 0) {
         if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
-          // ADMIN, SUB_ADMIN, AGENT allow CASH or RAZORPAY
           if (!['CASH', 'RAZORPAY'].includes(paymentMethod)) {
             return res.status(400).json({ success: false, message: `${targetIdentity} can only use CASH or RAZORPAY for registration fees.` });
           }
         } else {
-          // Others allow WALLET or RAZORPAY
           if (!['WALLET', 'RAZORPAY'].includes(paymentMethod)) {
             return res.status(400).json({ success: false, message: "This role requires payment via WALLET or RAZORPAY." });
           }
         }
       }
 
-      // Handle Wallet Deduction/Credit
-      let walletAction = null;
+      // 3. Check if mobile exists
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+
+      // ─── CASE A: User Already Exists → Upgrade their identity directly ───
+      if (existing) {
+        // Process fee/wallet deduction for the upgrade
+        if (fee > 0 && paymentMethod === 'WALLET') {
+          try {
+            const creator = await prisma.user.findUnique({ where: { id: creatorId } });
+            await walletService.deductBalanceIfSufficient(creatorId, fee, tenantId, creator.identity);
+          } catch (err) {
+            return res.status(400).json({ success: false, message: err.message || "Insufficient wallet balance" });
+          }
+        }
+
+        // Upgrade the existing user's identity
+        const upgradedUser = await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            identity: targetIdentity,
+            approvalStatus: 'APPROVED',
+            approvedAt: new Date()
+          }
+        });
+
+        // Create wallet if needed (MEMBER, SAATHI, BUSINESS_PARTNER get personal wallets)
+        if (targetIdentity !== 'USER' && !SHARED_WALLET_ROLES.includes(targetIdentity)) {
+          try {
+            await walletService.createWallet(upgradedUser.id, tenantId, false);
+          } catch (walletErr) {
+            console.error("Failed to create wallet for upgraded user:", walletErr);
+          }
+        }
+
+        await logAction({
+          userId: creatorId,
+          action: `IDENTITY_UPGRADED_TO_${targetIdentity}`,
+          targetId: upgradedUser.id,
+          tenantId,
+          metadata: { previousIdentity: existing.identity, newIdentity: targetIdentity, fee, paymentMethod }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: `Existing user upgraded to ${targetIdentity} successfully. Fee of ${fee} processed via ${paymentMethod || 'NONE'}.`,
+          data: { userId: upgradedUser.id, mobile: upgradedUser.mobile, previousIdentity: existing.identity, newIdentity: targetIdentity, feeProcessed: fee }
+        });
+      }
+
+      // ─── CASE B: User Does NOT Exist → Create brand new user ───
+
+      // Handle Wallet Deduction/Credit for new user creation
       if (fee > 0 && paymentMethod === 'WALLET') {
         try {
-          // Deduct from creator's wallet
           const creator = await prisma.user.findUnique({ where: { id: creatorId } });
           await walletService.deductBalanceIfSufficient(creatorId, fee, tenantId, creator.identity);
         } catch (err) {
@@ -118,7 +175,6 @@ const adminMembershipController = {
       // Calculate hierarchy path for scalability
       let path = "";
       if (creatorId) {
-        // Safe selection: only request fields that exist in the client
         const selectFields = { id: true };
         const availableFields = Object.keys(prisma.user.fields || {});
         if (availableFields.includes('path') || prisma.user.findUnique.toString().includes('path')) {
@@ -163,7 +219,6 @@ const adminMembershipController = {
           console.error("Failed to create personal wallet for user:", walletErr);
         }
       } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
-        // Ensure Corporate Wallet exists for this tenant
         try {
           await walletService.resolveWallet(user.id, tenantId, targetIdentity);
         } catch (walletErr) {
@@ -194,6 +249,7 @@ const adminMembershipController = {
         message: `User created successfully as ${targetIdentity}. Fee of ${fee} processed via ${paymentMethod || 'NONE'}.`,
         data: { userId: user.id, mobile: user.mobile, feeProcessed: fee }
       });
+
     } catch (err) {
       console.error("Direct User Creation Error:", err);
       res.status(500).json({ 
