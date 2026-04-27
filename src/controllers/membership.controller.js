@@ -328,7 +328,9 @@ const membershipController = {
               ...mappedData,
               status: 'PENDING',
               createdById: isMethod2 ? userId : null,
-              paymentType: isMethod2 ? (body.paymentMode === 3 ? 'CASH' : 'WALLET') : 'RAZORPAY'
+              paymentType: isMethod2 ? 
+                (body.paymentMode === 3 ? 'CASH' : (body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET')) : 
+                'RAZORPAY'
             }
           });
         }
@@ -389,7 +391,7 @@ const membershipController = {
       }
 
       // For Method 2 (Wallet or Cash), we mark payment as success immediately
-      if (isMethod2) {
+      if (isMethod2 && body.paymentMode !== 1) {
         const isCash = body.paymentMode === 3;
         const paymentTypeStr = isCash ? 'CASH' : 'WALLET';
 
