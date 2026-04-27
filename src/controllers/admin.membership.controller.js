@@ -276,9 +276,10 @@ const adminMembershipController = {
    */
   updateMembershipPrice: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId } = req.user;
-    const { price } = req.body;
+    const { price, membershipPrice } = req.body;
+    const finalPrice = price || membershipPrice;
 
-    if (!price || price <= 0) {
+    if (!finalPrice || finalPrice <= 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid price"
@@ -296,7 +297,7 @@ const adminMembershipController = {
       const config = await prisma.membershipConfig.create({
         data: {
           id: generateUuid(),
-          membershipPrice: parseFloat(price),
+          membershipPrice: parseFloat(finalPrice),
           currency: 'INR',
           isActive: true
         }
