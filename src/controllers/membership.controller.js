@@ -205,10 +205,10 @@ const membershipController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      if (existingApplication && ['PENDING', 'APPROVED'].includes(existingApplication.status)) {
+      if (existingApplication && existingApplication.status === 'PENDING') {
         return res.status(400).json({
           success: false,
-          message: `User already has a ${existingApplication.status.toLowerCase()} membership application`
+          message: "User already has a pending membership application"
         });
       }
 

@@ -41,11 +41,13 @@ const saathiController = {
     }
 
     try {
-      // 1. Check if already Saathi
+      // 1. Check if already Saathi (Removed restriction - allowed to re-apply)
       const user = await prisma.user.findUnique({ where: { id: userId } });
+      /* 
       if (user.identity === 'SAATHI') {
         return res.status(400).json({ success: false, message: "You are already a Saathi" });
       }
+      */
 
       // 2. Check for pending applications
       const existingApp = await prisma.saathiApplication.findFirst({

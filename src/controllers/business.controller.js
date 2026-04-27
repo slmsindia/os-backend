@@ -16,15 +16,17 @@ const businessController = {
     const { user_id: userId, tenant_id: tenantId } = req.user;
 
     try {
-      // 1. Verify User Identity
+      // 1. Verify User Identity (Restriction removed to allow any identity to apply)
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) {
         return res.status(404).json({ success: false, message: "User not found" });
       }
 
+      /*
       if (!["USER", "SAATHI", "MEMBER"].includes(user.identity)) {
         return res.status(403).json({ success: false, message: "Only Users, Saathi, or Members can apply for Business Partnership" });
       }
+      */
 
       // 2. Verify Sector ID
       const sector = await prisma.sector.findUnique({ where: { id: sectorId } });
