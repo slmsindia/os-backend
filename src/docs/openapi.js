@@ -3415,6 +3415,714 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
   });
 });
 
+// ==================== IME ENDPOINTS ====================
+
+// Authentication & Session Management
+paths["/api/ime/authenticate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "IME Authentication",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Authentication successful" },
+      401: { description: "Authentication failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/login"] = {
+  post: {
+    tags: ["IME"],
+    summary: "IME Login",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Login successful" },
+      401: { description: "Login failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Customer Operations
+paths["/api/ime/customers/send-otp"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Send OTP to customer",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["ReferenceValue"],
+            properties: {
+              ReferenceValue: { type: "string", example: "9841234567" },
+              Module: { type: "string", example: "CustomerRegistration" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "OTP sent successfully" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/confirm"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm customer with OTP",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["CustomerToken", "OTPToken", "OTP"],
+            properties: {
+              CustomerToken: { type: "string", example: "CUST-TOKEN-123" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Customer confirmed successfully" },
+      400: { description: "Invalid OTP or token" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Create new customer",
+    requestBody: imeCreateCustomerBody,
+    responses: {
+      200: { description: "Customer created successfully" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/search/mobile/{mobile}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Search customer by mobile number",
+    parameters: [
+      { name: "mobile", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer found" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/requery"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Requery customer information",
+    parameters: [
+      { name: "entityId", in: "query", required: false, schema: { type: "string" } },
+      { name: "mobile", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer information retrieved" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/{customerId}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get customer by ID",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer details" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/validate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Validate customer",
+    requestBody: imeValidateCustomerBody,
+    responses: {
+      200: { description: "Customer validated" },
+      400: { description: "Validation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Customer Registration Flow Middleware
+paths["/api/ime/customers/register-complete"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Complete customer registration",
+    requestBody: imeCreateCustomerBody,
+    responses: {
+      200: { description: "Registration completed" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/confirm-registration"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm customer registration",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["CustomerToken", "OTPToken", "OTP"],
+            properties: {
+              CustomerToken: { type: "string", example: "CUST-TOKEN-123" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Registration confirmed" },
+      400: { description: "Confirmation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/customers/check-eligibility"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Check customer eligibility",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Eligibility checked" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Transaction Operations
+paths["/api/ime/transactions/send"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Send money/transaction",
+    requestBody: imeSendMoneyBody,
+    responses: {
+      200: { description: "Transaction sent successfully" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/{transactionId}/status"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get transaction status",
+    parameters: [
+      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Transaction status" },
+      404: { description: "Transaction not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/{transactionId}/cancel"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Cancel transaction",
+    parameters: [
+      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: imeCancelTransactionBody,
+    responses: {
+      200: { description: "Transaction cancelled" },
+      400: { description: "Cancellation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Transaction Flow Middleware
+paths["/api/ime/transactions/send-complete"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Complete transaction sending",
+    requestBody: imeSendTransactionBody,
+    responses: {
+      200: { description: "Transaction completed" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/transactions/confirm"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Confirm transaction",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["RefNo", "OTPToken", "OTP"],
+            properties: {
+              RefNo: { type: "string", example: "TXN123456" },
+              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
+              OTP: { type: "string", example: "123456" }
+            }
+          }
+        }
+      }
+    },
+    responses: {
+      200: { description: "Transaction confirmed" },
+      400: { description: "Confirmation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Receiver Management
+paths["/api/ime/receivers"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Create receiver",
+    requestBody: imeCreateReceiverBody,
+    responses: {
+      200: { description: "Receiver created" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/receivers/{receiverId}"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get receiver by ID",
+    parameters: [
+      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Receiver details" },
+      404: { description: "Receiver not found" },
+      500: { description: "Server error" }
+    }
+  },
+  patch: {
+    tags: ["IME"],
+    summary: "Update receiver",
+    parameters: [
+      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Receiver updated" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// IME Data Storage Operations
+paths["/api/ime/data"] = {
+  get: {
+    tags: ["IME"],
+    summary: "List IME data",
+    responses: {
+      200: { description: "IME data list" },
+      500: { description: "Server error" }
+    }
+  },
+  post: {
+    tags: ["IME"],
+    summary: "Create IME data",
+    requestBody: imeDataBody,
+    responses: {
+      200: { description: "IME data created" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/data/{id}"] = {
+  patch: {
+    tags: ["IME"],
+    summary: "Update IME data",
+    parameters: [
+      { name: "id", in: "path", required: true, schema: { type: "string" } }
+    ],
+    requestBody: imeDataBody,
+    responses: {
+      200: { description: "IME data updated" },
+      400: { description: "Validation error" },
+      500: { description: "Server error" }
+    }
+  },
+  delete: {
+    tags: ["IME"],
+    summary: "Delete IME data",
+    parameters: [
+      { name: "id", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "IME data deleted" },
+      404: { description: "Data not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Bank & Payment Operations
+paths["/api/ime/payment-modes"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get payment modes",
+    responses: {
+      200: { description: "Payment modes retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/bank-accounts/validate"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Validate bank account",
+    requestBody: imeValidateBankAccountBody,
+    responses: {
+      200: { description: "Bank account validated" },
+      400: { description: "Validation failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/banks"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get bank list",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Bank list retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/bank-branches"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get bank branches",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } },
+      { name: "countryCode", in: "query", required: false, schema: { type: "string" } },
+      { name: "bank", in: "query", required: false, schema: { type: "string" } },
+      { name: "bankId", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Bank branches retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/static-data"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get static data",
+    parameters: [
+      { name: "type", in: "query", required: true, schema: { type: "string" } },
+      { name: "reference", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Static data retrieved" },
+      400: { description: "Type parameter required" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/id-issue-places"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get ID issue places",
+    parameters: [
+      { name: "country", in: "query", required: false, schema: { type: "string" } },
+      { name: "idType", in: "query", required: false, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "ID issue places retrieved" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Compliance & Verification
+paths["/api/ime/kyc/verify"] = {
+  post: {
+    tags: ["IME"],
+    summary: "Verify KYC",
+    requestBody: imeVerifyKycBody,
+    responses: {
+      200: { description: "KYC verified" },
+      400: { description: "Verification failed" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/compliance/{customerId}/status"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get compliance status",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Compliance status retrieved" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Reporting & Queries
+paths["/api/ime/customers/{customerId}/transactions"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get customer transaction history",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Transaction history retrieved" },
+      404: { description: "Customer not found" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/exchange-rate"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get exchange rate",
+    parameters: [
+      { name: "from", in: "query", required: true, schema: { type: "string" } },
+      { name: "to", in: "query", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Exchange rate retrieved" },
+      400: { description: "Invalid currency parameters" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/reports/soa"] = {
+  get: {
+    tags: ["IME"],
+    summary: "Get SOA report",
+    responses: {
+      200: { description: "SOA report generated" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Phase 2 eKYC Endpoints
+paths["/api/ime/ekyc/generate-ott"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Generate OTT",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "OTT generated" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/get-unique-id"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Get unique ID",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Unique ID retrieved" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/bio-kyc"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Bio KYC verification",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Bio KYC completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/customer-onboarding"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Customer onboarding",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Customer onboarded" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/customer-requery"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Customer requery",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Customer requeried" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/check-entity-status"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Check entity status",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Entity status checked" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/aadhar-registration"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Aadhar customer registration",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Aadhar registration completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+paths["/api/ime/ekyc/aadhar-reprocess"] = {
+  post: {
+    tags: ["IME eKYC"],
+    summary: "Aadhar entity reprocess",
+    requestBody: jsonBody,
+    responses: {
+      200: { description: "Aadhar reprocess completed" },
+      400: { description: "Bad request" },
+      500: { description: "Server error" }
+    }
+  }
+};
+
+// Legacy IME Contract Compatibility Routes
+const imeLegacyRoutes = [
+  "AmendTransaction", "BalanceInquiry", "CSPDocumentUpload", "GetAccountType",
+  "Countries", "States", "Districts", "Genders", "MaritalStatus", "Occupation",
+  "PurposeOfRemittance", "TransactionCancelReason", "GetIdTypes", "GetIdentityTypes",
+  "BankList", "BankBranchList", "CSPRegistrationTypeList", "CSPAddressProofTypeList",
+  "CSPOwnerAddressProofTypeList", "CSPBusinessTypeList", "CSPDocumentTypeList",
+  "OwnerCategoryTypes", "EducationalQualificationList", "Municipalities",
+  "RelationshipList", "IDPlaceofIssue", "SourceOfFundList", "CSPRegistration",
+  "CancelTransaction", "CheckCSP", "CheckCustomer", "ConfirmCustomerRegistration",
+  "ConfirmSendTransaction", "CustomerMobileAmendment", "CustomerRegistration",
+  "GetCalculation", "SendOTP", "SendTransaction", "TransactionInquiry",
+  "TransactionInquiryDefault"
+];
+
+imeLegacyRoutes.forEach(routeName => {
+  const path = `/api/ime/${routeName}`;
+  paths[path] = {
+    post: {
+      tags: ["IME Legacy"],
+      summary: `${routeName} (Legacy)`,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Success" },
+        400: { description: "Bad request" },
+        500: { description: "Server error" }
+      }
+    }
+  };
+});
+
+// Legacy GET routes with parameters
+["States/{CountryId}", "Districts/{StateId}", "BankList/{CountryId}", "BankBranchList/{BankId}", 
+ "Municipalities/{DistrictId}"].forEach(routeTemplate => {
+  const path = `/api/ime/${routeTemplate}`;
+  const paramName = routeTemplate.match(/\{([^}]+)\}/)[1];
+  paths[path] = {
+    get: {
+      tags: ["IME Legacy"],
+      summary: `${routeTemplate.split('{')[0]} (Legacy)`,
+      parameters: [
+        { name: paramName, in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: {
+        200: { description: "Success" },
+        400: { description: "Bad request" },
+        500: { description: "Server error" }
+      }
+    }
+  };
+});
+
+// Update existing IME paths with proper request bodies
 paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
 paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
 paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
