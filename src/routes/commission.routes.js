@@ -48,4 +48,7 @@ router.post("/GetSuperAdminIncome", commissionController.getSuperAdminIncome);
 router.get("/TransactionLogCredtedByDropdown", commissionController.transactionLogCreditedByDropdown);
 router.get("/TransactionLogCredtedForDropdown", commissionController.transactionLogCreditedForDropdown);
 
+// 10. Debug
+router.get("/DebugCommission", commissionController.debugCommission);
+
 module.exports = router;

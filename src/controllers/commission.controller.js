@@ -552,6 +552,117 @@ const commissionController = {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * 10. Debug Commission — Call with ?userId=MEMBER_USER_ID
+   * Returns full diagnosis of why commission may not be working
+   */
+  debugCommission: async (req, res) => {
+    const { userId } = req.query;
+    const { tenant_id: tenantId } = req.user;
+
+    if (!userId) return res.status(400).json({ success: false, message: "userId query param required" });
+
+    try {
+      const report = {};
+
+      // 1. Check user and path
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, fullName: true, identity: true, path: true, tenantId: true, commissionSchemeId: true }
+      });
+      report.user = user || "NOT FOUND";
+      if (!user) return res.json({ success: false, report });
+
+      // 2. Build path
+      const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
+      report.pathFromDB = pathIds;
+
+      // 3. Check admin corporate wallet
+      const adminWallet = await prisma.wallet.findFirst({
+        where: { tenantId: user.tenantId, isCorporate: true }
+      });
+      report.adminCorporateWallet = adminWallet 
+        ? { id: adminWallet.id, userId: adminWallet.userId, balance: adminWallet.balance } 
+        : "NOT FOUND — Commission cannot run without corporate wallet!";
+
+      if (adminWallet && !pathIds.includes(adminWallet.userId)) {
+        pathIds.unshift(adminWallet.userId);
+      }
+      report.fullPathWithAdmin = pathIds;
+
+      // 4. Fetch hierarchy users
+      const pathUsers = await prisma.user.findMany({
+        where: { id: { in: pathIds } },
+        select: { id: true, fullName: true, identity: true, commissionSchemeId: true }
+      });
+      const hierarchy = pathIds.map(id => pathUsers.find(u => u.id === id)).filter(Boolean);
+      report.hierarchy = hierarchy;
+
+      // 5. Check SubServices
+      const subServices = await prisma.commissionSubService.findMany({
+        select: { id: true, name: true, slug: true }
+      });
+      report.availableSubServices = subServices;
+
+      const membershipSubService = await prisma.commissionSubService.findFirst({
+        where: {
+          OR: [
+            { slug: "membership_fee" },
+            { name: { contains: "member", mode: "insensitive" } }
+          ]
+        }
+      });
+      report.membershipSubService = membershipSubService || "NOT FOUND — Create a SubService with name containing 'member' or slug 'membership_fee'";
+
+      // 6. Check each upline's scheme and share
+      report.commissionChecks = [];
+      for (let i = 0; i < hierarchy.length - 1; i++) {
+        const sender = hierarchy[i];
+        const receiver = hierarchy[i + 1];
+        const check = {
+          step: `${sender.identity} -> ${receiver.identity}`,
+          receiverId: receiver.id,
+          receiverName: receiver.fullName,
+          hasScheme: !!receiver.commissionSchemeId,
+          schemeId: receiver.commissionSchemeId || null,
+          shareConfig: null,
+          issue: null
+        };
+
+        if (!receiver.commissionSchemeId) {
+          check.issue = `SCHEME NOT ASSIGNED to ${receiver.identity} (${receiver.id}). Use /api/Commission/AssignSchemeToUser`;
+        } else if (membershipSubService) {
+          const share = await prisma.commissionShare.findUnique({
+            where: { schemeId_subServiceId: { schemeId: receiver.commissionSchemeId, subServiceId: membershipSubService.id } }
+          });
+          check.shareConfig = share || null;
+          if (!share) {
+            check.issue = `SHARE NOT CONFIGURED for scheme ${receiver.commissionSchemeId} + subService ${membershipSubService.id}. Use /api/Commission/AddCommissionShare`;
+          } else {
+            const identity = receiver.identity.toUpperCase();
+            let shareKey = "";
+            if (identity.includes("COUNTRY")) shareKey = "countryPartner";
+            else if (identity.includes("STATE")) shareKey = "statePartner";
+            else if (identity.includes("DISTRICT")) shareKey = "districtPartner";
+            else if (identity.includes("SAATHI")) shareKey = "saathi";
+            else if (identity.includes("MEMBER")) shareKey = "member";
+            check.shareKey = shareKey;
+            check.shareValue = share[shareKey] || 0;
+            check.commissionType = share.commissionType === 1 ? "Percentage" : "Flat";
+            if (!shareKey) check.issue = `Unknown identity: ${receiver.identity}`;
+            else if (!share[shareKey]) check.issue = `Share value is 0 for ${shareKey} — set it in AddCommissionShare`;
+          }
+        }
+        report.commissionChecks.push(check);
+      }
+
+      return res.json({ success: true, report });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: err.message });
+    }
   }
 };
 
