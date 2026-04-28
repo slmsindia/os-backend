@@ -16,12 +16,19 @@ const saathiController = {
         where: { key: 'SAATHI_FEE' }
       });
 
+      let feeData = { amount: 1000, currency: "INR" };
+      if (setting && setting.value) {
+        try {
+          const parsed = JSON.parse(setting.value);
+          feeData = { ...parsed, currency: "INR" };
+        } catch (e) {
+          feeData = { amount: parseFloat(setting.value), currency: "INR" };
+        }
+      }
+
       res.json({
         success: true,
-        data: {
-          amount: setting ? parseFloat(setting.value) : 1000,
-          currency: "INR"
-        }
+        data: feeData
       });
     } catch (err) {
       console.error(err);
@@ -50,7 +57,15 @@ const saathiController = {
       }
 
       const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
-      const amount = feeSetting ? parseFloat(feeSetting.value) : 1000;
+      let amount = 1000;
+      if (feeSetting && feeSetting.value) {
+        try {
+          const parsed = JSON.parse(feeSetting.value);
+          amount = parsed.amount || 1000;
+        } catch (e) {
+          amount = parseFloat(feeSetting.value);
+        }
+      }
 
       // 4. Handle Wallet Payment
       if (paymentMethod === 'WALLET') {

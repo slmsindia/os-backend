@@ -10,17 +10,51 @@ const adminSaathiController = {
    * Set Saathi Fee
    */
   updateSaathiFee: async (req, res) => {
-    const { amount } = req.body;
-    if (!amount || amount <= 0) return res.status(400).json({ success: false, message: "Invalid amount" });
+    const { gst, id, includedExcluded, platformFee, serviceCharges, amount } = req.body;
+    
+    // Legacy support
+    const legacyAmount = amount;
+
+    let calculatedAmount = 0;
+    const sc = parseFloat(serviceCharges || 0);
+    const pf = parseFloat(platformFee || 0);
+    const g = parseFloat(gst || 0);
+    const isInclusive = includedExcluded === true || includedExcluded === 'true';
+
+    if (serviceCharges !== undefined) {
+      if (isInclusive) {
+          calculatedAmount = sc + pf;
+      } else {
+          calculatedAmount = sc + (sc * g / 100) + pf;
+      }
+    } else if (legacyAmount) {
+      calculatedAmount = parseFloat(legacyAmount);
+    }
+
+    if (!calculatedAmount || calculatedAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
+    }
+
+    let payloadValue = calculatedAmount.toString();
+    if (serviceCharges !== undefined) {
+      payloadValue = JSON.stringify({
+        gst: g,
+        id: id || generateUuid(),
+        includedExcluded: isInclusive,
+        platformFee: pf,
+        serviceCharges: sc,
+        amount: calculatedAmount
+      });
+    }
 
     try {
       const setting = prisma.globalSetting ? await prisma.globalSetting.upsert({
         where: { key: 'SAATHI_FEE' },
-        update: { value: amount.toString() },
-        create: { key: 'SAATHI_FEE', value: amount.toString() }
+        update: { value: payloadValue },
+        create: { key: 'SAATHI_FEE', value: payloadValue }
       }) : null;
 
-      res.json({ success: true, message: "Saathi fee updated successfully", amount });
+      res.json({ success: true, message: "Saathi fee updated successfully", amount: calculatedAmount });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -35,7 +69,17 @@ const adminSaathiController = {
       const setting = await prisma.globalSetting.findUnique({
         where: { key: 'SAATHI_FEE' }
       });
-      res.json({ success: true, amount: setting ? parseFloat(setting.value) : 1000 });
+      
+      let feeData = { amount: 1000 };
+      if (setting && setting.value) {
+        try {
+          const parsed = JSON.parse(setting.value);
+          feeData = { ...parsed };
+        } catch (e) {
+          feeData = { amount: parseFloat(setting.value) };
+        }
+      }
+      res.json({ success: true, ...feeData });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -115,7 +159,15 @@ const adminSaathiController = {
 
       // 4. Payment Validation & Transaction
       const feeSetting = prisma.globalSetting ? await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } }) : null;
-      const amount = feeSetting ? parseFloat(feeSetting.value) : 1000;
+      let amount = 1000;
+      if (feeSetting && feeSetting.value) {
+        try {
+          const parsed = JSON.parse(feeSetting.value);
+          amount = parsed.amount || 1000;
+        } catch (e) {
+          amount = parseFloat(feeSetting.value);
+        }
+      }
 
       const application = await prisma.$transaction(async (tx) => {
         let partnerWallet = null;

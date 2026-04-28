@@ -39,7 +39,11 @@ const membershipController = {
         success: true,
         data: {
           price: config.membershipPrice,
-          currency: config.currency
+          currency: config.currency,
+          gst: config.gst,
+          includedExcluded: config.includedExcluded,
+          platformFee: config.platformFee,
+          serviceCharge: config.serviceCharge
         }
       });
     } catch (err) {

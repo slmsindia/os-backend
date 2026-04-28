@@ -80,13 +80,19 @@ const adminMembershipController = {
       if (PAID_ROLES.includes(targetIdentity)) {
         if (targetIdentity === 'SAATHI') {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
-          fee = setting ? parseFloat(setting.value) : 1000;
+          fee = 1000;
+          if (setting && setting.value) {
+            try { fee = JSON.parse(setting.value).amount || 1000; } catch (e) { fee = parseFloat(setting.value); }
+          }
         } else if (targetIdentity === 'MEMBER') {
           const config = await prisma.membershipConfig.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
           fee = config ? config.membershipPrice : 150;
         } else if (targetIdentity === 'BUSINESS_PARTNER') {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
-          fee = setting ? parseFloat(setting.value) : 2000;
+          fee = 2000;
+          if (setting && setting.value) {
+            try { fee = JSON.parse(setting.value).amount || 2000; } catch (e) { fee = parseFloat(setting.value); }
+          }
         } else if (targetIdentity === 'AGENT') {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'AGENT_REGISTRATION_FEE' } });
           fee = setting ? parseFloat(setting.value) : 500;
@@ -276,13 +282,31 @@ const adminMembershipController = {
    */
   updateMembershipPrice: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId } = req.user;
-    const { price, membershipPrice } = req.body;
-    const finalPrice = price || membershipPrice;
+    const { gst, includedExcluded, platformFee, serviceCharges, price, membershipPrice } = req.body;
+    
+    // Legacy support
+    const legacyPrice = price || membershipPrice;
 
-    if (!finalPrice || finalPrice <= 0) {
+    let calculatedAmount = 0;
+    const sc = parseFloat(serviceCharges || 0);
+    const pf = parseFloat(platformFee || 0);
+    const g = parseFloat(gst || 0);
+    const isInclusive = includedExcluded === true || includedExcluded === 'true';
+
+    if (serviceCharges !== undefined) {
+      if (isInclusive) {
+          calculatedAmount = sc + pf;
+      } else {
+          calculatedAmount = sc + (sc * g / 100) + pf;
+      }
+    } else if (legacyPrice) {
+      calculatedAmount = parseFloat(legacyPrice);
+    }
+
+    if (!calculatedAmount || calculatedAmount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid price"
+        message: "Invalid fee configuration"
       });
     }
 
@@ -293,14 +317,23 @@ const adminMembershipController = {
         data: { isActive: false }
       });
 
-      // Create new config
-      const config = await prisma.membershipConfig.create({
-        data: {
+      const configData = {
           id: generateUuid(),
-          membershipPrice: parseFloat(finalPrice),
+          membershipPrice: calculatedAmount,
           currency: 'INR',
           isActive: true
-        }
+      };
+
+      if (serviceCharges !== undefined) {
+        configData.gst = g;
+        configData.includedExcluded = isInclusive;
+        configData.platformFee = pf;
+        configData.serviceCharge = sc;
+      }
+
+      // Create new config
+      const config = await prisma.membershipConfig.create({
+        data: configData
       });
 
       await logAction({
@@ -315,7 +348,11 @@ const adminMembershipController = {
         message: "Membership price updated successfully",
         data: {
           price: config.membershipPrice,
-          currency: config.currency
+          currency: config.currency,
+          gst: config.gst,
+          includedExcluded: config.includedExcluded,
+          platformFee: config.platformFee,
+          serviceCharge: config.serviceCharge
         }
       });
     } catch (err) {
