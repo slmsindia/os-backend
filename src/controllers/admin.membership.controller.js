@@ -857,8 +857,8 @@ const adminMembershipController = {
    * Sector Management
    */
   createSector: async (req, res) => {
-    const { user_id: adminId } = req.user;
-    const { name, description, imageUrl } = req.body;
+    const { user_id: adminId } = req.user || {};
+    const { name, description, imageUrl } = req.body || {};
 
     if (!name || name.trim() === '') {
       return res.status(400).json({
@@ -921,8 +921,8 @@ const adminMembershipController = {
    * Job Role Management
    */
   createJobRole: async (req, res) => {
-    const { user_id: adminId } = req.user;
-    const { name, sectorId, description, imageUrl } = req.body;
+    const { user_id: adminId } = req.user || {};
+    const { name, sectorId, description, imageUrl } = req.body || {};
 
     if (!name || name.trim() === '') {
       return res.status(400).json({
@@ -993,8 +993,8 @@ const adminMembershipController = {
    * Skill Management
    */
   createSkill: async (req, res) => {
-    const { user_id: adminId } = req.user;
-    const { name, sectorId, jobRoleId } = req.body;
+    const { user_id: adminId } = req.user || {};
+    const { name, sectorId, jobRoleId } = req.body || {};
 
     if (!name || name.trim() === '') {
       return res.status(400).json({ success: false, message: "Skill name is required" });
