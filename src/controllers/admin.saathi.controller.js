@@ -397,21 +397,20 @@ const adminSaathiController = {
         })
       ]);
 
-      // --- NEW: COMMISSION DISTRIBUTION LOGIC FOR SAATHI ---
+      // --- COMMISSION DISTRIBUTION ---
       try {
-        const adminCorporateWallet = await prisma.wallet.findFirst({
+        const adminWallet = await prisma.wallet.findFirst({
           where: { tenantId, isCorporate: true }
         });
 
-        if (adminCorporateWallet && application.payment?.amount > 0) {
-          // Find the saathi sub-service by slug
+        if (adminWallet && (application.payment?.amount > 0)) {
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "saathi_fee" }
           });
 
           if (subService) {
              await commissionService.processCommission(
-                application.payment?.amount || 0,
+                application.payment.amount,
                 subService.id,
                 application.userId,
                 prisma
@@ -419,9 +418,9 @@ const adminSaathiController = {
           }
         }
       } catch (commErr) {
-        console.error("Saathi commission distribution failed:", commErr);
+        console.error("Saathi commission failed:", commErr);
       }
-      // ----------------------------------------------------
+      // -------------------------------
 
       res.json({ success: true, message: "Saathi approved successfully. Identity updated to SAATHI." });
     } catch (err) {

@@ -370,21 +370,20 @@ const businessPartnerController = {
         })
       ]);
 
-      // --- NEW: COMMISSION DISTRIBUTION LOGIC FOR BUSINESS PARTNER ---
+      // --- COMMISSION DISTRIBUTION ---
       try {
-        const adminCorporateWallet = await prisma.wallet.findFirst({
+        const adminWallet = await prisma.wallet.findFirst({
           where: { tenantId, isCorporate: true }
         });
 
-        if (adminCorporateWallet && application.amount > 0) {
-          // Find the business partner sub-service by slug
+        if (adminWallet && (application.amount > 0)) {
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "business_partner_fee" }
           });
 
           if (subService) {
              await commissionService.processCommission(
-                application.amount || 0,
+                application.amount,
                 subService.id,
                 application.userId,
                 prisma
@@ -392,9 +391,9 @@ const businessPartnerController = {
           }
         }
       } catch (commErr) {
-        console.error("Business Partner commission distribution failed:", commErr);
+        console.error("BP commission failed:", commErr);
       }
-      // ---------------------------------------------------------------
+      // -------------------------------
 
       res.json({ success: true, message: "Business Partner approved successfully. Identity updated to BUSINESS_PARTNER." });
     } catch (err) {

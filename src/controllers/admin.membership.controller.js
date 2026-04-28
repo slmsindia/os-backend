@@ -688,41 +688,21 @@ const adminMembershipController = {
         metadata: { userId: application.userId }
       });
 
-      // --- NEW: COMMISSION DISTRIBUTION LOGIC ---
+      // --- COMMISSION DISTRIBUTION ---
       try {
-        // 1. Credit the full amount to Admin's Corporate Wallet first
-        const adminCorporateWallet = await prisma.wallet.findFirst({
+        const adminWallet = await prisma.wallet.findFirst({
           where: { tenantId, isCorporate: true }
         });
 
-        if (adminCorporateWallet && application.payment?.amount > 0) {
-          await prisma.wallet.update({
-            where: { id: adminCorporateWallet.id },
-            data: { balance: { increment: application.payment.amount } }
-          });
-
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminCorporateWallet.id,
-              amount: application.payment.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Membership fee from user ${application.userId}`,
-              tenantId
-            }
-          });
-
-          // 2. Distribute commission down the hierarchy from Admin wallet
-          // Find the membership sub-service by slug
+        if (adminWallet && (application.payment?.amount > 0)) {
+          // Find by slug
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "membership_fee" }
           });
 
           if (subService) {
-             // We trigger commission processing. The service will internally find the upline schemes.
              await commissionService.processCommission(
-                application.payment?.amount || 0,
+                application.payment.amount,
                 subService.id,
                 application.userId,
                 prisma
@@ -731,8 +711,8 @@ const adminMembershipController = {
         }
       } catch (commErr) {
         console.error("Commission distribution failed:", commErr);
-        // We don't block the approval if commission fails, but we log it
       }
+      // -------------------------------
       // -------------------------------------------
 
       res.json({
