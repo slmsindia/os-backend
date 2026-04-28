@@ -7,7 +7,7 @@ const commissionController = {
    * 1.1 Sabhi Schemes List Karo
    */
   getCommissionSchemes: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
+    const { tenant_id: tenantId } = req.user || {};
     const { isActive, userId } = req.query;
 
     try {
@@ -22,8 +22,8 @@ const commissionController = {
 
       res.json({ success: true, data: schemes });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("GET SCHEMES ERROR:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
     }
   },
 
@@ -49,8 +49,10 @@ const commissionController = {
    * 1.3 Nayi Scheme Banao
    */
   addCommissionSchemes: async (req, res) => {
-    const { user_id: adminId, tenant_id: tenantId, identity } = req.user;
-    const { id, name } = req.body;
+    const { user_id: adminId, tenant_id: tenantId, identity } = req.user || {};
+    const { id, name } = req.body || {};
+
+    if (!name) return res.status(400).json({ success: false, message: "Scheme name is required" });
 
     const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
     if (!ELIGIBLE_ROLES.includes(identity)) {
@@ -76,8 +78,8 @@ const commissionController = {
 
       res.status(201).json({ success: true, data: scheme });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("ADD SCHEMES ERROR:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
     }
   },
 
@@ -85,7 +87,8 @@ const commissionController = {
    * 1.4 Scheme Update Karo
    */
   updateCommissionSchemes: async (req, res) => {
-    const { id, name } = req.body;
+    const { id, name } = req.body || {};
+    if (!id || !name) return res.status(400).json({ success: false, message: "ID and name are required" });
     try {
       const scheme = await prisma.commissionScheme.update({
         where: { id },
@@ -119,8 +122,10 @@ const commissionController = {
    * 1.6 Assign Scheme to User
    */
   assignSchemeToUser: async (req, res) => {
-    const { schemeId, userId } = req.body;
-    const { user_id: requestorId, identity } = req.user;
+    const { schemeId, userId } = req.body || {};
+    const { user_id: requestorId, identity } = req.user || {};
+    
+    if (!schemeId || !userId) return res.status(400).json({ success: false, message: "userId and schemeId are required" });
     
     try {
       // Basic check: is requestor allowed? (Can add hierarchy check here)
@@ -178,7 +183,8 @@ const commissionController = {
    * 2.3 Add New Commission Service
    */
   addCommissionService: async (req, res) => {
-    const { name } = req.body;
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ success: false, message: "Service name is required" });
     try {
       const service = await prisma.commissionService.create({
         data: {
@@ -230,7 +236,8 @@ const commissionController = {
    * 3.2b Add New Commission Sub-Service
    */
   addCommissionSubService: async (req, res) => {
-    const { name, serviceId } = req.body;
+    const { name, serviceId } = req.body || {};
+    if (!name || !serviceId) return res.status(400).json({ success: false, message: "Name and serviceId are required" });
     try {
       const subService = await prisma.commissionSubService.create({
         data: {
@@ -293,8 +300,10 @@ const commissionController = {
    * 4.1 Add Commission Share (Bulk)
    */
   addCommissionShare: async (req, res) => {
-    const { schemeId, services } = req.body;
-    const { user_id: adminId, tenant_id: tenantId, identity } = req.user;
+    const { schemeId, services } = req.body || {};
+    const { user_id: adminId, tenant_id: tenantId, identity } = req.user || {};
+
+    if (!schemeId || !services) return res.status(400).json({ success: false, message: "schemeId and services are required" });
 
     const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
     if (!ELIGIBLE_ROLES.includes(identity)) {
@@ -343,7 +352,8 @@ const commissionController = {
    * 4.3 Update Single Commission Share
    */
   updateSingleCommissionShare: async (req, res) => {
-    const { id, subServiceId, schemeId, commissionType, admin, statePartner, districtPartner, saathi, member } = req.body;
+    const { id, subServiceId, schemeId, commissionType, admin, statePartner, districtPartner, saathi, member } = req.body || {};
+    if (!subServiceId || !schemeId) return res.status(400).json({ success: false, message: "subServiceId and schemeId are required" });
     try {
       const share = await prisma.commissionShare.upsert({
         where: { schemeId_subServiceId: { schemeId, subServiceId } },
