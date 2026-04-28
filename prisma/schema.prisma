@@ -447,6 +447,7 @@ model MembershipConfig {
   includedExcluded Boolean @default(true)
   platformFee     Float    @default(0)
   serviceCharge   Float    @default(0)
+  commissionSubServiceId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

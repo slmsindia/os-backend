@@ -3,6 +3,7 @@ const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
+const commissionService = require("../services/commission.service");
 
 const adminMembershipController = {
   /**
@@ -282,7 +283,7 @@ const adminMembershipController = {
    */
   updateMembershipPrice: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId } = req.user;
-    const { gst, includedExcluded, platformFee, serviceCharges, price, membershipPrice } = req.body;
+    const { gst, includedExcluded, platformFee, serviceCharges, price, membershipPrice, commissionSubServiceId } = req.body;
     
     // Legacy support
     const legacyPrice = price || membershipPrice;
@@ -321,6 +322,7 @@ const adminMembershipController = {
           id: generateUuid(),
           membershipPrice: calculatedAmount,
           currency: 'INR',
+          commissionSubServiceId: commissionSubServiceId || null,
           isActive: true
       };
 
@@ -685,6 +687,52 @@ const adminMembershipController = {
         tenantId,
         metadata: { userId: application.userId }
       });
+
+      // --- NEW: COMMISSION DISTRIBUTION LOGIC ---
+      try {
+        // 1. Credit the full amount to Admin's Corporate Wallet first
+        const adminCorporateWallet = await prisma.wallet.findFirst({
+          where: { tenantId, isCorporate: true }
+        });
+
+        if (adminCorporateWallet && application.payment?.amount > 0) {
+          await prisma.wallet.update({
+            where: { id: adminCorporateWallet.id },
+            data: { balance: { increment: application.payment.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminCorporateWallet.id,
+              amount: application.payment.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `Membership fee from user ${application.userId}`,
+              tenantId
+            }
+          });
+
+          // 2. Distribute commission down the hierarchy from Admin wallet
+          // We fetch the subServiceId directly from the active MembershipConfig
+          const config = await prisma.membershipConfig.findFirst({
+            where: { isActive: true }
+          });
+
+          if (config && config.commissionSubServiceId) {
+             await commissionService.processCommission(
+                application.payment.amount,
+                config.commissionSubServiceId,
+                application.userId,
+                prisma
+             );
+          }
+        }
+      } catch (commErr) {
+        console.error("Commission distribution failed:", commErr);
+        // We don't block the approval if commission fails, but we log it
+      }
+      // -------------------------------------------
 
       res.json({
         success: true,
