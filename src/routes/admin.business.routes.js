@@ -17,6 +17,8 @@ router.post("/fee",
   businessPartnerController.updateBusinessPartnerFee
 );
 router.get("/fee", businessPartnerController.getBusinessPartnerFee);
+router.get("/facilities", businessPartnerController.getFacilities);
+router.post("/facilities", businessPartnerController.addFacility);
 
 // Apply for Business Partner
 router.post("/apply", businessPartnerController.createApplication);

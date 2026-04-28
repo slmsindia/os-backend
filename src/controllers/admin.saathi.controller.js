@@ -423,17 +423,25 @@ const adminSaathiController = {
           });
 
           // 2. Distribute
-          const subService = await prisma.commissionSubService.findUnique({
-            where: { slug: "saathi_fee" }
+          const subService = await prisma.commissionSubService.findFirst({
+            where: {
+              OR: [
+                { slug: "saathi_fee" },
+                { name: { contains: "saathi", mode: "insensitive" } }
+              ]
+            }
           });
 
           if (subService) {
+             console.log(`[Commission] Found SubService for Saathi: ${subService.name}`);
              await commissionService.processCommission(
                 application.payment.amount,
                 subService.id,
                 application.userId,
                 prisma
              );
+          } else {
+             console.log("[Commission] WARNING: saathi_fee SubService not found.");
           }
         }
       } catch (commErr) {

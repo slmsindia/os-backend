@@ -899,6 +899,7 @@ model CommissionService {
 model CommissionSubService {
   id          String   @id @default(uuid())
   name        String
+  slug        String?  @unique
   serviceId   String
   service     CommissionService @relation(fields: [serviceId], references: [id])
   isActive    Boolean  @default(true)

@@ -283,7 +283,7 @@ const adminMembershipController = {
    */
   updateMembershipPrice: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId } = req.user;
-    const { gst, includedExcluded, platformFee, serviceCharges, price, membershipPrice, commissionSubServiceId } = req.body;
+    const { gst, includedExcluded, platformFee, serviceCharges, price, membershipPrice } = req.body;
     
     // Legacy support
     const legacyPrice = price || membershipPrice;
@@ -322,7 +322,6 @@ const adminMembershipController = {
           id: generateUuid(),
           membershipPrice: calculatedAmount,
           currency: 'INR',
-          commissionSubServiceId: commissionSubServiceId || null,
           isActive: true
       };
 
@@ -348,14 +347,7 @@ const adminMembershipController = {
       res.json({
         success: true,
         message: "Membership price updated successfully",
-        data: {
-          price: config.membershipPrice,
-          currency: config.currency,
-          gst: config.gst,
-          includedExcluded: config.includedExcluded,
-          platformFee: config.platformFee,
-          serviceCharge: config.serviceCharge
-        }
+        data: config
       });
     } catch (err) {
       console.error(err);
@@ -716,17 +708,27 @@ const adminMembershipController = {
           console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
 
           // 2. Now distribute from Admin down to the hierarchy
-          const subService = await prisma.commissionSubService.findUnique({
-            where: { slug: "membership_fee" }
+          // Lookup by slug first, then fall back to name
+          const subService = await prisma.commissionSubService.findFirst({
+            where: {
+              OR: [
+                { slug: "membership_fee" },
+                { name: { contains: "membership", mode: "insensitive" } },
+                { name: { contains: "member", mode: "insensitive" } }
+              ]
+            }
           });
 
           if (subService) {
+             console.log(`[Commission] Found SubService: ${subService.name} (${subService.id})`);
              await commissionService.processCommission(
                 application.payment.amount,
                 subService.id,
                 application.userId,
                 prisma
              );
+          } else {
+             console.log("[Commission] WARNING: membership_fee SubService not found. Please create it via /api/Commission/AddCommissionSubService");
           }
         } else {
           console.log("[Commission] SKIP: No Admin Corporate Wallet found or amount is 0");

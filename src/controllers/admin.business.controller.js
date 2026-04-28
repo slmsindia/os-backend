@@ -8,6 +8,33 @@ const commissionService = require("../services/commission.service");
 
 const businessPartnerController = {
   /**
+   * Add a business facility (e.g. WiFi, Parking) - Placeholder
+   */
+  addFacility: async (req, res) => {
+    const { name, icon } = req.body;
+    try {
+      // For now we just return success as a placeholder if no model exists yet
+      // In future, you can create a BusinessFacility model
+      res.json({ success: true, message: "Facility added successfully (Placeholder)", data: { name, icon } });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  getFacilities: async (req, res) => {
+    try {
+      const facilities = await prisma.jobFacility.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' }
+      });
+      res.json({ success: true, data: facilities });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * Set Business Partner Fee
    */
   updateBusinessPartnerFee: async (req, res) => {
@@ -396,17 +423,26 @@ const businessPartnerController = {
           });
 
           // 2. Distribute
-          const subService = await prisma.commissionSubService.findUnique({
-            where: { slug: "business_partner_fee" }
+          const subService = await prisma.commissionSubService.findFirst({
+            where: {
+              OR: [
+                { slug: "business_partner_fee" },
+                { name: { contains: "business", mode: "insensitive" } },
+                { name: { contains: "partner", mode: "insensitive" } }
+              ]
+            }
           });
 
           if (subService) {
+             console.log(`[Commission] Found SubService for BP: ${subService.name}`);
              await commissionService.processCommission(
                 application.amount,
                 subService.id,
                 application.userId,
                 prisma
              );
+          } else {
+             console.log("[Commission] WARNING: business_partner_fee SubService not found.");
           }
         }
       } catch (commErr) {

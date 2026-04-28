@@ -318,17 +318,17 @@ const commissionController = {
             id: generateUuid(),
             schemeId,
             subServiceId: sub.id,
-            commissionType: sub.type || 1,
-            baseType: sub.baseType || 1,
+            commissionType: parseInt(sub.type) || parseInt(sub.commissionType) || 1,
+            baseType: parseInt(sub.baseType) || 1,
             admin: Number(sub.admin) || 0,
             countryPartner: Number(sub.countryPartner) || 0,
             statePartner: Number(sub.statePartner) || 0,
-            districtPartner: sub.districtPartner || 0,
-            saathi: sub.saathi || 0,
-            member: sub.member || 0,
-            servicePrice: sub.servicePrice || 0,
-            referral: sub.referral || 0,
-            referralMinAmount: sub.referralMinAmount || 0
+            districtPartner: Number(sub.districtPartner) || 0,
+            saathi: Number(sub.saathi) || 0,
+            member: Number(sub.member) || 0,
+            servicePrice: Number(sub.servicePrice) || 0,
+            referral: Number(sub.referral) || 0,
+            referralMinAmount: Number(sub.referralMinAmount) || 0
           });
         }
       }
