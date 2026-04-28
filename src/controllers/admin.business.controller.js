@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
+const commissionService = require("../services/commission.service");
 
 const businessPartnerController = {
   /**
@@ -368,6 +369,50 @@ const businessPartnerController = {
           data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
+
+      // --- NEW: COMMISSION DISTRIBUTION LOGIC FOR BUSINESS PARTNER ---
+      try {
+        const adminCorporateWallet = await prisma.wallet.findFirst({
+          where: { tenantId, isCorporate: true }
+        });
+
+        if (adminCorporateWallet && application.amount > 0) {
+          // Find the business partner sub-service by slug
+          const subService = await prisma.commissionSubService.findUnique({
+            where: { slug: "business_partner_fee" }
+          });
+
+          if (subService) {
+             const userWithScheme = await prisma.user.findUnique({
+                where: { id: application.userId },
+                select: { commissionSchemeId: true }
+             });
+
+             if (userWithScheme?.commissionSchemeId) {
+                const share = await prisma.commissionShare.findUnique({
+                   where: { 
+                      schemeId_subServiceId: { 
+                        schemeId: userWithScheme.commissionSchemeId, 
+                        subServiceId: subService.id 
+                      } 
+                   }
+                });
+
+                const finalAmount = share?.servicePrice || application.amount || 0;
+
+                await commissionService.processCommission(
+                    finalAmount,
+                    subService.id,
+                    application.userId,
+                    prisma
+                );
+             }
+          }
+        }
+      } catch (commErr) {
+        console.error("Business Partner commission distribution failed:", commErr);
+      }
+      // ---------------------------------------------------------------
 
       res.json({ success: true, message: "Business Partner approved successfully. Identity updated to BUSINESS_PARTNER." });
     } catch (err) {

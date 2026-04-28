@@ -4,6 +4,7 @@ const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
+const commissionService = require("../services/commission.service");
 
 const adminSaathiController = {
   /**
@@ -395,6 +396,50 @@ const adminSaathiController = {
           data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
+
+      // --- NEW: COMMISSION DISTRIBUTION LOGIC FOR SAATHI ---
+      try {
+        const adminCorporateWallet = await prisma.wallet.findFirst({
+          where: { tenantId, isCorporate: true }
+        });
+
+        if (adminCorporateWallet && application.payment?.amount > 0) {
+          // Find the saathi sub-service by slug
+          const subService = await prisma.commissionSubService.findUnique({
+            where: { slug: "saathi_fee" }
+          });
+
+          if (subService) {
+             const userWithScheme = await prisma.user.findUnique({
+                where: { id: application.userId },
+                select: { commissionSchemeId: true }
+             });
+
+             if (userWithScheme?.commissionSchemeId) {
+                const share = await prisma.commissionShare.findUnique({
+                   where: { 
+                      schemeId_subServiceId: { 
+                        schemeId: userWithScheme.commissionSchemeId, 
+                        subServiceId: subService.id 
+                      } 
+                   }
+                });
+
+                const finalAmount = share?.servicePrice || application.payment?.amount || 0;
+
+                await commissionService.processCommission(
+                    finalAmount,
+                    subService.id,
+                    application.userId,
+                    prisma
+                );
+             }
+          }
+        }
+      } catch (commErr) {
+        console.error("Saathi commission distribution failed:", commErr);
+      }
+      // ----------------------------------------------------
 
       res.json({ success: true, message: "Saathi approved successfully. Identity updated to SAATHI." });
     } catch (err) {
