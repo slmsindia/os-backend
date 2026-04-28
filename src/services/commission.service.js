@@ -23,10 +23,10 @@ const commissionService = {
 
       // 2. Fetch the Upline (from top to bottom)
       const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
-      if (!pathIds.includes(adminWallet.userId)) {
-          // If admin is not in path, we add it to the top. Assuming adminWallet.userId is SUPER_ADMIN
+      if (adminWallet && !pathIds.includes(adminWallet.userId)) {
           pathIds.unshift(adminWallet.userId);
       }
+      console.log(`[Commission] Processing path for user ${userId}:`, pathIds);
       
       const hierarchy = await tx.user.findMany({
         where: { id: { in: pathIds } },
@@ -45,6 +45,7 @@ const commissionService = {
           status: "SUCCESS"
         }
       });
+      console.log(`[Commission] Created TransactionLog: ${transactionLog.id}`);
 
       // Track how much balance the current "Sender" has (Starts with Admin having 100%)
       let currentSender = adminWallet.userId;
@@ -86,6 +87,7 @@ const commissionService = {
           const transferAmount = calculateShare(shareConfig, shareKey);
 
           if (transferAmount > 0) {
+              console.log(`[Commission] SUCCESS: Transferring ${transferAmount} from ${sender.id} to ${receiver.id} (${receiver.identity})`);
               // Deduct from Sender
               await tx.wallet.update({
                   where: { userId: sender.id },

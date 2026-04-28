@@ -383,30 +383,12 @@ const businessPartnerController = {
           });
 
           if (subService) {
-             const userWithScheme = await prisma.user.findUnique({
-                where: { id: application.userId },
-                select: { commissionSchemeId: true }
-             });
-
-             if (userWithScheme?.commissionSchemeId) {
-                const share = await prisma.commissionShare.findUnique({
-                   where: { 
-                      schemeId_subServiceId: { 
-                        schemeId: userWithScheme.commissionSchemeId, 
-                        subServiceId: subService.id 
-                      } 
-                   }
-                });
-
-                const finalAmount = share?.servicePrice || application.amount || 0;
-
-                await commissionService.processCommission(
-                    finalAmount,
-                    subService.id,
-                    application.userId,
-                    prisma
-                );
-             }
+             await commissionService.processCommission(
+                application.amount || 0,
+                subService.id,
+                application.userId,
+                prisma
+             );
           }
         }
       } catch (commErr) {

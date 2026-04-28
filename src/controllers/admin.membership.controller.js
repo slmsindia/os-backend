@@ -720,32 +720,13 @@ const adminMembershipController = {
           });
 
           if (subService) {
-             // Find the user's assigned scheme share to get the price
-             const userWithScheme = await prisma.user.findUnique({
-                where: { id: application.userId },
-                select: { commissionSchemeId: true }
-             });
-
-             if (userWithScheme?.commissionSchemeId) {
-                const share = await prisma.commissionShare.findUnique({
-                   where: { 
-                      schemeId_subServiceId: { 
-                        schemeId: userWithScheme.commissionSchemeId, 
-                        subServiceId: subService.id 
-                      } 
-                   }
-                });
-
-                // Use the price from the scheme if available
-                const finalAmount = share?.servicePrice || application.payment?.amount || 0;
-
-                await commissionService.processCommission(
-                    finalAmount,
-                    subService.id,
-                    application.userId,
-                    prisma
-                );
-             }
+             // We trigger commission processing. The service will internally find the upline schemes.
+             await commissionService.processCommission(
+                application.payment?.amount || 0,
+                subService.id,
+                application.userId,
+                prisma
+             );
           }
         }
       } catch (commErr) {
