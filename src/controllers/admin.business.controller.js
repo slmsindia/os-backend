@@ -377,6 +377,25 @@ const businessPartnerController = {
         });
 
         if (adminWallet && (application.amount > 0)) {
+          // 1. Credit Admin
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `BP fee received from user ${application.userId}`,
+              tenantId
+            }
+          });
+
+          // 2. Distribute
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "business_partner_fee" }
           });
@@ -393,6 +412,7 @@ const businessPartnerController = {
       } catch (commErr) {
         console.error("BP commission failed:", commErr);
       }
+      // -------------------------------
       // -------------------------------
 
       res.json({ success: true, message: "Business Partner approved successfully. Identity updated to BUSINESS_PARTNER." });

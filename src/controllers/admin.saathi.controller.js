@@ -404,6 +404,25 @@ const adminSaathiController = {
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
+          // 1. Credit Admin
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.payment.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.payment.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `Saathi fee received from user ${application.userId}`,
+              tenantId
+            }
+          });
+
+          // 2. Distribute
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "saathi_fee" }
           });

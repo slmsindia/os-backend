@@ -695,7 +695,27 @@ const adminMembershipController = {
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
-          // Find by slug
+          // 1. First, credit the full payment amount to the Admin Corporate Wallet
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.payment.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.payment.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `Membership fee received from user ${application.userId}`,
+              tenantId
+            }
+          });
+
+          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
+
+          // 2. Now distribute from Admin down to the hierarchy
           const subService = await prisma.commissionSubService.findUnique({
             where: { slug: "membership_fee" }
           });
@@ -708,10 +728,13 @@ const adminMembershipController = {
                 prisma
              );
           }
+        } else {
+          console.log("[Commission] SKIP: No Admin Corporate Wallet found or amount is 0");
         }
       } catch (commErr) {
         console.error("Commission distribution failed:", commErr);
       }
+      // -------------------------------
       // -------------------------------
       // -------------------------------------------
 
