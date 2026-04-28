@@ -326,6 +326,7 @@ const commissionController = {
             districtPartner: sub.districtPartner || 0,
             saathi: sub.saathi || 0,
             member: sub.member || 0,
+            servicePrice: sub.servicePrice || 0,
             referral: sub.referral || 0,
             referralMinAmount: sub.referralMinAmount || 0
           });
@@ -353,12 +354,12 @@ const commissionController = {
    * 4.3 Update Single Commission Share
    */
   updateSingleCommissionShare: async (req, res) => {
-    const { id, subServiceId, schemeId, commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member } = req.body || {};
+    const { id, subServiceId, schemeId, commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member, servicePrice } = req.body || {};
     if (!subServiceId || !schemeId) return res.status(400).json({ success: false, message: "subServiceId and schemeId are required" });
     try {
       const share = await prisma.commissionShare.upsert({
         where: { schemeId_subServiceId: { schemeId, subServiceId } },
-        update: { commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member },
+        update: { commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member, servicePrice },
         create: {
           id: id || generateUuid(),
           schemeId,
@@ -369,7 +370,8 @@ const commissionController = {
           statePartner,
           districtPartner,
           saathi,
-          member
+          member,
+          servicePrice
         }
       });
       res.json({ success: true, data: share });

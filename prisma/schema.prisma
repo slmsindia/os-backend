@@ -447,7 +447,6 @@ model MembershipConfig {
   includedExcluded Boolean @default(true)
   platformFee     Float    @default(0)
   serviceCharge   Float    @default(0)
-  commissionSubServiceId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -927,6 +926,7 @@ model CommissionShare {
   districtPartner   Float    @default(0)
   saathi            Float    @default(0)
   member            Float    @default(0)
+  servicePrice      Float    @default(0)
   referral          Float    @default(0)
   referralMinAmount Float    @default(0)
   
