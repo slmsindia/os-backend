@@ -1,44 +1,41 @@
-const { prisma } = require("../lib/prisma");
+const prisma = require("../lib/prisma");
 const { v4: generateUuid } = require("uuid");
 
 const commissionService = {
   /**
-   * Automatically distributes commission based on the user's scheme and the transaction sub-service.
-   * This should be called inside your main transaction endpoints (like after a recharge or registration).
-   * 
-   * @param {number} transactionAmount - Total transaction/service charge amount
-   * @param {string} subServiceId - ID of the CommissionSubService
-   * @param {string} userId - ID of the user performing the transaction
-   * @param {object} tx - Prisma transaction object (optional, defaults to prisma)
+   * Distributes commission hierarchically based on Upline.
+   * Logic: Admin -> Country -> State -> District -> Saathi
    */
   processCommission: async (transactionAmount, subServiceId, userId, tx = prisma) => {
     try {
-      // 1. Get User and their assigned Scheme
+      // 1. Get the user and their Upline (Path)
       const user = await tx.user.findUnique({
         where: { id: userId },
         include: { tenant: true }
       });
-      if (!user || !user.commissionSchemeId) return { success: false, message: "No scheme assigned to user" };
+      if (!user) return { success: false, message: "User not found" };
 
-      // 2. Get Commission Share configuration
-      const share = await tx.commissionShare.findUnique({
-        where: { schemeId_subServiceId: { schemeId: user.commissionSchemeId, subServiceId } }
+      // Total fee goes to Admin first
+      const adminWallet = await tx.wallet.findFirst({
+        where: { tenantId: user.tenantId, isCorporate: true }
       });
-      if (!share) return { success: false, message: "No share configured for this sub-service in user's scheme" };
+      if (!adminWallet) return { success: false, message: "Corporate Admin Wallet not found" };
 
-      // 3. Calculate amount based on commission type (1 = %, 2 = Flat)
-      const calcAmount = (value) => share.commissionType === 1 ? (transactionAmount * value) / 100 : value;
+      // 2. Fetch the Upline (from top to bottom)
+      const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
+      if (!pathIds.includes(adminWallet.userId)) {
+          // If admin is not in path, we add it to the top. Assuming adminWallet.userId is SUPER_ADMIN
+          pathIds.unshift(adminWallet.userId);
+      }
+      
+      const hierarchy = await tx.user.findMany({
+        where: { id: { in: pathIds } },
+        select: { id: true, identity: true, commissionSchemeId: true }
+      });
 
-      const distributions = {
-        admin: calcAmount(share.admin),
-        statePartner: calcAmount(share.statePartner),
-        districtPartner: calcAmount(share.districtPartner),
-        saathi: calcAmount(share.saathi),
-        member: calcAmount(share.member),
-        referral: transactionAmount >= share.referralMinAmount ? calcAmount(share.referral) : 0
-      };
+      // Sort hierarchy top to bottom based on path index
+      hierarchy.sort((a, b) => pathIds.indexOf(a.id) - pathIds.indexOf(b.id));
 
-      // 4. Create TransactionLog
       const transactionLog = await tx.transactionLog.create({
         data: {
           id: generateUuid(),
@@ -49,98 +46,86 @@ const commissionService = {
         }
       });
 
-      // Helper function to distribute to a specific role's wallet
-      const addCommission = async (targetUserId, amount, roleDesc) => {
-        if (!targetUserId || amount <= 0) return;
-        
-        // Add to Commission History
-        await tx.commissionHistory.create({
-          data: {
-            id: generateUuid(),
-            userId: targetUserId,
-            transactionId: transactionLog.id,
-            amount,
-            accountType: "commission"
-          }
-        });
-
-        // Update Wallet Balance
-        const wallet = await tx.wallet.findUnique({ where: { userId: targetUserId } });
-        if (wallet) {
-          await tx.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: { increment: amount } }
-          });
-          
-          await tx.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: wallet.id,
-              amount,
-              type: "CREDIT",
-              category: "COMMISSION",
-              referenceId: transactionLog.id,
-              description: `Commission earned for ${roleDesc} from transaction`,
-              tenantId: user.tenantId
-            }
-          });
-        }
+      // Track how much balance the current "Sender" has (Starts with Admin having 100%)
+      let currentSender = adminWallet.userId;
+      
+      // Calculate amount logic based on CommissionShare (1 = %, 2 = Flat)
+      const calculateShare = (shareConfig, key) => {
+          if (!shareConfig || !shareConfig[key]) return 0;
+          return shareConfig.commissionType === 1 
+              ? (transactionAmount * shareConfig[key]) / 100 
+              : shareConfig[key];
       };
 
-      // 5. Fetch upline (parents) from the user's hierarchy path
-      const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
-      const hierarchy = await tx.user.findMany({
-        where: { id: { in: pathIds } },
-        select: { id: true, identity: true }
-      });
+      // Traverse from Top (Admin) down to the direct parent
+      for (let i = 0; i < hierarchy.length - 1; i++) {
+          const sender = hierarchy[i];
+          const receiver = hierarchy[i + 1];
 
-      const findRoleInUpline = (identity) => hierarchy.find(u => u.identity === identity)?.id;
+          // We look at Receiver's scheme (assigned to them)
+          if (!receiver.commissionSchemeId) continue; // Skip if receiver has no scheme
 
-      // 6. Execute distributions
-      await Promise.all([
-        addCommission(findRoleInUpline("STATE_PARTNER"), distributions.statePartner, "State Partner"),
-        addCommission(findRoleInUpline("DISTRICT_PARTNER"), distributions.districtPartner, "District Partner"),
-        addCommission(findRoleInUpline("SAATHI"), distributions.saathi, "Saathi"),
-        addCommission(findRoleInUpline("MEMBER"), distributions.member, "Member"),
-        addCommission(user.referredBy, distributions.referral, "Referral") // Direct referral
-      ]);
+          const shareConfig = await tx.commissionShare.findUnique({
+             where: { schemeId_subServiceId: { schemeId: receiver.commissionSchemeId, subServiceId } }
+          });
+          
+          if (!shareConfig) continue;
 
-      // 7. Admin Income Logic
-      if (distributions.admin > 0) {
-        await tx.adminIncome.create({
-          data: {
-            id: generateUuid(),
-            transactionId: transactionLog.id,
-            amount: distributions.admin,
-            type: "credit"
+          // Find the exact field to look up based on Receiver's identity
+          let shareKey = '';
+          if (receiver.identity === 'COUNTRY_HEAD') shareKey = 'countryPartner';
+          else if (receiver.identity === 'STATE_PARTNER') shareKey = 'statePartner';
+          else if (receiver.identity === 'DISTRICT_PARTNER') shareKey = 'districtPartner';
+          else if (receiver.identity === 'SAATHI') shareKey = 'saathi';
+          else if (receiver.identity === 'MEMBER') shareKey = 'member';
+          // Country partner isn't strictly in the schema you provided earlier, but if it is, we'd add it.
+          // Let's assume standard names for now.
+
+          if (!shareKey) continue; // Unknown identity for commission
+
+          const transferAmount = calculateShare(shareConfig, shareKey);
+
+          if (transferAmount > 0) {
+              // Deduct from Sender
+              await tx.wallet.update({
+                  where: { userId: sender.id },
+                  data: { balance: { decrement: transferAmount } }
+              });
+
+              // Add to Receiver
+              await tx.wallet.update({
+                  where: { userId: receiver.id },
+                  data: { balance: { increment: transferAmount } }
+              });
+
+              // Create History for Receiver
+              await tx.commissionHistory.create({
+                  data: {
+                      id: generateUuid(),
+                      userId: receiver.id,
+                      transactionId: transactionLog.id,
+                      amount: transferAmount,
+                      accountType: "commission"
+                  }
+              });
+
+              // Transaction Logs
+              await tx.walletTransaction.create({
+                  data: {
+                      id: generateUuid(),
+                      walletId: (await tx.wallet.findUnique({ where: { userId: receiver.id } })).id,
+                      amount: transferAmount,
+                      type: "CREDIT",
+                      category: "COMMISSION",
+                      referenceId: transactionLog.id,
+                      description: `Commission received from upline for ${receiver.identity}`,
+                      tenantId: user.tenantId
+                  }
+              });
           }
-        });
-        
-        const adminWallet = await tx.wallet.findFirst({
-          where: { tenantId: user.tenantId, isCorporate: true }
-        });
-        
-        if (adminWallet) {
-          await tx.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: distributions.admin } }
-          });
-          await tx.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: distributions.admin,
-              type: "CREDIT",
-              category: "COMMISSION",
-              referenceId: transactionLog.id,
-              description: "Admin commission share",
-              tenantId: user.tenantId
-            }
-          });
-        }
       }
 
-      return { success: true, message: "Commission processed and wallets updated successfully" };
+      return { success: true, message: "Commission cascading processed successfully" };
     } catch (err) {
       console.error("Commission processing error:", err);
       return { success: false, message: "Error processing commission" };

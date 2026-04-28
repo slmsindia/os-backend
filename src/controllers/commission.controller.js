@@ -1,4 +1,4 @@
-const { prisma } = require("../lib/prisma");
+const prisma = require("../lib/prisma");
 const { v4: generateUuid } = require("uuid");
 const { logAction } = require("../utils/audit");
 
@@ -292,7 +292,7 @@ const commissionController = {
       res.json({ success: true, data });
     } catch (err) {
       console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
     }
   },
 
@@ -320,8 +320,9 @@ const commissionController = {
             subServiceId: sub.id,
             commissionType: sub.type || 1,
             baseType: sub.baseType || 1,
-            admin: sub.admin || 0,
-            statePartner: sub.statePartner || 0,
+            admin: Number(sub.admin) || 0,
+            countryPartner: Number(sub.countryPartner) || 0,
+            statePartner: Number(sub.statePartner) || 0,
             districtPartner: sub.districtPartner || 0,
             saathi: sub.saathi || 0,
             member: sub.member || 0,
@@ -352,18 +353,19 @@ const commissionController = {
    * 4.3 Update Single Commission Share
    */
   updateSingleCommissionShare: async (req, res) => {
-    const { id, subServiceId, schemeId, commissionType, admin, statePartner, districtPartner, saathi, member } = req.body || {};
+    const { id, subServiceId, schemeId, commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member } = req.body || {};
     if (!subServiceId || !schemeId) return res.status(400).json({ success: false, message: "subServiceId and schemeId are required" });
     try {
       const share = await prisma.commissionShare.upsert({
         where: { schemeId_subServiceId: { schemeId, subServiceId } },
-        update: { commissionType, admin, statePartner, districtPartner, saathi, member },
+        update: { commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member },
         create: {
           id: id || generateUuid(),
           schemeId,
           subServiceId,
           commissionType,
           admin,
+          countryPartner,
           statePartner,
           districtPartner,
           saathi,

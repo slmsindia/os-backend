@@ -921,6 +921,7 @@ model CommissionShare {
   baseType          Int      @default(1) 
   
   admin             Float    @default(0)
+  countryPartner    Float    @default(0) @map("country_partner")
   statePartner      Float    @default(0)
   districtPartner   Float    @default(0)
   saathi            Float    @default(0)
