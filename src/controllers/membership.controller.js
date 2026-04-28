@@ -57,10 +57,11 @@ const membershipController = {
    */
   getReferenceData: async (req, res) => {
     try {
-      const [educations, sectors, jobRoles, documentTypes] = await Promise.all([
+      const [educations, sectors, jobRoles, skills, documentTypes] = await Promise.all([
         prisma.education.findMany({ where: { isActive: true } }),
-        prisma.sector.findMany({ where: { isActive: true } }),
+        prisma.sector.findMany({ where: { isActive: true }, include: { jobRoles: true, skills: true } }),
         prisma.jobRole.findMany({ where: { isActive: true } }),
+        prisma.skill.findMany({ where: { isActive: true } }),
         prisma.documentType.findMany({ where: { isActive: true } })
       ]);
 
@@ -70,6 +71,7 @@ const membershipController = {
           educations,
           sectors,
           jobRoles,
+          skills,
           documentTypes
         }
       });

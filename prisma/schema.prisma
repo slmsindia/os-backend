@@ -236,12 +236,6 @@ model JobPost {
 }
 
 // Additional Master Data
-model Skill {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-}
 
 model JobFacility {
   id        String   @id @default(uuid())
@@ -476,12 +470,16 @@ model Education {
 }
 
 model Sector {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  jobRoles               JobRole[]
+  skills                 Skill[]
   membershipApplications MembershipApplication[]
   businessProfiles       BusinessProfile[]
   businessApplications   BusinessApplication[]
@@ -489,14 +487,36 @@ model Sector {
 }
 
 model JobRole {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  sectorId    String?
+  sector      Sector?  @relation(fields: [sectorId], references: [id])
+  name        String   @unique
+  description String?
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  skills                 Skill[]
   membershipApplications MembershipApplication[]
   jobPosts               JobPost[]
+  
+  @@index([sectorId])
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  sectorId    String?
+  sector      Sector?  @relation(fields: [sectorId], references: [id])
+  jobRoleId   String?
+  jobRole     JobRole? @relation(fields: [jobRoleId], references: [id])
+  name        String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([sectorId])
+  @@index([jobRoleId])
 }
 
 model DocumentType {

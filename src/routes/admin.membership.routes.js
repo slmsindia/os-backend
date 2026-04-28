@@ -36,6 +36,10 @@ router.get("/sector", adminMembershipController.getSectors);
 router.post("/job-role", adminMembershipController.createJobRole);
 router.get("/job-role", adminMembershipController.getJobRoles);
 
+// Skill management
+router.post("/skill", adminMembershipController.createSkill);
+router.get("/skill", adminMembershipController.getSkills);
+
 // Document type management
 router.post("/document-type", adminMembershipController.createDocumentType);
 router.get("/document-type", adminMembershipController.getDocumentTypes);

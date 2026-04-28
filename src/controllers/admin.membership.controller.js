@@ -858,7 +858,7 @@ const adminMembershipController = {
    */
   createSector: async (req, res) => {
     const { user_id: adminId } = req.user;
-    const { name } = req.body;
+    const { name, description, imageUrl } = req.body;
 
     if (!name || name.trim() === '') {
       return res.status(400).json({
@@ -871,7 +871,9 @@ const adminMembershipController = {
       const sector = await prisma.sector.create({
         data: {
           id: generateUuid(),
-          name: name.trim()
+          name: name.trim(),
+          description: description ? description.trim() : null,
+          imageUrl: imageUrl || null
         }
       });
 
@@ -901,7 +903,8 @@ const adminMembershipController = {
   getSectors: async (req, res) => {
     try {
       const sectors = await prisma.sector.findMany({
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
+        include: { jobRoles: true, skills: true }
       });
 
       res.json({
@@ -919,7 +922,7 @@ const adminMembershipController = {
    */
   createJobRole: async (req, res) => {
     const { user_id: adminId } = req.user;
-    const { name } = req.body;
+    const { name, sectorId, description, imageUrl } = req.body;
 
     if (!name || name.trim() === '') {
       return res.status(400).json({
@@ -928,11 +931,21 @@ const adminMembershipController = {
       });
     }
 
+    if (!sectorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Sector is required"
+      });
+    }
+
     try {
       const jobRole = await prisma.jobRole.create({
         data: {
           id: generateUuid(),
-          name: name.trim()
+          name: name.trim(),
+          sectorId,
+          description: description ? description.trim() : null,
+          imageUrl: imageUrl || null
         }
       });
 
@@ -962,12 +975,74 @@ const adminMembershipController = {
   getJobRoles: async (req, res) => {
     try {
       const jobRoles = await prisma.jobRole.findMany({
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
+        include: { sector: true, skills: true }
       });
 
       res.json({
         success: true,
         data: jobRoles
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Skill Management
+   */
+  createSkill: async (req, res) => {
+    const { user_id: adminId } = req.user;
+    const { name, sectorId, jobRoleId } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ success: false, message: "Skill name is required" });
+    }
+    if (!sectorId || !jobRoleId) {
+      return res.status(400).json({ success: false, message: "Sector and Job Role are required" });
+    }
+
+    try {
+      const skill = await prisma.skill.create({
+        data: {
+          id: generateUuid(),
+          name: name.trim(),
+          sectorId,
+          jobRoleId
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "SKILL_CREATED",
+        targetId: skill.id
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "Skill created successfully",
+        data: skill
+      });
+    } catch (err) {
+      console.error(err);
+      if (err.code === 'P2002') {
+        return res.status(400).json({ success: false, message: "Skill already exists for this Job Role" });
+      }
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  getSkills: async (req, res) => {
+    try {
+      const skills = await prisma.skill.findMany({
+        orderBy: { name: 'asc' },
+        include: { sector: true, jobRole: true }
+      });
+
+      res.json({
+        success: true,
+        data: skills
       });
     } catch (err) {
       console.error(err);
