@@ -116,6 +116,32 @@ const commissionController = {
   },
 
   /**
+   * 1.6 Assign Scheme to User
+   */
+  assignSchemeToUser: async (req, res) => {
+    const { schemeId, userId } = req.body;
+    const { user_id: requestorId, identity } = req.user;
+    
+    try {
+      // Basic check: is requestor allowed? (Can add hierarchy check here)
+      const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      if (!ELIGIBLE_ROLES.includes(identity)) {
+        return res.status(403).json({ success: false, message: "Permission denied" });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { commissionSchemeId: schemeId }
+      });
+
+      res.json({ success: true, message: "Scheme assigned successfully", data: { userId, schemeId } });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * 2.1 Get Services
    */
   getCommissionServices: async (req, res) => {
@@ -149,6 +175,25 @@ const commissionController = {
   },
 
   /**
+   * 2.3 Add New Commission Service
+   */
+  addCommissionService: async (req, res) => {
+    const { name } = req.body;
+    try {
+      const service = await prisma.commissionService.create({
+        data: {
+          id: generateUuid(),
+          name
+        }
+      });
+      res.status(201).json({ success: true, message: "Service added", data: service });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * 3.1 Get Sub-Services
    */
   getCommissionSubServices: async (req, res) => {
@@ -175,6 +220,26 @@ const commissionController = {
         data: { isActive: isActive === 'true' }
       });
       res.json({ success: true, message: "Sub-service status updated" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * 3.2b Add New Commission Sub-Service
+   */
+  addCommissionSubService: async (req, res) => {
+    const { name, serviceId } = req.body;
+    try {
+      const subService = await prisma.commissionSubService.create({
+        data: {
+          id: generateUuid(),
+          name,
+          serviceId
+        }
+      });
+      res.status(201).json({ success: true, message: "Sub-service added", data: subService });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

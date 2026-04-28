@@ -12,14 +12,17 @@ router.get("/GetCommissionSchemeById", commissionController.getCommissionSchemeB
 router.post("/AddCommissionSchemes", commissionController.addCommissionSchemes);
 router.put("/UpdateCommissionSchemes", commissionController.updateCommissionSchemes);
 router.get("/UpdateCommissionSchemeStatus", commissionController.updateCommissionSchemeStatus);
+router.post("/AssignSchemeToUser", commissionController.assignSchemeToUser);
 
 // 2. Commission Services
 router.get("/GetCommissionServices", commissionController.getCommissionServices);
 router.get("/UpdateCommissionServiceStatus", commissionController.updateCommissionServiceStatus);
+router.post("/AddCommissionService", commissionController.addCommissionService);
 
 // 3. Commission Sub-Services
 router.get("/GetCommissionSubServices", commissionController.getCommissionSubServices);
 router.get("/UpdateCommissionSubServiceStatus", commissionController.updateCommissionSubServiceStatus);
+router.post("/AddCommissionSubService", commissionController.addCommissionSubService);
 router.get("/GetServicesSubServices", commissionController.getServicesSubServices);
 router.get("/GetServiceSubServiceBySchemeId", commissionController.getServiceSubServiceBySchemeId);
 
