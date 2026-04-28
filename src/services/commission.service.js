@@ -1,56 +1,50 @@
 const prisma = require("../lib/prisma");
 const { v4: generateUuid } = require("uuid");
-const walletService = require("./wallet.service");
 
 const commissionService = {
-  /**
-   * Distributes commission hierarchically.
-   * Logic: Sender (Upline) -> Receiver (Downline)
-   */
   processCommission: async (transactionAmount, subServiceId, userId, tx = prisma) => {
-    console.log(`[Commission] >>> Starting distribution for User: ${userId}, Amount: ${transactionAmount}`);
+    console.log(`[Commission] >>> STARTING: User=${userId}, Amt=${transactionAmount}, SubService=${subServiceId}`);
     
     try {
-      // 1. Get the target user and their full hierarchy path
       const user = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, path: true, tenantId: true }
       });
 
       if (!user) {
-          console.error("[Commission] ERROR: Target User not found");
+          console.error("[Commission] ERROR: User not found in DB");
           return { success: false, message: "User not found" };
       }
 
-      // 2. Build the full path of IDs including Admin
-      const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
+      const rawPathIds = user.path ? user.path.split('/').filter(id => id && id.length > 5) : [];
       
-      // Get Corporate Admin Wallet to identify the Root Admin
-      const adminWallet = await tx.wallet.findFirst({
-        where: { tenantId: user.tenantId, isCorporate: true }
+      const adminUser = await tx.user.findFirst({
+        where: {
+          tenantId: user.tenantId,
+          identity: { in: ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"] }
+        },
+        orderBy: { createdAt: 'asc' }
       });
 
-      if (adminWallet && !pathIds.includes(adminWallet.userId)) {
-          pathIds.unshift(adminWallet.userId);
+      const pathIds = [...rawPathIds];
+      if (adminUser && !pathIds.includes(adminUser.id)) {
+          pathIds.unshift(adminUser.id);
       }
 
-      if (pathIds.length < 1) {
-          console.log("[Commission] SKIP: No upline path found for this user.");
-          return { success: true, message: "No upline path" };
+      console.log("[Commission] Resolved Hierarchy Path:", pathIds.join(" -> "));
+
+      if (pathIds.length < 2) {
+          console.log("[Commission] SKIP: Path too short (No uplines found)");
+          return { success: true };
       }
 
-      console.log("[Commission] Full Hierarchy Path:", pathIds.join(" -> "));
-
-      // 3. Fetch all users in the path to get their Identities and Schemes
       const pathUsers = await tx.user.findMany({
         where: { id: { in: pathIds } },
-        select: { id: true, identity: true, commissionSchemeId: true }
+        select: { id: true, identity: true, commissionSchemeId: true, fullName: true }
       });
 
-      // Crucial: Sort users according to the path order (Top-Down)
       const hierarchy = pathIds.map(id => pathUsers.find(u => u.id === id)).filter(Boolean);
 
-      // 4. Create a Transaction Log for this distribution
       const transactionLog = await tx.transactionLog.create({
         data: {
           id: generateUuid(),
@@ -61,30 +55,56 @@ const commissionService = {
         }
       });
 
-      // 5. Iterate through the hierarchy: Sender -> Receiver
-      // We start from index 0 (Admin) and go down
+      const adminCorporateWallet = await tx.wallet.findFirst({
+        where: { tenantId: user.tenantId, isCorporate: true }
+      });
+
       for (let i = 0; i < hierarchy.length - 1; i++) {
           const sender = hierarchy[i];
-          const receiver = hierarchy[i+1];
+          const receiver = hierarchy[i + 1];
 
-          console.log(`[Commission] Evaluating step: ${sender.identity} (${sender.id}) -> ${receiver.identity} (${receiver.id})`);
+          // 7. Determine the Scheme for this Receiver
+          let effectiveSchemeId = null;
 
-          // Receiver must have a scheme assigned to them to define how much they get from Upline
-          if (!receiver.commissionSchemeId) {
-              console.log(`[Commission] SKIP: Receiver ${receiver.id} has no Commission Scheme assigned.`);
+          if (receiver.commissionSchemeId) {
+              // Check if the assigned scheme is active
+              const assignedScheme = await tx.commissionScheme.findFirst({
+                  where: { id: receiver.commissionSchemeId, isActive: true }
+              });
+              if (assignedScheme) {
+                  effectiveSchemeId = assignedScheme.id;
+              } else {
+                  console.log(`[Commission]   Assigned scheme ${receiver.commissionSchemeId} is INACTIVE. Falling back...`);
+              }
+          }
+
+          if (!effectiveSchemeId) {
+              // FALLBACK: Find the active scheme for this tenant
+              const defaultScheme = await tx.commissionScheme.findFirst({
+                  where: { tenantId: user.tenantId, isActive: true },
+                  orderBy: { createdAt: 'desc' }
+              });
+
+              if (defaultScheme) {
+                  effectiveSchemeId = defaultScheme.id;
+                  console.log(`[Commission]   USING DEFAULT ACTIVE SCHEME: ${defaultScheme.name} for ${receiver.fullName}`);
+              }
+          }
+
+          if (!effectiveSchemeId) {
+              console.log(`[Commission]   SKIP: No active scheme found for ${receiver.fullName}`);
               continue;
           }
 
           const shareConfig = await tx.commissionShare.findUnique({
-              where: { schemeId_subServiceId: { schemeId: receiver.commissionSchemeId, subServiceId } }
+              where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } }
           });
 
           if (!shareConfig) {
-              console.log(`[Commission] SKIP: No share rule found in Scheme ${receiver.commissionSchemeId} for SubService ${subServiceId}`);
+              console.log(`[Commission]   SKIP: No share rule in Scheme ${effectiveSchemeId} for SubService ${subServiceId}`);
               continue;
           }
 
-          // Identify the share key based on receiver's identity
           let shareKey = "";
           const identity = receiver.identity.toUpperCase();
           if (identity.includes("COUNTRY")) shareKey = "countryPartner";
@@ -94,66 +114,78 @@ const commissionService = {
           else if (identity.includes("MEMBER")) shareKey = "member";
 
           if (!shareKey) {
-              console.log(`[Commission] SKIP: Unknown identity type: ${identity}`);
+              console.log(`[Commission]   SKIP: No shareKey for ${identity}`);
               continue;
           }
 
-          // Calculate amount (Percentage or Flat)
-          const shareValue = shareConfig[shareKey] || 0;
-          const transferAmount = shareConfig.commissionType === 1 
-              ? (transactionAmount * shareValue) / 100 
+          const shareValue = parseFloat(shareConfig[shareKey]) || 0;
+          const transferAmount = shareConfig.commissionType === 1
+              ? (transactionAmount * shareValue) / 100
               : shareValue;
 
-          if (transferAmount > 0) {
-              console.log(`[Commission] TRANSFER: ${transferAmount} to ${receiver.id} (${shareKey})`);
-              
-              // Ensure wallets exist for both
-              await ensureWallet(sender.id, user.tenantId, tx);
-              await ensureWallet(receiver.id, user.tenantId, tx);
+          if (transferAmount <= 0) {
+              console.log(`[Commission]   SKIP: Amount is 0`);
+              continue;
+          }
 
-              // Perform the transfer
-              await tx.wallet.update({
-                  where: { userId: sender.id },
-                  data: { balance: { decrement: transferAmount } }
-              });
+          // --- EXECUTE TRANSFER ---
+          // For Platform Fees, the Admin has received the full amount, 
+          // so ALL hierarchical transfers should be deducted from the Admin Corporate Wallet.
+          
+          try {
+            if (adminCorporateWallet) {
+                console.log(`[Commission]   DEDUCTING ${transferAmount} from Corporate Wallet for ${receiver.fullName}`);
+                await tx.wallet.update({
+                    where: { id: adminCorporateWallet.id },
+                    data: { balance: { decrement: transferAmount } }
+                });
+            } else {
+                // Fallback: Deduct from immediate sender if no corporate wallet (shouldn't happen for platform fees)
+                console.log(`[Commission]   DEDUCTING ${transferAmount} from ${sender.fullName}'s Personal Wallet (No Corp Wallet found)`);
+                await ensureWallet(sender.id, user.tenantId, tx);
+                await tx.wallet.update({
+                    where: { userId: sender.id },
+                    data: { balance: { decrement: transferAmount } }
+                });
+            }
 
-              await tx.wallet.update({
-                  where: { userId: receiver.id },
-                  data: { balance: { increment: transferAmount } }
-              });
+            await ensureWallet(receiver.id, user.tenantId, tx);
+            await tx.wallet.update({
+                where: { userId: receiver.id },
+                data: { balance: { increment: transferAmount } }
+            });
 
-              // Records
-              await tx.commissionHistory.create({
-                  data: {
-                      id: generateUuid(),
-                      userId: receiver.id,
-                      transactionId: transactionLog.id,
-                      amount: transferAmount,
-                      accountType: "commission"
-                  }
-              });
+            await tx.commissionHistory.create({
+                data: {
+                    id: generateUuid(),
+                    userId: receiver.id,
+                    transactionId: transactionLog.id,
+                    amount: transferAmount,
+                    accountType: "commission"
+                }
+            });
 
-              const recWallet = await tx.wallet.findUnique({ where: { userId: receiver.id } });
-              await tx.walletTransaction.create({
-                  data: {
-                      id: generateUuid(),
-                      walletId: recWallet.id,
-                      amount: transferAmount,
-                      type: "CREDIT",
-                      category: "COMMISSION",
-                      referenceId: transactionLog.id,
-                      description: `Commission from ${sender.identity} for ${shareKey}`,
-                      tenantId: user.tenantId
-                  }
-              });
-              
-              console.log(`[Commission] SUCCESS: ${transferAmount} transferred to ${receiver.id}`);
-          } else {
-              console.log(`[Commission] SKIP: Transfer amount is 0 for ${shareKey}`);
+            const recWallet = await tx.wallet.findUnique({ where: { userId: receiver.id } });
+            await tx.walletTransaction.create({
+                data: {
+                    id: generateUuid(),
+                    walletId: recWallet.id,
+                    amount: transferAmount,
+                    type: "CREDIT",
+                    category: "COMMISSION",
+                    referenceId: transactionLog.id,
+                    description: `Commission for ${shareKey}`,
+                    tenantId: user.tenantId
+                }
+            });
+
+            console.log(`[Commission]   SUCCESS: ${transferAmount} transferred to ${receiver.fullName}`);
+          } catch (txErr) {
+            console.error(`[Commission]   TRANSFER FAILED for ${receiver.fullName}:`, txErr.message);
           }
       }
 
-      console.log("[Commission] <<< Processing Finished Successfully");
+      console.log("[Commission] <<< FINISHED");
       return { success: true };
 
     } catch (err) {
@@ -163,13 +195,11 @@ const commissionService = {
   }
 };
 
-/**
- * Helper to ensure a wallet exists before updating balance
- */
 async function ensureWallet(userId, tenantId, tx) {
+    if (!userId) return;
     const wallet = await tx.wallet.findUnique({ where: { userId } });
     if (!wallet) {
-        console.log(`[Commission] Creating missing wallet for User: ${userId}`);
+        console.log(`[Commission] Creating wallet for ${userId}`);
         await tx.wallet.create({
             data: {
                 id: generateUuid(),

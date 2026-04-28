@@ -579,22 +579,38 @@ const commissionController = {
       const pathIds = user.path ? user.path.split('/').filter(id => id.length > 0) : [];
       report.pathFromDB = pathIds;
 
-      // 3. Check admin corporate wallet
+      // 3. Find root admin user (corporate wallet has userId=null, so find admin by identity)
+      const adminUser = await prisma.user.findFirst({
+        where: {
+          tenantId: user.tenantId,
+          identity: { in: ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"] }
+        },
+        select: { id: true, fullName: true, identity: true, commissionSchemeId: true },
+        orderBy: { createdAt: 'asc' }
+      });
+      report.rootAdmin = adminUser || "NOT FOUND — No ADMIN/SUPER_ADMIN in this tenant!";
+
       const adminWallet = await prisma.wallet.findFirst({
         where: { tenantId: user.tenantId, isCorporate: true }
       });
-      report.adminCorporateWallet = adminWallet 
-        ? { id: adminWallet.id, userId: adminWallet.userId, balance: adminWallet.balance } 
-        : "NOT FOUND — Commission cannot run without corporate wallet!";
+      report.adminCorporateWallet = adminWallet
+        ? { id: adminWallet.id, balance: adminWallet.balance, note: "userId is null — that's normal for corporate wallets" }
+        : "NOT FOUND — Commission cannot deduct without corporate wallet!";
 
-      if (adminWallet && !pathIds.includes(adminWallet.userId)) {
-        pathIds.unshift(adminWallet.userId);
+      if (adminUser && !pathIds.includes(adminUser.id)) {
+        pathIds.unshift(adminUser.id);
       }
       report.fullPathWithAdmin = pathIds;
 
+      console.log("[DebugCommission] Final pathIds before query:", pathIds);
+      
       // 4. Fetch hierarchy users
       const pathUsers = await prisma.user.findMany({
-        where: { id: { in: pathIds } },
+        where: { 
+          id: { 
+            in: pathIds.filter(id => typeof id === 'string' && id.length > 5) 
+          } 
+        },
         select: { id: true, fullName: true, identity: true, commissionSchemeId: true }
       });
       const hierarchy = pathIds.map(id => pathUsers.find(u => u.id === id)).filter(Boolean);
@@ -621,25 +637,46 @@ const commissionController = {
       for (let i = 0; i < hierarchy.length - 1; i++) {
         const sender = hierarchy[i];
         const receiver = hierarchy[i + 1];
+        
+        let effectiveSchemeId = null;
+        let isDefault = false;
+        
+        if (receiver.commissionSchemeId) {
+          const assignedScheme = await prisma.commissionScheme.findFirst({
+            where: { id: receiver.commissionSchemeId, isActive: true }
+          });
+          if (assignedScheme) effectiveSchemeId = assignedScheme.id;
+        }
+
+        if (!effectiveSchemeId) {
+          const defaultScheme = await prisma.commissionScheme.findFirst({
+            where: { tenantId: user.tenantId, isActive: true },
+            orderBy: { createdAt: 'desc' }
+          });
+          if (defaultScheme) {
+            effectiveSchemeId = defaultScheme.id;
+            isDefault = true;
+          }
+        }
+
         const check = {
           step: `${sender.identity} -> ${receiver.identity}`,
           receiverId: receiver.id,
           receiverName: receiver.fullName,
-          hasScheme: !!receiver.commissionSchemeId,
-          schemeId: receiver.commissionSchemeId || null,
-          shareConfig: null,
+          schemeId: effectiveSchemeId || null,
+          isDefault,
           issue: null
         };
 
-        if (!receiver.commissionSchemeId) {
-          check.issue = `SCHEME NOT ASSIGNED to ${receiver.identity} (${receiver.id}). Use /api/Commission/AssignSchemeToUser`;
+        if (!effectiveSchemeId) {
+          check.issue = `NO ACTIVE SCHEME FOUND for this tenant. Create a scheme and mark it active.`;
         } else if (membershipSubService) {
           const share = await prisma.commissionShare.findUnique({
-            where: { schemeId_subServiceId: { schemeId: receiver.commissionSchemeId, subServiceId: membershipSubService.id } }
+            where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId: membershipSubService.id } }
           });
           check.shareConfig = share || null;
           if (!share) {
-            check.issue = `SHARE NOT CONFIGURED for scheme ${receiver.commissionSchemeId} + subService ${membershipSubService.id}. Use /api/Commission/AddCommissionShare`;
+            check.issue = `SHARE NOT CONFIGURED for scheme ${effectiveSchemeId}. Set commission for ${receiver.identity}.`;
           } else {
             const identity = receiver.identity.toUpperCase();
             let shareKey = "";
@@ -648,11 +685,11 @@ const commissionController = {
             else if (identity.includes("DISTRICT")) shareKey = "districtPartner";
             else if (identity.includes("SAATHI")) shareKey = "saathi";
             else if (identity.includes("MEMBER")) shareKey = "member";
+            
             check.shareKey = shareKey;
             check.shareValue = share[shareKey] || 0;
-            check.commissionType = share.commissionType === 1 ? "Percentage" : "Flat";
-            if (!shareKey) check.issue = `Unknown identity: ${receiver.identity}`;
-            else if (!share[shareKey]) check.issue = `Share value is 0 for ${shareKey} — set it in AddCommissionShare`;
+            if (!shareKey) check.issue = `Unknown identity type: ${receiver.identity}`;
+            else if (!share[shareKey]) check.issue = `Commission is 0 for ${shareKey} in this scheme.`;
           }
         }
         report.commissionChecks.push(check);

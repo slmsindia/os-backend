@@ -672,6 +672,8 @@ const adminMembershipController = {
         console.error("Failed to create wallet for user:", walletErr);
       }
 
+      const { tenant_id: tenantId } = req.user;
+
       await logAction({
         userId: adminId,
         action: "MEMBERSHIP_APPLICATION_APPROVED",
