@@ -31,4 +31,7 @@ router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN
 // Get dashboard statistics
 router.get("/stats", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getStats);
 
+// Toggle user status (Activate/Deactivate)
+router.post("/users/:userId/toggle-status", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), adminController.toggleUserStatus);
+
 module.exports = router;

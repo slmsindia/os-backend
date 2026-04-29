@@ -4,6 +4,7 @@ const { v4: generateUuid } = require("uuid");
 const commissionService = {
   /**
    * Cascading Commission Logic with Full Transaction History (Debit & Credit)
+   * Includes Joiner Name in descriptions for better transparency.
    */
   processCommission: async (transactionAmount, subServiceId, userId, tx = prisma) => {
     console.log(`[Commission] >>> STARTING CASCADING: User=${userId}, SubService=${subServiceId}`);
@@ -11,10 +12,11 @@ const commissionService = {
     try {
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, path: true, tenantId: true }
+        select: { id: true, fullName: true, path: true, tenantId: true }
       });
 
       if (!user) return { success: false, message: "User not found" };
+      const joinerName = user.fullName || "New Member";
 
       const rawPathIds = user.path ? user.path.split('/').filter(id => id && id.length > 5) : [];
       
@@ -75,8 +77,8 @@ const commissionService = {
           if (!effectiveSchemeId) continue;
 
           const shareConfig = await tx.commissionShare.findUnique({
-              where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } }
-          });
+              where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } } }
+          );
 
           if (!shareConfig) continue;
 
@@ -101,17 +103,14 @@ const commissionService = {
           const isSenderTopAdmin = ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(sender.identity.toUpperCase());
           
           try {
-            // 1. DEBIT FROM SENDER
             let senderWallet;
             if (isSenderTopAdmin && adminCorporateWallet) {
                 senderWallet = adminCorporateWallet;
-                console.log(`[Commission]   DEBIT: ${transferAmount} from Corporate Wallet`);
                 await tx.wallet.update({
                     where: { id: adminCorporateWallet.id },
                     data: { balance: { decrement: transferAmount } }
                 });
             } else {
-                console.log(`[Commission]   DEBIT: ${transferAmount} from ${sender.fullName}'s Wallet`);
                 await ensureWallet(sender.id, user.tenantId, tx);
                 senderWallet = await tx.wallet.findUnique({ where: { userId: sender.id } });
                 await tx.wallet.update({
@@ -129,12 +128,12 @@ const commissionService = {
                     type: "DEBIT",
                     category: "COMMISSION_PAYOUT",
                     referenceId: transactionLog.id,
-                    description: `Commission paid to ${receiver.fullName}`,
+                    description: `Commission paid to ${receiver.fullName} for joiner ${joinerName}`,
                     tenantId: user.tenantId
                 }
             });
 
-            // 2. CREDIT TO RECEIVER
+            // CREDIT TO RECEIVER
             await ensureWallet(receiver.id, user.tenantId, tx);
             const recWallet = await tx.wallet.findUnique({ where: { userId: receiver.id } });
             await tx.wallet.update({
@@ -151,12 +150,11 @@ const commissionService = {
                     type: "CREDIT",
                     category: "COMMISSION",
                     referenceId: transactionLog.id,
-                    description: `Commission received from ${sender.fullName}`,
+                    description: `Commission for ${joinerName} received from ${sender.fullName}`,
                     tenantId: user.tenantId
                 }
             });
 
-            // Log Commission History (standard)
             await tx.commissionHistory.create({
                 data: {
                     id: generateUuid(),

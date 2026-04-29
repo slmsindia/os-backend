@@ -256,6 +256,13 @@ const authController = {
         return res.status(401).json({ message: "invalid mobile or pass" });
       }
 
+      if (user.approvalStatus === "DEACTIVATED") {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Your account has been deactivated by Admin. Please contact support." 
+        });
+      }
+
       const accessToken = generateToken(user);
 
       await logAction({

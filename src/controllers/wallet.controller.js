@@ -786,14 +786,32 @@ const walletController = {
           where,
           skip: (parseInt(page) - 1) * parseInt(limit),
           take: parseInt(limit),
-          orderBy: { createdAt: "desc" }
+          orderBy: { createdAt: "desc" },
+          // Include wallet user info for reference (if it's not our own wallet)
+          include: {
+            wallet: {
+              select: {
+                isCorporate: true,
+                user: {
+                  select: {
+                    fullName: true,
+                    identity: true
+                  }
+                }
+              }
+            }
+          }
         }),
         prisma.walletTransaction.count({ where })
       ]);
 
       res.json({
         success: true,
-        data: txns,
+        data: txns.map(t => ({
+          ...t,
+          walletOwner: t.wallet?.user?.fullName || (t.wallet?.isCorporate ? "System Corporate" : "Unknown"),
+          ownerIdentity: t.wallet?.user?.identity || (t.wallet?.isCorporate ? "ADMIN" : "N/A")
+        })),
         pagination: {
           page: parseInt(page),
           total,

@@ -516,6 +516,52 @@ const adminController = {
         details: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
+  },
+  /**
+   * Toggle user status (Activate/Deactivate)
+   * Using approvalStatus='DEACTIVATED' to block access.
+   */
+  toggleUserStatus: async (req, res) => {
+    const { userId } = req.params;
+    const { status } = req.body; // 'APPROVED' or 'DEACTIVATED'
+    const { user_id: adminId, tenant_id: tenantId } = req.user;
+
+    try {
+      const user = await prisma.user.findFirst({
+        where: { id: userId, tenantId }
+      });
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found in your tenant" });
+      }
+
+      // Check hierarchy: Admin can only deactivate those below them
+      // (For now allowing any tenant-admin to toggle tenant-users)
+      
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          approvalStatus: status === 'DEACTIVATED' ? 'DEACTIVATED' : 'APPROVED'
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: `USER_${status}`,
+        targetId: userId,
+        tenantId,
+        metadata: { prevStatus: user.approvalStatus, newStatus: status }
+      });
+
+      res.json({
+        success: true,
+        message: `User account has been ${status === 'DEACTIVATED' ? 'deactivated' : 'activated'} successfully.`,
+        data: { id: updatedUser.id, approvalStatus: updatedUser.approvalStatus }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
   }
 };
 

@@ -1,20 +1,21 @@
 const prisma = require("../lib/prisma");
 
 module.exports = async (req, res, next) => {
-  const host = req.get("host");
-  if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
-
-  // Try both 'localhost' and 'localhost:port' for dev
-  let domain = host;
-  // Try exact match first
-  let tenant = await prisma.tenant.findUnique({ where: { domain } });
-  // If not found, try without port (for localhost)
-  if (!tenant && domain.includes(':')) {
-    domain = domain.split(":")[0];
-    tenant = await prisma.tenant.findUnique({ where: { domain } });
-  }
-
   try {
+    const host = req.get("host");
+    if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
+
+    // Try both 'localhost' and 'localhost:port' for dev
+    let domain = host;
+    // Try exact match first
+    let tenant = await prisma.tenant.findUnique({ where: { domain } });
+    
+    // If not found, try without port (for localhost)
+    if (!tenant && domain.includes(':')) {
+      domain = domain.split(":")[0];
+      tenant = await prisma.tenant.findUnique({ where: { domain } });
+    }
+
     if (!tenant) {
       const fallbackTenant = await prisma.tenant.findFirst({
         where: { domain: "os.dpinfoserver.co.in" }
@@ -31,10 +32,18 @@ module.exports = async (req, res, next) => {
         message: "Invalid domain"
       });
     }
+
     req.tenant_id = tenant.id;
     next();
   } catch (err) {
-    console.error("Tenant error:", err);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    console.error("CRITICAL: Tenant Middleware Database Error:", err.message);
+    // If it's a connection error, inform the user
+    if (err.message.includes("too many clients") || err.message.includes("connection")) {
+       return res.status(503).json({ 
+         success: false, 
+         message: "Database busy or connection limit reached. Please try again in a few seconds." 
+       });
+    }
+    res.status(500).json({ success: false, message: "Internal server error during tenant resolution" });
   }
 };
