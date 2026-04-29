@@ -49,6 +49,9 @@ const hierarchyController = {
         ];
       }
 
+      // Debug log
+      console.log("[Hierarchy] Fetching descendants for:", { userId, creatorIdentity, where });
+
       // Execute query
       const [users, total] = await Promise.all([
         prisma.user.findMany({
@@ -94,7 +97,7 @@ const hierarchyController = {
 
     } catch (err) {
       console.error("Hierarchy Fetch Error:", err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 

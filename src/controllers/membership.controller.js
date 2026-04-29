@@ -568,28 +568,28 @@ const membershipController = {
         }
       });
 
-      // NEW: Log Razorpay payment in Wallet History
+      // NEW: Log Razorpay payment in Wallet History (Log only, DO NOT credit Admin here)
       try {
-        // Resolve the person who actually paid/initiated (Creator if Admin-led, otherwise the User)
         const partnerId = application.createdById || application.userId;
         const partner = await prisma.user.findUnique({ where: { id: partnerId } });
-        
         const partnerWallet = await walletService.resolveWallet(partnerId, tenantId, partner?.identity);
-        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
-        if (partnerWallet && adminWallet) {
-          await walletService.payCreationFeeWithHistory(
-            partnerWallet.id,
-            adminWallet.id,
-            application.payment.amount,
-            "Membership Application Fee",
-            application.id,
-            tenantId,
-            "RAZORPAY"
-          );
+        if (partnerWallet) {
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: partnerWallet.id,
+              amount: application.payment.amount,
+              type: "DEBIT",
+              category: "SERVICE_CHARGE",
+              description: `Membership Application Fee (Paid via RAZORPAY - Pending Approval)`,
+              referenceId: application.id,
+              tenantId: tenantId
+            }
+          });
         }
       } catch (logErr) {
-        console.error("Failed to log Razorpay in wallet history:", logErr);
+        console.error("Failed to log Membership Razorpay log:", logErr);
       }
 
       await logAction({

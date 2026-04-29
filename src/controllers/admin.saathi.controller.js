@@ -379,11 +379,9 @@ const adminSaathiController = {
         }
       }
 
-      // 2. Financial Credit to Admin Wallet (If Razorpay was used and successful)
-      if (application.payment?.status === 'SUCCESS' && application.payment?.method === 'RAZORPAY') {
-        const sharedWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
-        await walletService.updateBalance(sharedWallet.id, application.payment.amount);
-      }
+      // 2. Financial Credit to Admin Wallet 
+      // (Removed redundant credit here to prevent double credit; handled in commission block below)
+
 
       // 3. Finalize Approval
       await prisma.$transaction([
@@ -397,14 +395,15 @@ const adminSaathiController = {
         })
       ]);
 
-      // --- COMMISSION DISTRIBUTION ---
+      // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
         const adminWallet = await prisma.wallet.findFirst({
           where: { tenantId, isCorporate: true }
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. Credit Admin
+          // 1. First, credit the full payment amount to the Admin Corporate Wallet
+          // Only if it hasn't been credited already
           await prisma.wallet.update({
             where: { id: adminWallet.id },
             data: { balance: { increment: application.payment.amount } }
@@ -422,6 +421,8 @@ const adminSaathiController = {
             }
           });
 
+          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
+
           // 2. Distribute
           const subService = await prisma.commissionSubService.findFirst({
             where: {
@@ -433,7 +434,7 @@ const adminSaathiController = {
           });
 
           if (subService) {
-             console.log(`[Commission] Found SubService for Saathi: ${subService.name}`);
+             console.log(`[Commission] Found SubService for Saathi: ${subService.name}. Starting Cascading Distribution...`);
              await commissionService.processCommission(
                 application.payment.amount,
                 subService.id,
@@ -441,7 +442,7 @@ const adminSaathiController = {
                 prisma
              );
           } else {
-             console.log("[Commission] WARNING: saathi_fee SubService not found.");
+             console.log("[Commission] WARNING: saathi_fee SubService not found. Cannot distribute commission.");
           }
         }
       } catch (commErr) {
@@ -574,25 +575,27 @@ const adminSaathiController = {
         }
       });
 
-      // Log in Wallet History (Credit Admin, Log for Partner)
+      // Log in Wallet History (Only log for Partner, DO NOT credit Admin here)
       try {
         const creator = await prisma.user.findUnique({ where: { id: application.createdById } });
-        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity); // Pass identity!
-        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+        const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity);
         
-        if (partnerWallet && adminWallet) {
-          await walletService.payCreationFeeWithHistory(
-            partnerWallet.id,
-            adminWallet.id,
-            application.payment.amount,
-            "Saathi Application Fee",
-            application.id,
-            tenantId,
-            "RAZORPAY"
-          );
+        if (partnerWallet) {
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: partnerWallet.id,
+              amount: application.payment.amount,
+              type: "DEBIT",
+              category: "SERVICE_CHARGE",
+              description: `Saathi Application Fee (Paid via RAZORPAY - Pending Approval)`,
+              referenceId: application.id,
+              tenantId: tenantId
+            }
+          });
         }
       } catch (logErr) {
-        console.error("Failed to log Saathi Razorpay in wallet history:", logErr);
+        console.error("Failed to log Saathi Razorpay log:", logErr);
       }
 
       await logAction({

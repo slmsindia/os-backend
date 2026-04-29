@@ -2,6 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
+const walletService = require("../services/wallet.service");
 
 const businessController = {
   /**
@@ -32,6 +33,19 @@ const businessController = {
       const sector = await prisma.sector.findUnique({ where: { id: sectorId } });
       if (!sector) {
         return res.status(400).json({ success: false, message: "Invalid Sector ID. Please provide a valid ID from the Sector list." });
+      }
+
+      // 3. Handle Wallet Payment
+      const payAmount = parseFloat(amount || 0);
+      const payMode = parseInt(paymentMode || 1);
+
+      if (payMode === 2) { // Assuming 2 is WALLET for BP
+        const wallet = await walletService.resolveWallet(userId, tenantId, user.identity);
+        if (!wallet || wallet.balance < payAmount) {
+          return res.status(400).json({ success: false, message: "Insufficient wallet balance." });
+        }
+        // Deduct from user
+        await walletService.updateBalance(wallet.id, -payAmount);
       }
 
       const application = await prisma.businessApplication.create({

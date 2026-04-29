@@ -379,11 +379,9 @@ const businessPartnerController = {
         }
       }
 
-      // 2. Financial Credit to Admin Wallet (If Razorpay was used)
-      if (application.paymentMode === 1) { 
-        const sharedWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
-        await walletService.updateBalance(sharedWallet.id, application.amount);
-      }
+      // 2. Financial Credit to Admin Wallet
+      // (Removed redundant credit here to prevent double credit; handled in commission block below)
+
 
       // 3. Finalize Approval
       await prisma.$transaction([
@@ -397,14 +395,14 @@ const businessPartnerController = {
         })
       ]);
 
-      // --- COMMISSION DISTRIBUTION ---
+      // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
         const adminWallet = await prisma.wallet.findFirst({
           where: { tenantId, isCorporate: true }
         });
 
         if (adminWallet && (application.amount > 0)) {
-          // 1. Credit Admin
+          // 1. First, credit the full payment amount to the Admin Corporate Wallet
           await prisma.wallet.update({
             where: { id: adminWallet.id },
             data: { balance: { increment: application.amount } }
@@ -417,10 +415,12 @@ const businessPartnerController = {
               amount: application.amount,
               type: "CREDIT",
               category: "SERVICE_CHARGE",
-              description: `BP fee received from user ${application.userId}`,
+              description: `Business Partner fee received from user ${application.userId}`,
               tenantId
             }
           });
+
+          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.amount}`);
 
           // 2. Distribute
           const subService = await prisma.commissionSubService.findFirst({
@@ -434,7 +434,7 @@ const businessPartnerController = {
           });
 
           if (subService) {
-             console.log(`[Commission] Found SubService for BP: ${subService.name}`);
+             console.log(`[Commission] Found SubService for BP: ${subService.name}. Starting Cascading Distribution...`);
              await commissionService.processCommission(
                 application.amount,
                 subService.id,
@@ -442,7 +442,7 @@ const businessPartnerController = {
                 prisma
              );
           } else {
-             console.log("[Commission] WARNING: business_partner_fee SubService not found.");
+             console.log("[Commission] WARNING: business_partner_fee SubService not found. Cannot distribute commission.");
           }
         }
       } catch (commErr) {
@@ -549,25 +549,27 @@ const businessPartnerController = {
         }
       });
 
-      // Log in Wallet History (Credit Admin, Log for Partner)
+      // Log in Wallet History (Only log for Partner, DO NOT credit Admin here)
       try {
         const creator = await prisma.user.findUnique({ where: { id: application.createdById } });
         const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity);
-        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
-        if (partnerWallet && adminWallet) {
-          await walletService.payCreationFeeWithHistory(
-            partnerWallet.id,
-            adminWallet.id,
-            application.amount,
-            "Business Partner Application Fee",
-            application.id,
-            tenantId,
-            "RAZORPAY"
-          );
+        if (partnerWallet) {
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: partnerWallet.id,
+              amount: application.amount,
+              type: "DEBIT",
+              category: "SERVICE_CHARGE",
+              description: `Business Partner Application Fee (Paid via RAZORPAY - Pending Approval)`,
+              referenceId: application.id,
+              tenantId: tenantId
+            }
+          });
         }
       } catch (logErr) {
-        console.error("Failed to log Business Razorpay in wallet history:", logErr);
+        console.error("Failed to log Business Razorpay log:", logErr);
       }
 
       await logAction({
