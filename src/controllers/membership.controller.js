@@ -1,11 +1,9 @@
-const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 const razorpayService = require("../services/razorpay.service");
 const walletService = require("../services/wallet.service");
 const bcrypt = require("bcrypt");
-
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 const AUTHORIZED_CREATOR_ROLES = [
   'SUPER_ADMIN',
