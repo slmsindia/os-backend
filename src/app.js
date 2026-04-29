@@ -29,6 +29,7 @@ const adminSaathiRoutes = require("./routes/admin.saathi.routes");
 const hierarchyRoutes = require("./routes/hierarchy.routes");
 const commissionRoutes = require("./routes/commission.routes");
 const adminContentRoutes = require("./routes/admin.content.routes");
+const reportRoutes = require("./routes/report.routes");
 
 const app = express();
 
@@ -123,6 +124,7 @@ app.use("/api/admin/hierarchy", hierarchyRoutes);
 app.use("/api/Remittance", remittanceRoutes);
 app.use("/api/Commission", commissionRoutes);
 app.use("/api/Admin/Content", adminContentRoutes);
+app.use("/api/admin/reports", reportRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
