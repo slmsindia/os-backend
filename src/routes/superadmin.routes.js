@@ -9,5 +9,6 @@ router.use(authMiddleware);
 
 router.post("/create-tenant", checkIdentity(["SUPER_ADMIN"]), superAdminController.createTenant);
 router.get("/tenants", checkIdentity(["SUPER_ADMIN"]), superAdminController.getAllTenants);
+router.post("/transfer-hierarchy", checkIdentity(["SUPER_ADMIN"]), superAdminController.transferHierarchy);
 
 module.exports = router;
