@@ -11,7 +11,7 @@ router.use(authMiddleware);
  * @route POST /api/admin/permissions/sync
  * @desc Initialize standard permissions (One-time)
  */
-router.post("/sync", checkIdentity(["SUPER_ADMIN"]), permissionController.syncPermissions);
+router.post("/sync", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), permissionController.syncPermissions);
 
 /**
  * @route GET /api/admin/permissions/list

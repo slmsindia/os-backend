@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const { v4: generateUuid } = require("uuid");
+const { generateUuid } = require("../utils/id");
 
 const hierarchyController = {
   /**
