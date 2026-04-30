@@ -12,6 +12,7 @@ model Tenant {
   id        String   @id @default(uuid())
   name      String
   domain    String   @unique
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   users     User[]
   wallets   Wallet[] // Opposite relation for shared wallets
