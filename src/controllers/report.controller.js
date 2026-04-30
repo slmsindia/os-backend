@@ -10,19 +10,25 @@ const reportController = {
     const { startDate, endDate, page = 1, limit = 100, exportCsv = "false", userId } = req.query;
 
     try {
+      const isSuperAdmin = adminIdentity === 'SUPER_ADMIN';
       const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity);
       
-      const where = { tenantId };
+      const where = {};
       
+      // If not SuperAdmin, restrict by their own tenant
+      if (!isSuperAdmin) {
+        where.tenantId = tenantId;
+      }
+
       // If filtering by specific user
       if (userId) {
         where.wallet = { userId };
-        // If not top admin, extra security check to ensure target user is in their hierarchy
-        if (!isTopAdmin) {
+        // If not a high-level admin, extra security check to ensure target user is in their hierarchy
+        if (!['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity)) {
           where.wallet.user = { path: { contains: adminId } };
         }
       } else if (!isTopAdmin) {
-        // General view for restricted admins (only see their own/descendants' txns)
+        // General view for restricted roles (only see their own/descendants' txns)
         where.wallet = {
           OR: [
             { userId: adminId },

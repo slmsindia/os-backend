@@ -254,12 +254,38 @@ const authController = {
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
     try {
-      const user = await prisma.user.findFirst({
+      // 1. Try to find user in the current tenant
+      let user = await prisma.user.findFirst({
         where: { mobile, tenantId },
         include: { roles: { include: { role: true } } }
       });
 
-      if (!user || !(await bcrypt.compare(password, user.password))) {
+      // 2. If not found, check if it's a SUPER_ADMIN (they can login from anywhere)
+      if (!user) {
+        user = await prisma.user.findFirst({
+          where: { mobile, identity: 'SUPER_ADMIN' },
+          include: { roles: { include: { role: true } } }
+        });
+      }
+
+      // 3. DEV ONLY: If still not found, try global search in development
+      if (!user) {
+        const isLocalhost = req.get('host')?.includes('localhost');
+        if (process.env.NODE_ENV !== 'production' || isLocalhost) {
+          user = await prisma.user.findFirst({
+            where: { mobile },
+            include: { roles: { include: { role: true } } }
+          });
+        }
+      }
+
+      if (!user) {
+        console.warn(`Login failed: User with mobile ${mobile} not found globally.`);
+        return res.status(401).json({ message: "invalid mobile or pass" });
+      }
+
+      if (!(await bcrypt.compare(password, user.password))) {
+        console.warn(`Login failed: Password mismatch for mobile ${mobile}`);
         return res.status(401).json({ message: "invalid mobile or pass" });
       }
 
