@@ -50,7 +50,7 @@ enum Identity {
 
 model User {
   id           String   @id @default(uuid())
-  mobile       String   @unique
+  mobile       String
   email        String?
   password     String
   fullName     String
@@ -114,6 +114,8 @@ model User {
   @@index([canApproveMembership])
   @@index([canApproveSaathi])
   @@index([commissionSchemeId])
+  @@index([mobile])
+  @@unique([mobile, tenantId])
 }
 
 // ... (existing models)

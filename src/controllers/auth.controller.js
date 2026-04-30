@@ -27,9 +27,12 @@ const getOrCreateRole = async (roleName) => {
 const authController = {
   checkMobile: async (req, res) => {
     const { mobile } = req.body;
+    const tenantId = req.tenant_id;
     if (!mobile) return res.status(400).json({ success: false, message: "Mobile required" });
     try {
-      const user = await prisma.user.findUnique({ where: { mobile } });
+      const user = await prisma.user.findFirst({ 
+        where: { mobile, tenantId } 
+      });
       if (user) {
         return res.json({ success: true, exists: true });
       } else {
@@ -48,9 +51,11 @@ const authController = {
     }
 
     try {
-      const existing = await prisma.user.findUnique({ where: { mobile } });
+      const existing = await prisma.user.findFirst({ 
+        where: { mobile, tenantId: req.tenant_id } 
+      });
       if (existing) {
-        return res.status(409).json({ success: false, message: "already registered" });
+        return res.status(409).json({ success: false, message: "already registered in this white label" });
       }
 
       const success = await sendOtp(mobile);
@@ -86,8 +91,8 @@ const authController = {
     }
 
     try {
-      const existing = await prisma.user.findUnique({
-        where: { mobile },
+      const existing = await prisma.user.findFirst({
+        where: { mobile, tenantId: req.tenant_id },
         include: { roles: { include: { role: true } } }
       });
 
@@ -116,7 +121,7 @@ const authController = {
     }
 
     try {
-      const existing = await prisma.user.findUnique({ where: { mobile } });
+      const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
@@ -146,7 +151,7 @@ const authController = {
     }
 
     try {
-      const existing = await prisma.user.findUnique({ where: { mobile } });
+      const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
@@ -187,8 +192,10 @@ const authController = {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
-      const existing = await prisma.user.findUnique({ where: { mobile } });
-      if (existing) return res.status(409).json({ message: "already registered" });
+      const existing = await prisma.user.findFirst({ 
+        where: { mobile, tenantId } 
+      });
+      if (existing) return res.status(409).json({ message: "already registered in this white label" });
 
       const defaultRole = await getOrCreateRole("USER");
       const hash = await bcrypt.hash(password, 10);
@@ -248,7 +255,7 @@ const authController = {
 
     try {
       const user = await prisma.user.findFirst({
-        where: { mobile },
+        where: { mobile, tenantId },
         include: { roles: { include: { role: true } } }
       });
 
