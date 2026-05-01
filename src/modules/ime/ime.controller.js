@@ -1,5 +1,6 @@
 const imeService = require('./ime.service');
 const imeDataService = require('./ime-data.service');
+const imeStorageService = require('./ime.storage.service');
 
 
 const ok = (res, message, data = {}) => {
@@ -30,12 +31,61 @@ const badRequest = (res, message, missing = []) => {
   });
 };
 
+const logAndSaveImeResponse = async (operation, endpointPath, requestMethod, requestPayload, response, success, durationMs, req) => {
+  try {
+    // Save API log
+    await imeStorageService.saveApiLog(
+      operation,
+      endpointPath,
+      requestMethod,
+      requestPayload,
+      response,
+      success ? 200 : 500,
+      success,
+      success ? null : response?.error?.message,
+      durationMs,
+      req.user?.id,
+      req.user?.tenantId,
+      req.ip,
+      req.get('User-Agent')
+    );
+  } catch (error) {
+    console.error('Error logging IME response:', error);
+  }
+};
+
 const proxyImeMethod = (methodName, successMessage, buildParams) => async (req, res) => {
+  const startTime = Date.now();
   try {
     const params = typeof buildParams === 'function' ? buildParams(req) : (req.body || {});
     const result = await imeService.callIMEMethod(methodName, params || {});
+    
+    // Log and save response
+    await logAndSaveImeResponse(
+      methodName,
+      `/api/ime/${methodName.toLowerCase()}`,
+      'POST',
+      params,
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+    
     return ok(res, successMessage || `${methodName} completed`, result);
   } catch (error) {
+    // Log error
+    await logAndSaveImeResponse(
+      methodName,
+      `/api/ime/${methodName.toLowerCase()}`,
+      'POST',
+      req.body,
+      { error: error.message },
+      false,
+      Date.now() - startTime,
+      req
+    );
+    
     return fail(res, error);
   }
 };
@@ -182,6 +232,47 @@ const createCustomer = async (req, res) => {
         imeCode: registrationMeta.code,
         ...result
       });
+    }
+
+    // Save customer data to database if successful
+    if (result?.success) {
+      const customerData = {
+        mobileNumber: req.body.PhoneNumber || req.body.MobileNo,
+        firstName: req.body.FirstName,
+        middleName: req.body.MiddleName,
+        lastName: req.body.LastName,
+        gender: req.body.Gender,
+        dateOfBirth: req.body.DateOfBirth,
+        nationality: req.body.Nationality,
+        maritalStatus: req.body.MaritalStatus,
+        fatherOrMotherName: req.body.FatherOrMotherName,
+        email: req.body.Email,
+        occupation: req.body.Occupation,
+        sourceOfFund: req.body.SourceOfFund,
+        idType: req.body.IDType,
+        idNumber: req.body.IDNumber,
+        idPlaceOfIssue: req.body.IdPlaceOfIssue,
+        idIssueDate: req.body.IDIssueDate,
+        idExpiryDate: req.body.ExpiryDate,
+        idData: req.body.IdData,
+        idDataType: req.body.IdDataType,
+        photoData: req.body.PhotoData,
+        photoDataType: req.body.PhotoDataType,
+        permanentState: req.body.State,
+        permanentDistrict: req.body.District,
+        permanentMunicipality: req.body.Municipality,
+        permanentAddress: req.body.Address,
+        permanentWardNo: req.body.WardNo,
+        permanentHouseNo: req.body.HouseNo,
+        temporaryState: req.body.TempState || req.body.State,
+        temporaryDistrict: req.body.TempDistrict || req.body.District,
+        temporaryAddress: req.body.TempAddress || req.body.Address,
+        temporaryPostalCode: req.body.PostalCode,
+        temporaryHouseNo: req.body.TempHouseNo || req.body.HouseNo,
+        membershipId: req.body.MembershipId
+      };
+
+      await imeStorageService.saveCustomer(customerData, result);
     }
 
     const otp = String(req.body.OTP || '').trim();
@@ -441,6 +532,44 @@ const sendMoney = async (req, res) => {
     }
 
     const result = await imeService.sendMoney(req.body);
+    
+    // Save transaction data to database if successful
+    if (result?.success) {
+      const transactionData = {
+        agentTxnRefId: req.body.AgentTxnRefId,
+        forexSessionId: req.body.ForexSessionId,
+        senderCustomerId: req.body.SenderCustomerId,
+        senderName: req.body.SenderName,
+        senderMobile: req.body.SenderMobileNo,
+        receiverCustomerId: req.body.ReceiverCustomerId,
+        receiverId: req.body.ReceiverId,
+        receiverName: req.body.ReceiverName,
+        receiverMobile: req.body.ReceiverMobileNo,
+        receiverAddress: req.body.ReceiverAddress,
+        receiverGender: req.body.ReceiverGender,
+        receiverCountry: req.body.ReceiverCountry,
+        receiverState: req.body.ReceiverState,
+        receiverDistrict: req.body.ReceiverDistrict,
+        receiverMunicipality: req.body.ReceiverMunicipality,
+        collectAmount: req.body.CollectAmount || req.body.Amount,
+        payoutAmount: req.body.PayoutAmount,
+        sendAmount: req.body.Amount,
+        serviceCharge: req.body.ServiceCharge,
+        exchangeRate: req.body.ExchangeRate,
+        sourceCurrency: req.body.SourceCurrency,
+        destinationCurrency: req.body.DestinationCurrency,
+        paymentMode: req.body.PaymentMode,
+        purposeOfRemittance: req.body.PurposeOfRemittance,
+        sourceOfFund: req.body.SourceOfFund,
+        relationship: req.body.Relationship,
+        bankCode: req.body.BankCode,
+        bankBranchId: req.body.BankBranchId,
+        bankAccountNumber: req.body.BankAccountNumber
+      };
+
+      await imeStorageService.saveTransaction(transactionData, result);
+    }
+    
     return ok(res, 'Money sent successfully', result);
   } catch (error) {
     return fail(res, error);
@@ -590,15 +719,53 @@ const getBankBranches = async (req, res) => {
 };
 
 const getStaticData = async (req, res) => {
+  const startTime = Date.now();
   try {
-    const { type, reference } = req.query;
+    const type = req.query.type || req.body?.type || req.body?.TypeCode;
+    const reference = req.query.reference || req.body?.reference || req.body?.ReferenceValue;
+    
     if (!String(type || '').trim()) {
       return badRequest(res, 'type query parameter is required');
     }
 
     const result = await imeService.getStaticData(type, reference || '');
+    
+    // Save static data to database if successful
+    if (result?.success && result?.data) {
+      const body = imeStorageService.extractSoapBody(result);
+      const firstKey = Object.keys(body)[0];
+      const payload = firstKey ? body[firstKey] : {};
+      const dataList = payload?.DataList || [];
+      
+      await imeStorageService.saveStaticData(type, reference, dataList);
+    }
+    
+    // Log API call
+    await logAndSaveImeResponse(
+      'GetStaticData',
+      `/api/ime/static-data`,
+      'GET',
+      { type, reference },
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+    
     return ok(res, 'Static data retrieved', result);
   } catch (error) {
+    // Log error
+    await logAndSaveImeResponse(
+      'GetStaticData',
+      `/api/ime/static-data`,
+      'GET',
+      req.query,
+      { error: error.message },
+      false,
+      Date.now() - startTime,
+      req
+    );
+    
     return fail(res, error);
   }
 };
@@ -819,7 +986,104 @@ const confirmSendTransactionLegacy = proxyImeMethod('ConfirmSendTransaction', 'S
 }));
 const customerMobileAmendmentLegacy = proxyImeMethod('CustomerMobileAmendment', 'Customer mobile amendment submitted');
 const customerRegistrationLegacy = proxyImeMethod('CustomerRegistration', 'Customer registration submitted');
-const getCalculationLegacy = proxyImeMethod('GetCalculation', 'Calculation fetched');
+const getCalculationLegacy = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { RemitAmount, PaymentType, PayoutCountry, CalcBy, PayoutAgentId } = req.body;
+    
+    // Validate required parameters
+    const missing = requiredFields(req.body || {}, [
+      'RemitAmount',
+      'PaymentType', 
+      'PayoutCountry',
+      'CalcBy'
+    ]);
+    
+    if (missing.length) {
+      return badRequest(res, 'Missing required calculation fields', missing);
+    }
+
+    // Validate amount
+    const amount = parseFloat(RemitAmount);
+    if (isNaN(amount) || amount <= 0) {
+      return badRequest(res, 'RemitAmount must be greater than 0');
+    }
+
+    // Minimum amount validation (as per IME error message)
+    if (amount < 700) {
+      return badRequest(res, 'Minimum collection amount should be greater than 700 INR');
+    }
+
+    // Validate payment type
+    if (!['C', 'B'].includes(PaymentType)) {
+      return badRequest(res, 'PaymentType must be C (Cash) or B (Bank)');
+    }
+
+    // Validate payout country
+    if (PayoutCountry !== 'NPL') {
+      return badRequest(res, 'PayoutCountry must be NPL (Nepal)');
+    }
+
+    // Validate calculation type
+    if (!['C', 'P'].includes(CalcBy)) {
+      return badRequest(res, 'CalcBy must be C (Collection Amount) or P (Payout Amount)');
+    }
+
+    // For bank payment, PayoutAgentId is mandatory
+    if (PaymentType === 'B' && !PayoutAgentId) {
+      return badRequest(res, 'PayoutAgentId is required when PaymentType is B (Bank)');
+    }
+
+    const result = await imeService.callIMEMethod('GetCalculation', req.body);
+    
+    // Save exchange rate data to database if successful
+    if (result?.success && result?.data) {
+      const body = imeStorageService.extractSoapBody(result);
+      const firstKey = Object.keys(body)[0];
+      const payload = firstKey ? body[firstKey] : {};
+      const response = payload?.Response || {};
+      
+      if (response.Code === '0') {
+        await imeStorageService.saveExchangeRate(
+          'INR',
+          'NPR',
+          response.ExchangeRate || 0,
+          response.ServiceCharge || 0,
+          result,
+          response.AgentSessionId
+        );
+      }
+    }
+    
+    // Log API call
+    await logAndSaveImeResponse(
+      'GetCalculation',
+      '/api/ime/GetCalculation',
+      'POST',
+      req.body,
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+    
+    return ok(res, 'Calculation fetched', result);
+  } catch (error) {
+    // Log error
+    await logAndSaveImeResponse(
+      'GetCalculation',
+      '/api/ime/GetCalculation',
+      'POST',
+      req.body,
+      { error: error.message },
+      false,
+      Date.now() - startTime,
+      req
+    );
+    
+    return fail(res, error);
+  }
+};
 const sendOtpLegacy = proxyImeMethod('SendOTP', 'OTP sent');
 const sendTransactionLegacy = proxyImeMethod('SendTransaction', 'Transaction send request submitted');
 const transactionInquiryLegacy = proxyImeMethod('TransactionInquiry', 'Transaction inquiry fetched');
@@ -843,97 +1107,53 @@ const bankBranchListLegacy = async (req, res) => {
 };
 
 module.exports = {
-  // Auth
   authenticate,
   login,
-
-  // Customer
-  createCustomer,
+  
+  // New Methods
   sendCustomerOtp,
   confirmCustomer,
+  getCustomer,
   searchCustomerByMobile,
   customerRequery,
-  getCustomer,
   validateCustomer,
-
-  // Remittance
   sendMoney,
   getTransactionStatus,
-  cancelTransaction,
-
-  // Receiver
   createReceiver,
   getReceiver,
   updateReceiver,
-
-  // Payment
   getPaymentModes,
   validateBankAccount,
   getBankList,
   getBankBranches,
   getStaticData,
   getIssuePlaces,
-
-  // Compliance
   verifyKYC,
   getComplianceStatus,
-
-  // Reporting
   getTransactionHistory,
   getExchangeRate,
-
-  // IME Data
   listImeData,
   createImeData,
   updateImeData,
   deleteImeData,
-
-  // Legacy IME endpoints (all required for /api/IME/*)
+  createCustomer,
   getCalculation: getCalculationLegacy,
-  sendOtp: sendOtpLegacy,
-  sendTransaction: sendTransactionLegacy,
-  customerRegistration: customerRegistrationLegacy,
-  confirmCustomerRegistration: confirmCustomerRegistrationLegacy,
+  cancelTransaction,
+  
+  // Legacy / Route mappings
+  cspRegistration: cspRegistrationLegacy,
+  cspDocumentUpload: cspDocumentUploadLegacy,
+  cspCheck: checkCSPLegacy,
+  checkCSP: checkCSPLegacy,
   balanceInquiry: balanceInquiryLegacy,
   checkCustomer: checkCustomerLegacy,
+  sendOtp: sendOtpLegacy,
+  customerRegistration: createCustomer,
+  confirmCustomerRegistration: confirmCustomer,
+  sendTransaction: sendTransactionLegacy,
   confirmSendTransaction: confirmSendTransactionLegacy,
   transactionInquiry: transactionInquiryLegacy,
   transactionInquiryDefault: transactionInquiryDefaultLegacy,
   amendTransaction: amendTransactionLegacy,
   customerMobileAmendment: customerMobileAmendmentLegacy,
-  getAccountType: getAccountTypeLegacy,
-  countries: countriesLegacy,
-  states: statesLegacy,
-  districts: districtsLegacy,
-  genders: gendersLegacy,
-  maritalStatus: maritalStatusLegacy,
-  occupation: occupationLegacy,
-  purposeOfRemittance: purposeOfRemittanceLegacy,
-  transactionCancelReason: transactionCancelReasonLegacy,
-  getIdTypes: getIdTypesLegacy,
-  getIdentityTypes: getIdentityTypesLegacy,
-  bankList: bankListLegacy,
-  bankBranchList: bankBranchListLegacy,
-  cspRegistrationTypeList: cspRegistrationTypeListLegacy,
-  cspAddressProofTypeList: cspAddressProofTypeListLegacy,
-  cspOwnerAddressProofTypeList: cspOwnerAddressProofTypeListLegacy,
-  cspBusinessTypeList: cspBusinessTypeListLegacy,
-  cspDocumentTypeList: cspDocumentTypeListLegacy,
-  ownerCategoryTypes: ownerCategoryTypesLegacy,
-  educationalQualificationList: educationalQualificationListLegacy,
-  municipalities: municipalitiesLegacy,
-  relationshipList: relationshipListLegacy,
-  idPlaceOfIssue: idPlaceOfIssueLegacy,
-  sourceOfFundList: sourceOfFundListLegacy,
-  cspRegistration: cspRegistrationLegacy,
-  cancelTransaction: cancelTransactionLegacy,
-  checkCSP: checkCSPLegacy,
-  checkCustomer: checkCustomerLegacy,
-  confirmCustomerRegistration: confirmCustomerRegistrationLegacy,
-  confirmSendTransaction: confirmSendTransactionLegacy,
-  customerRegistration: customerRegistrationLegacy,
-  getCalculation: getCalculationLegacy,
-  sendOtp: sendOtpLegacy,
-  sendTransaction: sendTransactionLegacy,
-  cspDocumentUpload: cspDocumentUploadLegacy
 };

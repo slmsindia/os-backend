@@ -1346,393 +1346,304 @@ const paths = {
     }
   },
 
-  "/api/ime/authenticate": {
-    post: {
-      tags: ["IME"],
-      summary: "IME Authenticate (SOAP)",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Authentication successful" },
-        500: { description: "IME SOAP error" },
-      },
-    },
-  },
 
-  "/api/ime/login": {
+  // IME endpoints as per ime.routes.js and IME.md
+  "/api/ime/GetStaticData": {
     post: {
-      tags: ["IME"],
-      summary: "IME Login (SOAP)",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Login successful" },
-        500: { description: "IME SOAP error" },
-      },
-    },
-  },
-
-  "/api/ime/customers": {
-    post: {
-      tags: ["IME"],
-      summary: "Create IME Customer",
-      requestBody: imeCreateCustomerBody,
-      responses: {
-        201: { description: "Customer created" },
-        400: { description: "Invalid input" },
-      },
-    },
-  },
-
-  "/api/ime/customers/send-otp": {
-    post: {
-      tags: ["IME"],
-      summary: "Send OTP for IME Customer Registration",
+      tags: ["IME 1: Static Data"],
+      summary: "Get IME Static Data",
+      description: "Fetch static data from IME (banks, branches, etc.)",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
-              required: ["PhoneNumber"],
+              required: ["TypeCode"],
               properties: {
-                PhoneNumber: { type: "string", example: "9812474750" },
-                ReferenceValue: { type: "string", example: "9812474750", description: "Optional explicit IME reference (customer token/id/mobile)" },
-                Module: { type: "string", example: "CustomerRegistration" }
+                TypeCode: { type: "string", example: "WSST-BKLV1" },
+                ReferenceValue: { type: "string", example: "104" }
               }
             }
           }
         }
       },
-      responses: {
-        200: { description: "OTP sent" },
-        400: { description: "Invalid input" },
-      },
-    },
+      responses: { 200: { description: "Static data fetched" }, 400: { description: "Invalid request" } }
+    }
   },
-
-  "/api/ime/customers/confirm": {
+  "/api/ime/CSPRegistration": {
     post: {
-      tags: ["IME"],
-      summary: "Confirm IME Customer Registration with OTP",
+      tags: ["IME 2: CSP Module"],
+      summary: "Register CSP (Customer Service Point)",
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
-              required: ["CustomerToken", "OTPToken", "OTP"],
+              required: ["PartnerCSPCode", "CSPName", "RegistrationType", "RegistrationNumber", "BusinessType", "ContractExpiryDate", "ContractRenewalDate", "PANNumber"],
               properties: {
-                CustomerToken: { type: "string", example: "IME-CUSTOMER-TOKEN" },
-                OTPToken: { type: "string", example: "IME-OTP-TOKEN" },
-                OTP: { type: "string", example: "123456" }
+                PartnerCSPCode: { type: "string", example: "CSP001" },
+                CSPName: { type: "string", example: "My CSP Center" },
+                RegistrationType: { type: "string", example: "4501" },
+                RegistrationNumber: { type: "string", example: "REG12345" },
+                BusinessType: { type: "string", example: "6200" },
+                ContractExpiryDate: { type: "string", example: "2025/12/31" },
+                ContractRenewalDate: { type: "string", example: "2026/01/01" },
+                PANNumber: { type: "string", example: "123456789" }
               }
             }
           }
         }
       },
-      responses: {
-        200: { description: "Customer confirmed" },
-        400: { description: "Invalid OTP/Token" },
-      },
-    },
+      responses: { 200: { description: "CSP registered" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/customers/search/mobile/{mobile}": {
-    get: {
-      tags: ["IME"],
-      summary: "Search IME Customer By Mobile",
-      parameters: [
-        { name: "mobile", in: "path", required: true, schema: { type: "string", example: "9841234567" } },
-      ],
-      responses: {
-        200: { description: "Customer search result" },
-        400: { description: "Invalid mobile" },
-      },
-    },
-  },
-
-  "/api/ime/customers/{customerId}": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Customer Requery Status By EntityId",
-      parameters: [
-        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      responses: {
-        200: { description: "Customer requery result" },
-        404: { description: "Customer not found" },
-      },
-    },
-  },
-
-  "/api/ime/customers/validate": {
+  "/api/ime/CSPDocumentUpload": {
     post: {
-      tags: ["IME"],
-      summary: "Check IME Entity Status",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Entity status result" },
+      tags: ["IME 2: CSP Module"],
+      summary: "Upload CSP Document",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["DocumentType", "ReferenceId", "DocumentData", "DocumentFormat"],
+              properties: {
+                DocumentType: { type: "string", example: "17001" },
+                ReferenceId: { type: "string", example: "CSP001" },
+                DocumentData: { type: "string", example: "base64string..." },
+                DocumentFormat: { type: "string", example: "pdf" }
+              }
+            }
+          }
+        }
       },
-    },
+      responses: { 200: { description: "Document uploaded" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/transactions/send": {
+  "/api/ime/CSPCheck": {
     post: {
-      tags: ["IME"],
-      summary: "Send Money via IME",
-      requestBody: imeSendMoneyBody,
-      responses: {
-        200: { description: "Money sent successfully" },
-        400: { description: "Invalid transaction data" },
+      tags: ["IME 2: CSP Module"],
+      summary: "Check CSP Registration Status",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["PartnerCSPCode"],
+              properties: {
+                PartnerCSPCode: { type: "string", example: "CSP001" }
+              }
+            }
+          }
+        }
       },
-    },
+      responses: { 200: { description: "CSP status fetched" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/transactions/{transactionId}/status": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Transaction Status",
-      parameters: [
-        { name: "transactionId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      responses: {
-        200: { description: "Transaction status" },
-      },
-    },
-  },
-
-  "/api/ime/transactions/{transactionId}/cancel": {
+  "/api/ime/BalanceInquiry": {
     post: {
-      tags: ["IME"],
-      summary: "Cancel IME Transaction",
-      parameters: [
-        { name: "transactionId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Transaction cancelled" },
-      },
-    },
+      tags: ["IME 2: CSP Module"],
+      summary: "Check Agent Account Balance",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: {} } } } },
+      responses: { 200: { description: "Balance details" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/receivers": {
+  "/api/ime/CheckCustomer": {
     post: {
-      tags: ["IME"],
-      summary: "Create IME Receiver (mapped via CustomerRegistration)",
-      requestBody: jsonBody,
-      responses: {
-        201: { description: "Receiver created" },
-      },
-    },
+      tags: ["IME 3: Customer Module"],
+      summary: "Check if Customer is Registered",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["MobileNo"], properties: { MobileNo: { type: "string", example: "9812345678" } } } } } },
+      responses: { 200: { description: "Customer details" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/receivers/{receiverId}": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Receiver Details",
-      parameters: [
-        { name: "receiverId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      responses: {
-        200: { description: "Receiver details" },
-      },
-    },
-    patch: {
-      tags: ["IME"],
-      summary: "Update IME Receiver",
-      parameters: [
-        { name: "receiverId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Receiver updated" },
-      },
-    },
-  },
-
-  "/api/ime/data": {
-    get: {
-      tags: ["IME"],
-      summary: "List persisted IME data",
-      responses: {
-        200: { description: "IME data list" },
-      },
-    },
+  "/api/ime/SendOTP": {
     post: {
-      tags: ["IME"],
-      summary: "Create persisted IME data",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "IME data created" },
-      },
-    },
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Send OTP to Customer",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["Module", "ReferenceValue"], properties: { Module: { type: "string", example: "CR" }, ReferenceValue: { type: "string", example: "9812345678" } } } } } },
+      responses: { 200: { description: "OTP sent" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/data/{id}": {
-    patch: {
-      tags: ["IME"],
-      summary: "Update persisted IME data",
-      parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string" } },
-      ],
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "IME data updated" },
-      },
-    },
-    delete: {
-      tags: ["IME"],
-      summary: "Delete persisted IME data",
-      parameters: [
-        { name: "id", in: "path", required: true, schema: { type: "string" } },
-      ],
-      responses: {
-        200: { description: "IME data deleted" },
-      },
-    },
-  },
-
-  "/api/ime/payment-modes": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Payment Modes",
-      responses: {
-        200: { description: "Payment modes list" },
-      },
-    },
-  },
-
-  "/api/ime/bank-accounts/validate": {
+  "/api/ime/CustomerRegistration": {
     post: {
-      tags: ["IME"],
-      summary: "Validate IME Bank Account",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Bank account validation result" },
-      },
-    },
+      tags: ["IME 3: Customer Module"],
+      summary: "Register Customer (SOAP)",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["MobileNo", "FirstName", "LastName", "Nationality", "MaritalStatus", "DOB", "Gender", "FatherOrMotherName", "Occupation"], properties: { MobileNo: { type: "string", example: "9812345678" }, MembershipId: { type: "string" }, FirstName: { type: "string", example: "Ram" }, MiddleName: { type: "string", example: "Bahadur" }, LastName: { type: "string", example: "Thapa" }, Nationality: { type: "string", example: "NPL" }, MaritalStatus: { type: "string", example: "1901" }, DOB: { type: "string", example: "1990/01/15" }, Gender: { type: "string", example: "1801" }, FatherOrMotherName: { type: "string", example: "Hari Thapa" }, Email: { type: "string", example: "ram@example.com" }, Occupation: { type: "string", example: "8081" }, SourceOfFund: { type: "string", example: "8051" } } } } } },
+      responses: { 200: { description: "Customer registration initiated" }, 400: { description: "Invalid input" } }
+    }
   },
-
-  "/api/ime/banks": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Bank List",
-      parameters: [
-        { name: "country", in: "query", required: false, schema: { type: "string", example: "NP" } },
-      ],
-      responses: {
-        200: { description: "Bank list" },
-      },
-    },
-  },
-
-  "/api/ime/kyc/verify": {
+  "/api/ime/ConfirmCustomerRegistration": {
     post: {
-      tags: ["IME"],
-      summary: "Check IME Entity Status for KYC",
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Entity status/KYC result" },
-      },
-    },
+      tags: ["IME 3: Customer Module"],
+      summary: "Confirm Customer Registration with OTP",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["OTP", "CustomerToken", "OTPToken"], properties: { OTP: { type: "string", example: "123456" }, CustomerToken: { type: "string" }, OTPToken: { type: "string" } } } } } },
+      responses: { 200: { description: "Customer registration confirmed" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/GetCalculation": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Get Exchange Rate and Service Charge Calculation",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"], properties: { PayoutAgentId: { type: "string", example: "1001" }, RemitAmount: { type: "string", example: "10000" }, PaymentType: { type: "string", example: "C" }, PayoutCountry: { type: "string", example: "NPL" }, CalcBy: { type: "string", example: "C" } } } } } },
+      responses: { 200: { description: "Calculation result with ForexSessionId" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/SendTransaction": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Create Money Transfer Transaction",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["ForexSessionId", "SenderCustomerId", "ReceiverCustomerId", "Amount", "SourceCurrency", "DestinationCurrency", "PaymentMode"], properties: { ForexSessionId: { type: "string", example: "FSID12345" }, SenderCustomerId: { type: "string", example: "CUST123" }, ReceiverCustomerId: { type: "string", example: "CUST456" }, Amount: { type: "string", example: "10000" }, SourceCurrency: { type: "string", example: "INR" }, DestinationCurrency: { type: "string", example: "NPR" }, PaymentMode: { type: "string", example: "BANK" } } } } } },
+      responses: { 200: { description: "Transaction created" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/ConfirmSendTransaction": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Confirm Transaction with OTP",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["RefNo", "OTPToken", "OTP"], properties: { RefNo: { type: "string" }, OTPToken: { type: "string" }, OTP: { type: "string", example: "123456" } } } } } },
+      responses: { 200: { description: "Transaction confirmed" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/TransactionInquiry": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Look Up Transaction Details",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["RefNoType", "RefNo"], properties: { RefNoType: { type: "string", example: "1" }, RefNo: { type: "string", example: "ICN123456" } } } } } },
+      responses: { 200: { description: "Transaction details" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/AmendTransaction": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Modify Existing Transaction",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["RefNo", "OTP", "OTPToken"], properties: { RefNo: { type: "string" }, ReceiverName: { type: "string" }, ReceiverGender: { type: "string" }, ReceiverAddress: { type: "string" }, RelationWithSender: { type: "string" }, PurposeOfRemittance: { type: "string" }, SourceOfFund: { type: "string" }, ReceiverMobileNo: { type: "string" }, BankId: { type: "string" }, BankBranchId: { type: "string" }, AccountNo: { type: "string" }, OTP: { type: "string", example: "123456" }, OTPToken: { type: "string" } } } } } },
+      responses: { 200: { description: "Transaction amended" }, 400: { description: "Invalid input" } }
+    }
+  },
+  "/api/ime/CancelTransaction": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Cancel Transaction",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["RefNo", "CancelReason", "OTP", "OTPToken"], properties: { RefNo: { type: "string" }, CancelReason: { type: "string", example: "7701" }, OTP: { type: "string", example: "123456" }, OTPToken: { type: "string" } } } } } },
+      responses: { 200: { description: "Transaction cancelled" }, 400: { description: "Invalid input" } }
+    }
   },
 
-  "/api/ime/compliance/{customerId}/status": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Compliance Status",
-      parameters: [
-        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
-      ],
-      responses: {
-        200: { description: "Compliance status" },
+  "/api/ime/calculation": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Get Exchange Rate Calculation",
+      description: "Calculate exchange rate and service charges. Returns ForexSessionId required for SendTransaction. Minimum amount is 700 INR.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
+              properties: {
+                PayoutAgentId: { 
+                  type: "string", 
+                  description: "Bank ID from GetStaticData - Mandatory if PaymentType=B",
+                  example: "1001"
+                },
+                RemitAmount: { 
+                  type: "string", 
+                  example: "10000", 
+                  description: "Amount in INR (minimum 700 INR)",
+                  minimum: 700
+                },
+                PaymentType: { 
+                  type: "string", 
+                  example: "C", 
+                  description: "Payment type in Nepal",
+                  enum: ["C", "B"]
+                },
+                PayoutCountry: { 
+                  type: "string", 
+                  example: "NPL",
+                  description: "Always NPL for Nepal",
+                  enum: ["NPL"]
+                },
+                CalcBy: { 
+                  type: "string", 
+                  example: "C", 
+                  description: "Calculation method",
+                  enum: ["C", "P"]
+                }
+              }
+            },
+            example: {
+              "RemitAmount": "10000",
+              "PaymentType": "C",
+              "PayoutCountry": "NPL",
+              "CalcBy": "C"
+            }
+          }
+        }
       },
-    },
-  },
-
-  "/api/ime/customers/{customerId}/transactions": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Transaction History",
-      parameters: [
-        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
-      ],
       responses: {
-        200: { description: "Transaction history" },
-      },
-    },
-  },
-
-  "/api/ime/exchange-rate": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME Exchange Rate",
-      parameters: [
-        { name: "from", in: "query", required: true, schema: { type: "string", example: "USD" } },
-        { name: "to", in: "query", required: true, schema: { type: "string", example: "NPR" } },
-      ],
-      responses: {
-        200: { description: "Exchange rate" },
-      },
-    },
-  },
-
-  // ==================== IME REPORTS ====================
-  "/api/ime/reports/soa": {
-    get: {
-      tags: ["IME Reports"],
-      summary: "Get Statement of Account (SOA) Report",
-      parameters: [
-        { name: "fromDate", in: "query", required: true, schema: { type: "string", example: "2024/01/01", description: "Start date in YYYY/MM/DD format" } },
-        { name: "toDate", in: "query", required: true, schema: { type: "string", example: "2024/12/31", description: "End date in YYYY/MM/DD format" } },
-      ],
-      responses: {
-        200: { description: "SOA report retrieved" },
-        400: { description: "Invalid date format" },
-      },
-    },
-  },
-
-  "/api/ime/static-data": {
-    get: {
-      tags: ["IME"],
-      summary: "Get IME static reference data",
-      description: "Retrieve static reference data by type code (e.g., WSST-MUNV1 for municipalities)",
-      parameters: [
-        { name: "typeCode", in: "query", required: true, schema: { type: "string" }, description: "Type code for static data (e.g., WSST-MUNV1)" },
-        { name: "DistrictId", in: "query", required: false, schema: { type: "string" }, description: "District ID filter (required for municipality data)" }
-      ],
-      responses: {
-        200: { description: "Static data retrieved successfully" },
-        400: { description: "Missing typeCode parameter" },
+        200: {
+          description: "Calculation result with ForexSessionId",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  message: { type: "string" },
+                  data: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        400: { description: "Invalid request - Check parameters" },
         500: { description: "Server error" }
       }
     }
   },
 
-  "/api/ime/bank-branches": {
-    get: {
-      tags: ["IME"],
-      summary: "Get bank branches",
-      description: "Retrieve list of bank branches filtered by bank ID",
-      parameters: [
-        { name: "bankId", in: "query", required: true, schema: { type: "string" } }
-      ],
+  "/api/ime/send-otp": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Send OTP",
+      description: "Send OTP for customer registration, transaction confirmation, etc.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["Module", "ReferenceValue"],
+              properties: {
+                Module: { 
+                  type: "string", 
+                  example: "CR",
+                  description: "Module: CR=Customer Registration, ST=Send Transaction, MT=Mobile Amendment, CT=Cancel Transaction",
+                  enum: ["CR", "ST", "MT", "CT"]
+                },
+                ReferenceValue: { 
+                  type: "string", 
+                  example: "9841234567",
+                  description: "Mobile number or transaction ID depending on module"
+                }
+              }
+            },
+            example: {
+              "Module": "CR",
+              "ReferenceValue": "9841234567"
+            }
+          }
+        }
+      },
       responses: {
-        200: { description: "Bank branches retrieved successfully" },
-        400: { description: "Missing bankId parameter" },
-        500: { description: "Server error" }
-      }
-    }
-  },
-
-  "/api/ime/id-issue-places": {
-    get: {
-      tags: ["IME"],
-      summary: "Get ID issue places",
-      description: "Retrieve list of places where IDs can be issued",
-      responses: {
-        200: { description: "ID issue places retrieved successfully" },
-        500: { description: "Server error" }
+        200: { description: "OTP sent successfully" },
+        400: { description: "Invalid request" }
       }
     }
   },
@@ -1740,7 +1651,7 @@ const paths = {
   // ==================== IME PHASE 2 eKYC ENDPOINTS ====================
   "/api/ime/ekyc/generate-ott": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Generate OTT (One-Time Token) for Aadhar Validation",
       description: "Generates OTT and returns URL for Aadhar number entry. For customers (203), OTP and OTPToken are required.",
       requestBody: {
@@ -1784,7 +1695,7 @@ const paths = {
 
   "/api/ime/ekyc/get-unique-id": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Get Unique Identifier After Aadhar Validation",
       description: "Called after user opens OTT URL and completes Aadhar number entry",
       requestBody: {
@@ -1811,7 +1722,7 @@ const paths = {
 
   "/api/ime/ekyc/bio-kyc": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Submit Biometric Fingerprint Data for KYC",
       description: "Submits biometric fingerprint data captured from biometric device",
       requestBody: {
@@ -1839,7 +1750,7 @@ const paths = {
 
   "/api/ime/ekyc/customer-onboarding": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Complete Customer Registration After eKYC",
       description: "Final step after biometric KYC to complete customer registration",
       requestBody: {
@@ -1865,7 +1776,7 @@ const paths = {
 
   "/api/ime/ekyc/customer-requery": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Get Full Customer Details from IME",
       description: "Retrieves comprehensive customer information from IME system",
       requestBody: {
@@ -1891,7 +1802,7 @@ const paths = {
 
   "/api/ime/ekyc/check-entity-status": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Check Entity Onboarding Status",
       description: "Check the current stage in the onboarding process for CSP or Customer",
       requestBody: {
@@ -1931,7 +1842,7 @@ const paths = {
 
   "/api/ime/ekyc/aadhar-registration": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Register Customer via Aadhar (SOAP-based)",
       description: "Alternative method to register customer using Aadhar number instead of manual registration",
       requestBody: {
@@ -1975,7 +1886,7 @@ const paths = {
 
   "/api/ime/ekyc/aadhar-reprocess": {
     post: {
-      tags: ["IME Phase 2 eKYC"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Reset/Clear Aadhar KYC Process",
       description: "Used to clear/reset the Aadhar KYC process for a CSP or Customer that needs to restart",
       requestBody: {
@@ -2004,9 +1915,9 @@ const paths = {
   // ==================== IME LEGACY SOAP ENDPOINTS ====================
   "/api/ime/GetCalculation": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Get Exchange Rate and Service Charge Calculation",
-      description: "Calculate exchange rate and service charges. Returns ForexSessionId required for SendTransaction.",
+      description: "Calculate exchange rate and service charges. Returns ForexSessionId required for SendTransaction. Minimum amount is 700 INR.",
       requestBody: {
         required: true,
         content: {
@@ -2015,12 +1926,42 @@ const paths = {
               type: "object",
               required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
               properties: {
-                PayoutAgentId: { type: "string", description: "Bank ID - Mandatory if PaymentType=B" },
-                RemitAmount: { type: "string", example: "10000", description: "Amount in INR" },
-                PaymentType: { type: "string", example: "C", description: "C=Cash, B=Bank" },
-                PayoutCountry: { type: "string", example: "NPL" },
-                CalcBy: { type: "string", example: "C", description: "C=Collection Amount, P=Payout Amount" }
+                PayoutAgentId: { 
+                  type: "string", 
+                  description: "Bank ID from GetStaticData - Mandatory if PaymentType=B",
+                  example: "1001"
+                },
+                RemitAmount: { 
+                  type: "string", 
+                  example: "10000", 
+                  description: "Amount in INR (minimum 700 INR)",
+                  minimum: 700
+                },
+                PaymentType: { 
+                  type: "string", 
+                  example: "C", 
+                  description: "Payment type in Nepal",
+                  enum: ["C", "B"]
+                },
+                PayoutCountry: { 
+                  type: "string", 
+                  example: "NPL",
+                  description: "Always NPL for Nepal",
+                  enum: ["NPL"]
+                },
+                CalcBy: { 
+                  type: "string", 
+                  example: "C", 
+                  description: "Calculation method",
+                  enum: ["C", "B"]
+                }
               }
+            },
+            example: {
+              "RemitAmount": "10000",
+              "PaymentType": "C",
+              "PayoutCountry": "NPL",
+              "CalcBy": "C"
             }
           }
         }
@@ -2051,7 +1992,7 @@ const paths = {
 
   "/api/ime/SendTransaction": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Create Money Transfer Transaction",
       description: "Creates a new transaction. ForexSessionId from GetCalculation must be used immediately.",
       requestBody: imeSendTransactionBody,
@@ -2082,7 +2023,7 @@ const paths = {
 
   "/api/ime/SendOTP": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Send OTP to Customer",
       description: "Sends OTP for various modules: CR (Customer Registration), ST (Send Transaction), MT (Modify Transaction), CT (Cancel Transaction)",
       requestBody: {
@@ -2121,7 +2062,7 @@ const paths = {
 
   "/api/ime/ConfirmSendTransaction": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Confirm Transaction with OTP",
       description: "Finalizes the transaction after OTP verification. Returns ICN for payout.",
       requestBody: {
@@ -2167,7 +2108,7 @@ const paths = {
 
   "/api/ime/CustomerRegistration": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 3: Customer Module"],
       summary: "Register Customer (SOAP)",
       description: "Register a new customer in IME system via SOAP",
       requestBody: {
@@ -2204,7 +2145,7 @@ const paths = {
 
   "/api/ime/ConfirmCustomerRegistration": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 3: Customer Module"],
       summary: "Confirm Customer Registration with OTP",
       requestBody: {
         required: true,
@@ -2230,7 +2171,7 @@ const paths = {
 
   "/api/ime/CheckCustomer/{mobileNo}": {
     get: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 3: Customer Module"],
       summary: "Check if Customer is Registered",
       description: "Verify if customer exists and is eligible for transactions",
       parameters: [
@@ -2264,7 +2205,7 @@ const paths = {
 
   "/api/ime/TransactionInquiry": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Look Up Transaction Details",
       requestBody: {
         required: true,
@@ -2289,7 +2230,7 @@ const paths = {
 
   "/api/ime/TransactionInquiryDefault": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Default Transaction Inquiry",
       requestBody: jsonBody,
       responses: {
@@ -2300,7 +2241,7 @@ const paths = {
 
   "/api/ime/AmendTransaction": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Modify Existing Transaction",
       description: "Modify receiver details or other info. Flow: TransactionInquiry → SendOTP(MT) → AmendmentTransaction",
       requestBody: {
@@ -2337,7 +2278,7 @@ const paths = {
 
   "/api/ime/CustomerMobileAmendment": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Amend Customer Mobile Number",
       requestBody: jsonBody,
       responses: {
@@ -2348,7 +2289,7 @@ const paths = {
 
   "/api/ime/BalanceInquiry": {
     get: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 2: CSP Module"],
       summary: "Check Agent Account Balance",
       responses: {
         200: {
@@ -2371,7 +2312,7 @@ const paths = {
 
   "/api/ime/CSPRegistration": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 2: CSP Module"],
       summary: "Register CSP (Customer Service Point)",
       description: "Register a new CSP/branch in IME system",
       requestBody: {
@@ -2403,7 +2344,7 @@ const paths = {
 
   "/api/ime/CheckCSP": {
     get: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 2: CSP Module"],
       summary: "Check CSP Registration Status",
       responses: {
         200: { description: "CSP status and document upload status" }
@@ -2413,7 +2354,7 @@ const paths = {
 
   "/api/ime/CSPDocumentUpload": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 2: CSP Module"],
       summary: "Upload CSP Document",
       requestBody: {
         required: true,
@@ -2440,7 +2381,7 @@ const paths = {
 
   "/api/ime/CancelTransaction": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 4: Transaction Flow"],
       summary: "Cancel Transaction",
       description: "Flow: TransactionInquiry → SendOTP(CT) → CancelTransaction",
       requestBody: {
@@ -2468,7 +2409,7 @@ const paths = {
 
   "/api/ime/AadharEntityReprocess": {
     post: {
-      tags: ["IME Legacy SOAP"],
+      tags: ["IME 6: Phase 2 eKYC"],
       summary: "Reset Aadhar KYC Process",
       requestBody: {
         required: true,
@@ -2495,7 +2436,7 @@ const paths = {
   // Static Data Endpoints
   "/api/ime/GetAccountType": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Account Type List (WSST-ACCV1)",
       responses: { 200: { description: "Account types" } }
     }
@@ -2503,7 +2444,7 @@ const paths = {
 
   "/api/ime/Countries": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Country List (WSST-CONV1)",
       responses: { 200: { description: "Countries" } }
     }
@@ -2511,7 +2452,7 @@ const paths = {
 
   "/api/ime/States/{CountryId}": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get State List by Country (WSST-STTV1)",
       parameters: [
         { name: "CountryId", in: "path", required: true, schema: { type: "string" } }
@@ -2522,7 +2463,7 @@ const paths = {
 
   "/api/ime/Districts/{StateId}": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get District List by State (WSST-DISV1)",
       parameters: [
         { name: "StateId", in: "path", required: true, schema: { type: "string" } }
@@ -2533,7 +2474,7 @@ const paths = {
 
   "/api/ime/Genders": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Gender List (WSST-GDRV1)",
       responses: { 200: { description: "Genders" } }
     }
@@ -2541,7 +2482,7 @@ const paths = {
 
   "/api/ime/MaritalStatus": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Marital Status List (WSST-MSSV1)",
       responses: { 200: { description: "Marital statuses" } }
     }
@@ -2549,7 +2490,7 @@ const paths = {
 
   "/api/ime/Occupation": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Occupation List (WSST-OCPV1)",
       responses: { 200: { description: "Occupations" } }
     }
@@ -2557,7 +2498,7 @@ const paths = {
 
   "/api/ime/PurposeOfRemittance": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Purpose of Remittance List (WSST-PORV1)",
       responses: { 200: { description: "Purposes" } }
     }
@@ -2565,7 +2506,7 @@ const paths = {
 
   "/api/ime/TransactionCancelReason": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Transaction Cancel Reason List (WSST-TCRV1)",
       responses: { 200: { description: "Cancel reasons" } }
     }
@@ -2573,7 +2514,7 @@ const paths = {
 
   "/api/ime/GetIdTypes": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get ID Type List (WSST-IDTV1)",
       responses: { 200: { description: "ID types" } }
     }
@@ -2581,7 +2522,7 @@ const paths = {
 
   "/api/ime/GetIdentityTypes": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Identity Types (Alternative endpoint)",
       responses: { 200: { description: "Identity types" } }
     }
@@ -2589,7 +2530,7 @@ const paths = {
 
   "/api/ime/BankList/{CountryId}": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Bank List by Country (WSST-BKLV1)",
       parameters: [
         { name: "CountryId", in: "path", required: true, schema: { type: "string" } }
@@ -2600,7 +2541,7 @@ const paths = {
 
   "/api/ime/BankBranchList/{BankId}": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Bank Branch List by Bank (WSST-BBLV1)",
       parameters: [
         { name: "BankId", in: "path", required: true, schema: { type: "string" } }
@@ -2611,7 +2552,7 @@ const paths = {
 
   "/api/ime/CSPRegistrationTypeList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get CSP Registration Type List (WSST-REGV1)",
       responses: { 200: { description: "CSP registration types" } }
     }
@@ -2619,7 +2560,7 @@ const paths = {
 
   "/api/ime/CSPAddressProofTypeList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get CSP Address Proof Type List (WSST-ADPV1)",
       responses: { 200: { description: "CSP address proof types" } }
     }
@@ -2627,7 +2568,7 @@ const paths = {
 
   "/api/ime/CSPOwnerAddressProofTypeList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get CSP Owner Address Proof Type List (WSST-OAPV1)",
       responses: { 200: { description: "Owner address proof types" } }
     }
@@ -2635,7 +2576,7 @@ const paths = {
 
   "/api/ime/CSPBusinessTypeList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get CSP Business Type List (WSST-BUSV1)",
       responses: { 200: { description: "CSP business types" } }
     }
@@ -2643,7 +2584,7 @@ const paths = {
 
   "/api/ime/CSPDocumentTypeList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get CSP Document Type List (WSST-ADOV1)",
       responses: { 200: { description: "CSP document types" } }
     }
@@ -2651,7 +2592,7 @@ const paths = {
 
   "/api/ime/OwnerCategoryTypes": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Owner Category Type List (WSST-CATV1)",
       responses: { 200: { description: "Owner categories" } }
     }
@@ -2659,7 +2600,7 @@ const paths = {
 
   "/api/ime/EducationalQualificationList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Educational Qualification List (WSST-EDQV1)",
       responses: { 200: { description: "Educational qualifications" } }
     }
@@ -2667,7 +2608,7 @@ const paths = {
 
   "/api/ime/Municipalities/{DistrictId}": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Municipality List by District (WSST-MUNV1)",
       parameters: [
         { name: "DistrictId", in: "path", required: true, schema: { type: "string" } }
@@ -2678,7 +2619,7 @@ const paths = {
 
   "/api/ime/RelationshipList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Relationship List (WSST-RELV1)",
       responses: { 200: { description: "Relationships" } }
     }
@@ -2686,7 +2627,7 @@ const paths = {
 
   "/api/ime/IDPlaceofIssue": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get ID Place of Issue List (WSST-POIV1)",
       responses: { 200: { description: "Places of issue" } }
     }
@@ -2694,7 +2635,7 @@ const paths = {
 
   "/api/ime/SourceOfFundList": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Source of Fund List (WSST-SOFV1)",
       responses: { 200: { description: "Source of funds" } }
     }
@@ -2702,7 +2643,7 @@ const paths = {
 
   "/api/ime/bank-branches": {
     get: {
-      tags: ["IME Static Data"],
+      tags: ["IME 1: Static Data"],
       summary: "Get Bank Branches (Query parameter version)",
       parameters: [
         { name: "bankId", in: "query", required: false, schema: { type: "string" } },
@@ -3420,7 +3361,7 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
 // Authentication & Session Management
 paths["/api/ime/authenticate"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 2: CSP Module"],
     summary: "IME Authentication",
     requestBody: jsonBody,
     responses: {
@@ -3433,7 +3374,7 @@ paths["/api/ime/authenticate"] = {
 
 paths["/api/ime/login"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 2: CSP Module"],
     summary: "IME Login",
     requestBody: jsonBody,
     responses: {
@@ -3447,7 +3388,7 @@ paths["/api/ime/login"] = {
 // Customer Operations
 paths["/api/ime/customers/send-otp"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Send OTP to customer",
     requestBody: {
       required: true,
@@ -3474,7 +3415,7 @@ paths["/api/ime/customers/send-otp"] = {
 
 paths["/api/ime/customers/confirm"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Confirm customer with OTP",
     requestBody: {
       required: true,
@@ -3502,7 +3443,7 @@ paths["/api/ime/customers/confirm"] = {
 
 paths["/api/ime/customers"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Create new customer",
     requestBody: imeCreateCustomerBody,
     responses: {
@@ -3515,7 +3456,7 @@ paths["/api/ime/customers"] = {
 
 paths["/api/ime/customers/search/mobile/{mobile}"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Search customer by mobile number",
     parameters: [
       { name: "mobile", in: "path", required: true, schema: { type: "string" } }
@@ -3530,7 +3471,7 @@ paths["/api/ime/customers/search/mobile/{mobile}"] = {
 
 paths["/api/ime/customers/requery"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Requery customer information",
     parameters: [
       { name: "entityId", in: "query", required: false, schema: { type: "string" } },
@@ -3546,7 +3487,7 @@ paths["/api/ime/customers/requery"] = {
 
 paths["/api/ime/customers/{customerId}"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Get customer by ID",
     parameters: [
       { name: "customerId", in: "path", required: true, schema: { type: "string" } }
@@ -3561,7 +3502,7 @@ paths["/api/ime/customers/{customerId}"] = {
 
 paths["/api/ime/customers/validate"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Validate customer",
     requestBody: imeValidateCustomerBody,
     responses: {
@@ -3575,7 +3516,7 @@ paths["/api/ime/customers/validate"] = {
 // Customer Registration Flow Middleware
 paths["/api/ime/customers/register-complete"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Complete customer registration",
     requestBody: imeCreateCustomerBody,
     responses: {
@@ -3588,7 +3529,7 @@ paths["/api/ime/customers/register-complete"] = {
 
 paths["/api/ime/customers/confirm-registration"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Confirm customer registration",
     requestBody: {
       required: true,
@@ -3616,7 +3557,7 @@ paths["/api/ime/customers/confirm-registration"] = {
 
 paths["/api/ime/customers/check-eligibility"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Check customer eligibility",
     requestBody: jsonBody,
     responses: {
@@ -3630,7 +3571,7 @@ paths["/api/ime/customers/check-eligibility"] = {
 // Transaction Operations
 paths["/api/ime/transactions/send"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Send money/transaction",
     requestBody: imeSendMoneyBody,
     responses: {
@@ -3643,7 +3584,7 @@ paths["/api/ime/transactions/send"] = {
 
 paths["/api/ime/transactions/{transactionId}/status"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Get transaction status",
     parameters: [
       { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
@@ -3658,7 +3599,7 @@ paths["/api/ime/transactions/{transactionId}/status"] = {
 
 paths["/api/ime/transactions/{transactionId}/cancel"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Cancel transaction",
     parameters: [
       { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
@@ -3675,7 +3616,7 @@ paths["/api/ime/transactions/{transactionId}/cancel"] = {
 // Transaction Flow Middleware
 paths["/api/ime/transactions/send-complete"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Complete transaction sending",
     requestBody: imeSendTransactionBody,
     responses: {
@@ -3688,7 +3629,7 @@ paths["/api/ime/transactions/send-complete"] = {
 
 paths["/api/ime/transactions/confirm"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Confirm transaction",
     requestBody: {
       required: true,
@@ -3717,7 +3658,7 @@ paths["/api/ime/transactions/confirm"] = {
 // Receiver Management
 paths["/api/ime/receivers"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Create receiver",
     requestBody: imeCreateReceiverBody,
     responses: {
@@ -3730,7 +3671,7 @@ paths["/api/ime/receivers"] = {
 
 paths["/api/ime/receivers/{receiverId}"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Get receiver by ID",
     parameters: [
       { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
@@ -3759,7 +3700,7 @@ paths["/api/ime/receivers/{receiverId}"] = {
 // IME Data Storage Operations
 paths["/api/ime/data"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "List IME data",
     responses: {
       200: { description: "IME data list" },
@@ -3780,7 +3721,7 @@ paths["/api/ime/data"] = {
 
 paths["/api/ime/data/{id}"] = {
   patch: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Update IME data",
     parameters: [
       { name: "id", in: "path", required: true, schema: { type: "string" } }
@@ -3793,7 +3734,7 @@ paths["/api/ime/data/{id}"] = {
     }
   },
   delete: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Delete IME data",
     parameters: [
       { name: "id", in: "path", required: true, schema: { type: "string" } }
@@ -3809,7 +3750,7 @@ paths["/api/ime/data/{id}"] = {
 // Bank & Payment Operations
 paths["/api/ime/payment-modes"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Get payment modes",
     responses: {
       200: { description: "Payment modes retrieved" },
@@ -3820,7 +3761,7 @@ paths["/api/ime/payment-modes"] = {
 
 paths["/api/ime/bank-accounts/validate"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Validate bank account",
     requestBody: imeValidateBankAccountBody,
     responses: {
@@ -3833,7 +3774,7 @@ paths["/api/ime/bank-accounts/validate"] = {
 
 paths["/api/ime/banks"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Get bank list",
     parameters: [
       { name: "country", in: "query", required: false, schema: { type: "string" } }
@@ -3847,7 +3788,7 @@ paths["/api/ime/banks"] = {
 
 paths["/api/ime/bank-branches"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Get bank branches",
     parameters: [
       { name: "country", in: "query", required: false, schema: { type: "string" } },
@@ -3864,7 +3805,7 @@ paths["/api/ime/bank-branches"] = {
 
 paths["/api/ime/static-data"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Get static data",
     parameters: [
       { name: "type", in: "query", required: true, schema: { type: "string" } },
@@ -3880,7 +3821,7 @@ paths["/api/ime/static-data"] = {
 
 paths["/api/ime/id-issue-places"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 1: Static Data"],
     summary: "Get ID issue places",
     parameters: [
       { name: "country", in: "query", required: false, schema: { type: "string" } },
@@ -3896,7 +3837,7 @@ paths["/api/ime/id-issue-places"] = {
 // Compliance & Verification
 paths["/api/ime/kyc/verify"] = {
   post: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Verify KYC",
     requestBody: imeVerifyKycBody,
     responses: {
@@ -3909,7 +3850,7 @@ paths["/api/ime/kyc/verify"] = {
 
 paths["/api/ime/compliance/{customerId}/status"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 3: Customer Module"],
     summary: "Get compliance status",
     parameters: [
       { name: "customerId", in: "path", required: true, schema: { type: "string" } }
@@ -3925,7 +3866,7 @@ paths["/api/ime/compliance/{customerId}/status"] = {
 // Reporting & Queries
 paths["/api/ime/customers/{customerId}/transactions"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 5: Reports"],
     summary: "Get customer transaction history",
     parameters: [
       { name: "customerId", in: "path", required: true, schema: { type: "string" } }
@@ -3940,7 +3881,7 @@ paths["/api/ime/customers/{customerId}/transactions"] = {
 
 paths["/api/ime/exchange-rate"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 4: Transaction Flow"],
     summary: "Get exchange rate",
     parameters: [
       { name: "from", in: "query", required: true, schema: { type: "string" } },
@@ -3956,7 +3897,7 @@ paths["/api/ime/exchange-rate"] = {
 
 paths["/api/ime/reports/soa"] = {
   get: {
-    tags: ["IME"],
+    tags: ["IME 5: Reports"],
     summary: "Get SOA report",
     responses: {
       200: { description: "SOA report generated" },
@@ -3968,7 +3909,7 @@ paths["/api/ime/reports/soa"] = {
 // Phase 2 eKYC Endpoints
 paths["/api/ime/ekyc/generate-ott"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Generate OTT",
     requestBody: jsonBody,
     responses: {
@@ -3981,7 +3922,7 @@ paths["/api/ime/ekyc/generate-ott"] = {
 
 paths["/api/ime/ekyc/get-unique-id"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Get unique ID",
     requestBody: jsonBody,
     responses: {
@@ -3994,7 +3935,7 @@ paths["/api/ime/ekyc/get-unique-id"] = {
 
 paths["/api/ime/ekyc/bio-kyc"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Bio KYC verification",
     requestBody: jsonBody,
     responses: {
@@ -4007,7 +3948,7 @@ paths["/api/ime/ekyc/bio-kyc"] = {
 
 paths["/api/ime/ekyc/customer-onboarding"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Customer onboarding",
     requestBody: jsonBody,
     responses: {
@@ -4020,7 +3961,7 @@ paths["/api/ime/ekyc/customer-onboarding"] = {
 
 paths["/api/ime/ekyc/customer-requery"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Customer requery",
     requestBody: jsonBody,
     responses: {
@@ -4033,7 +3974,7 @@ paths["/api/ime/ekyc/customer-requery"] = {
 
 paths["/api/ime/ekyc/check-entity-status"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Check entity status",
     requestBody: jsonBody,
     responses: {
@@ -4046,7 +3987,7 @@ paths["/api/ime/ekyc/check-entity-status"] = {
 
 paths["/api/ime/ekyc/aadhar-registration"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Aadhar customer registration",
     requestBody: jsonBody,
     responses: {
@@ -4059,7 +4000,7 @@ paths["/api/ime/ekyc/aadhar-registration"] = {
 
 paths["/api/ime/ekyc/aadhar-reprocess"] = {
   post: {
-    tags: ["IME eKYC"],
+    tags: ["IME 6: Phase 2 eKYC"],
     summary: "Aadhar entity reprocess",
     requestBody: jsonBody,
     responses: {
@@ -4087,18 +4028,20 @@ const imeLegacyRoutes = [
 
 imeLegacyRoutes.forEach(routeName => {
   const path = `/api/ime/${routeName}`;
-  paths[path] = {
-    post: {
-      tags: ["IME Legacy"],
-      summary: `${routeName} (Legacy)`,
-      requestBody: jsonBody,
-      responses: {
-        200: { description: "Success" },
-        400: { description: "Bad request" },
-        500: { description: "Server error" }
+  if (!paths[path]) {
+    paths[path] = {
+      post: {
+        tags: ["IME Legacy"],
+        summary: `${routeName} (Legacy)`,
+        requestBody: jsonBody,
+        responses: {
+          200: { description: "Success" },
+          400: { description: "Bad request" },
+          500: { description: "Server error" }
+        }
       }
-    }
-  };
+    };
+  }
 });
 
 // Legacy GET routes with parameters
@@ -4106,20 +4049,22 @@ imeLegacyRoutes.forEach(routeName => {
  "Municipalities/{DistrictId}"].forEach(routeTemplate => {
   const path = `/api/ime/${routeTemplate}`;
   const paramName = routeTemplate.match(/\{([^}]+)\}/)[1];
-  paths[path] = {
-    get: {
-      tags: ["IME Legacy"],
-      summary: `${routeTemplate.split('{')[0]} (Legacy)`,
-      parameters: [
-        { name: paramName, in: "path", required: true, schema: { type: "string" } }
-      ],
-      responses: {
-        200: { description: "Success" },
-        400: { description: "Bad request" },
-        500: { description: "Server error" }
+  if (!paths[path]) {
+    paths[path] = {
+      get: {
+        tags: ["IME Legacy"],
+        summary: `${routeTemplate.split('{')[0]} (Legacy)`,
+        parameters: [
+          { name: paramName, in: "path", required: true, schema: { type: "string" } }
+        ],
+        responses: {
+          200: { description: "Success" },
+          400: { description: "Bad request" },
+          500: { description: "Server error" }
+        }
       }
-    }
-  };
+    };
+  }
 });
 
 // Update existing IME paths with proper request bodies
@@ -4132,6 +4077,154 @@ paths["/api/ime/data"].post.requestBody = imeDataBody;
 paths["/api/ime/data/{id}"].patch.requestBody = imeDataBody;
 paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
 paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
+
+// IME Storage Endpoints
+paths["/api/ime/storage/static-data"] = {
+  get: {
+    tags: ["IME 1: Static Data"],
+    summary: "Get stored IME static data",
+    parameters: [
+      { name: "typeCode", in: "query", schema: { type: "string" }, description: "Static data type code" },
+      { name: "reference", in: "query", schema: { type: "string" }, description: "Reference value" }
+    ],
+    responses: {
+      200: { description: "Static data retrieved successfully" },
+      404: { description: "Static data not found" }
+    }
+  }
+};
+
+paths["/api/ime/storage/customers"] = {
+  get: {
+    tags: ["IME 3: Customer Module"],
+    summary: "Get stored IME customers",
+    parameters: [
+      { name: "mobile", in: "query", schema: { type: "string" }, description: "Customer mobile number" },
+      { name: "kycStatus", in: "query", schema: { type: "string" }, description: "KYC status filter" }
+    ],
+    responses: {
+      200: { description: "Customers retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/customers/{customerId}"] = {
+  get: {
+    tags: ["IME 3: Customer Module"],
+    summary: "Get stored IME customer by ID",
+    parameters: [
+      { name: "customerId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Customer retrieved successfully" },
+      404: { description: "Customer not found" }
+    }
+  }
+};
+
+paths["/api/ime/storage/transactions"] = {
+  get: {
+    tags: ["IME 4: Transaction Flow"],
+    summary: "Get stored IME transactions",
+    parameters: [
+      { name: "status", in: "query", schema: { type: "string" }, description: "Transaction status filter" },
+      { name: "senderMobile", in: "query", schema: { type: "string" }, description: "Sender mobile filter" },
+      { name: "fromDate", in: "query", schema: { type: "string" }, description: "From date filter" },
+      { name: "toDate", in: "query", schema: { type: "string" }, description: "To date filter" }
+    ],
+    responses: {
+      200: { description: "Transactions retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/transactions/{transactionId}"] = {
+  get: {
+    tags: ["IME 4: Transaction Flow"],
+    summary: "Get stored IME transaction by ID",
+    parameters: [
+      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+    ],
+    responses: {
+      200: { description: "Transaction retrieved successfully" },
+      404: { description: "Transaction not found" }
+    }
+  }
+};
+
+paths["/api/ime/storage/receivers"] = {
+  get: {
+    tags: ["IME 3: Customer Module"],
+    summary: "Get stored IME receivers",
+    parameters: [
+      { name: "mobile", in: "query", schema: { type: "string" }, description: "Receiver mobile filter" },
+      { name: "customerId", in: "query", schema: { type: "string" }, description: "Customer ID filter" }
+    ],
+    responses: {
+      200: { description: "Receivers retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/banks"] = {
+  get: {
+    tags: ["IME 1: Static Data"],
+    summary: "Get stored IME banks",
+    parameters: [
+      { name: "country", in: "query", schema: { type: "string" }, description: "Country filter" },
+      { name: "isActive", in: "query", schema: { type: "boolean" }, description: "Active status filter" }
+    ],
+    responses: {
+      200: { description: "Banks retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/exchange-rates"] = {
+  get: {
+    tags: ["IME 1: Static Data"],
+    summary: "Get stored IME exchange rates",
+    parameters: [
+      { name: "sourceCurrency", in: "query", schema: { type: "string" }, description: "Source currency" },
+      { name: "destinationCurrency", in: "query", schema: { type: "string" }, description: "Destination currency" },
+      { name: "isActive", in: "query", schema: { type: "boolean" }, description: "Active status filter" }
+    ],
+    responses: {
+      200: { description: "Exchange rates retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/api-logs"] = {
+  get: {
+    tags: ["IME 5: Reports"],
+    summary: "Get IME API logs",
+    parameters: [
+      { name: "operation", in: "query", schema: { type: "string" }, description: "Operation filter" },
+      { name: "success", in: "query", schema: { type: "boolean" }, description: "Success status filter" },
+      { name: "fromDate", in: "query", schema: { type: "string" }, description: "From date filter" },
+      { name: "toDate", in: "query", schema: { type: "string" }, description: "To date filter" }
+    ],
+    responses: {
+      200: { description: "API logs retrieved successfully" }
+    }
+  }
+};
+
+paths["/api/ime/storage/otp-logs"] = {
+  get: {
+    tags: ["IME 5: Reports"],
+    summary: "Get IME OTP logs",
+    parameters: [
+      { name: "mobile", in: "query", schema: { type: "string" }, description: "Mobile number filter" },
+      { name: "module", in: "query", schema: { type: "string" }, description: "Module filter" },
+      { name: "isVerified", in: "query", schema: { type: "boolean" }, description: "Verification status filter" }
+    ],
+    responses: {
+      200: { description: "OTP logs retrieved successfully" }
+    }
+  }
+};
 
 paths[`${prabhuPrefix}/SendTransaction`].post.requestBody = prabhuSendTransactionBody;
 paths[`${prabhuPrefix}/ConfirmTransaction`].post.requestBody = prabhuConfirmTransactionBody;
@@ -4746,11 +4839,13 @@ module.exports = {
     { name: "Prabhu E-KYC" },
     { name: "Prabhu Workflow" },
     { name: "Prabhu Data" },
-    { name: "IME" },
-    { name: "IME Legacy" },
-    { name: "IME Reports" },
-    { name: "IME Phase 2 eKYC" },
     { name: "Remittance" },
+    { name: "IME 1: Static Data" },
+    { name: "IME 2: CSP Module" },
+    { name: "IME 3: Customer Module" },
+    { name: "IME 4: Transaction Flow" },
+    { name: "IME 5: Reports" },
+    { name: "IME 6: Phase 2 eKYC" }
   ],
   components: {
     securitySchemes: {

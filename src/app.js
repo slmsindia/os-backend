@@ -112,6 +112,7 @@ app.use("/api/prabhu", prabhuRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/ime", imeRoutes);
 app.use("/api/IME", imeLegacyRoutes);
+app.use("/api/ime", imeLegacyRoutes); // Map legacy routes to lowercase as well for Swagger
 app.use("/api", cspRoutes);
 app.use('/api/rd', rdRoutes);
 app.use("/api/business", businessRoutes);

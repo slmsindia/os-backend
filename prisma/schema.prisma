@@ -357,6 +357,354 @@ model OtpCode {
   @@index([mobile])
 }
 
+// ============================================
+// 📘 IME API Response Storage Tables
+// ============================================
+
+// IME Static Data Storage
+model ImeStaticData {
+  id          String   @id @default(uuid())
+  typeCode    String   // WSST-GDRV1, WSST-STTV1, etc.
+  reference   String?  // Country code, State ID, etc.
+  dataId      String   // The ID value from IME
+  dataValue   String   // The display value (Male, Female, etc.)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([typeCode])
+  @@index([reference])
+  @@index([dataId])
+  @@unique([typeCode, dataId])
+}
+
+// IME Customer Registration Data
+model ImeCustomer {
+  id                    String   @id @default(uuid())
+  customerId             String?  @unique  // IME Customer ID
+  membershipId           String?  // IME Forex Membership ID
+  mobileNumber           String   @unique
+  firstName             String
+  middleName            String?
+  lastName              String
+  gender                String
+  dateOfBirth            String
+  nationality            String
+  maritalStatus          String
+  fatherOrMotherName    String
+  email                 String?
+  occupation            String
+  sourceOfFund          String?
+  idType                String
+  idNumber              String
+  idPlaceOfIssue        String?
+  idIssueDate           String
+  idExpiryDate          String?
+  idData                String?  // Base64 encoded ID document
+  idDataType            String?  // pdf, jpg, jpeg, png
+  photoData             String?  // Base64 encoded photo
+  photoDataType         String?
+  
+  // Permanent Address
+  permanentState         String
+  permanentDistrict      String
+  permanentMunicipality String?
+  permanentAddress       String
+  permanentWardNo       String?
+  permanentHouseNo       String?
+  permanentPostalCode    String?
+  
+  // Temporary Address (India)
+  temporaryState         String
+  temporaryDistrict      String
+  temporaryAddress       String
+  temporaryPostalCode    String?
+  temporaryHouseNo       String?
+  
+  // Status & Tokens
+  customerToken         String?  // From CustomerRegistration response
+  amlStatus            String?  // True/False from CheckCustomer
+  kycStatus            String?  // Approved/Pending/Rejected
+  rejectionReason       String?
+  amendmentStatus      String?
+  amendmentMessage     String?
+  newMobileNo          String?
+  
+  // Metadata
+  imeResponseCode       String?  // Response code from IME
+  imeResponseMessage    String?  // Response message from IME
+  agentSessionId        String?  // Session ID used in request
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobileNumber])
+  @@index([customerId])
+  @@index([membershipId])
+  @@index([kycStatus])
+  @@index([createdAt])
+}
+
+// IME Receiver/Beneficiary Data
+model ImeReceiver {
+  id                    String   @id @default(uuid())
+  receiverId            String?  @unique  // IME Receiver ID
+  customerId             String?  // Link to IME Customer
+  firstName             String
+  middleName            String?
+  lastName              String
+  fullName              String?  // Full name from IME
+  mobileNumber           String
+  gender                String?
+  relationship          String?
+  countryCode           String   @default("NP")
+  paymentMode           String?  // CASH, BANK
+  bankCode              String?
+  bankBranchId          String?
+  accountNumber         String?
+  address               String?
+  state                 String?
+  district              String?
+  municipality          String?
+  
+  // Status
+  isActive              Boolean  @default(true)
+  imeResponseCode       String?
+  imeResponseMessage    String?
+  
+  // Metadata
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([receiverId])
+  @@index([customerId])
+  @@index([mobileNumber])
+  @@index([createdAt])
+}
+
+// IME Transaction Data
+model ImeTransaction {
+  id                    String   @id @default(uuid())
+  transactionId         String?  @unique  // IME Transaction ID
+  agentTxnRefId        String?  // Agent's reference ID
+  icn                   String?  // ICN (payout code)
+  forexSessionId        String?  // From GetCalculation
+  
+  // Sender Information
+  senderCustomerId      String?
+  senderName           String
+  senderMobile         String
+  
+  // Receiver Information
+  receiverCustomerId   String?
+  receiverId           String?
+  receiverName         String
+  receiverMobile       String
+  receiverAddress      String?
+  receiverGender       String?
+  receiverCountry      String   @default("NPL")
+  receiverState        String?
+  receiverDistrict     String?
+  receiverMunicipality String?
+  
+  // Transaction Details
+  collectAmount         Float?  // Amount collected from sender
+  payoutAmount         Float?   // Amount paid in Nepal
+  sendAmount           Float?   // Principal amount
+  serviceCharge        Float?
+  exchangeRate         Float?
+  sourceCurrency        String   @default("INR")
+  destinationCurrency   String   @default("NPR")
+  paymentMode          String?   // CASH, BANK
+  purposeOfRemittance  String?
+  sourceOfFund         String?
+  relationship         String?
+  
+  // Bank Details (if paymentMode = BANK)
+  bankCode             String?
+  bankBranchId         String?
+  bankAccountNumber    String?
+  
+  // Status & Tracking
+  status               String    // Success, Pending, Failed, Cancelled
+  responseCode         String?   // IME response code
+  responseMessage      String?   // IME response message
+  otpProcessId         String?   // For OTP verification
+  otp                  String?   // Verified OTP
+  
+  // Timestamps
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  completedAt          DateTime?
+  
+  // Metadata
+  agentSessionId        String?
+  imeResponsePayload   Json?     // Full IME response
+  requestPayload       Json?     // Request sent to IME
+
+  @@index([transactionId])
+  @@index([agentTxnRefId])
+  @@index([senderCustomerId])
+  @@index([receiverCustomerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([completedAt])
+}
+
+// IME Transaction History (for customer transaction history)
+model ImeTransactionHistory {
+  id                    String   @id @default(uuid())
+  customerId             String
+  transactionId         String?
+  senderName            String
+  receiverName          String
+  receiverMobile        String
+  amount                Float
+  serviceCharge         Float?
+  exchangeRate         Float?
+  status                String
+  transactionDate       String?
+  currency              String   @default("NPR")
+  
+  // Metadata
+  imeResponseCode       String?
+  imeResponseMessage    String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+
+  @@index([customerId])
+  @@index([transactionId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// IME OTP Logs
+model ImeOtpLog {
+  id                    String   @id @default(uuid())
+  mobileNumber           String
+  module                String    // CR, ST, MT, CT
+  referenceValue        String?   // CustomerToken, RefNo, ICN, etc.
+  otpToken              String?   // From SendOTP response
+  otp                   String?   // Verified OTP
+  otpExpiryAt          DateTime?
+  isVerified            Boolean  @default(false)
+  verificationAttempt    Int      @default(0)
+  
+  // Status
+  responseCode          String?
+  responseMessage       String?
+  agentSessionId        String?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobileNumber])
+  @@index([module])
+  @@index([referenceValue])
+  @@index([isVerified])
+  @@index([createdAt])
+}
+
+// IME API Request/Response Logs
+model ImeApiLog {
+  id                    String   @id @default(uuid())
+  operation            String    // CustomerRegistration, SendTransaction, etc.
+  endpointPath         String
+  requestMethod        String   // POST, GET
+  requestPayload       Json?     // Full request sent to IME
+  responsePayload      Json?     // Full response from IME
+  statusCode           Int?       // HTTP status code
+  imeResponseCode      String?    // IME business logic response code
+  imeResponseMessage   String?    // IME business logic response message
+  success              Boolean   @default(false)
+  errorMessage         String?
+  errorPayload         Json?
+  durationMs           Int?       // Request duration in milliseconds
+  userId               String?
+  tenantId             String?
+  ipAddress            String?
+  userAgent            String?
+  
+  createdAt            DateTime @default(now())
+
+  @@index([operation])
+  @@index([statusCode])
+  @@index([success])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// IME Exchange Rate Logs
+model ImeExchangeRate {
+  id                    String   @id @default(uuid())
+  sourceCurrency        String   @default("USD")
+  destinationCurrency   String   @default("NPR")
+  exchangeRate         Float
+  serviceCharge        Float?
+  validFrom            DateTime @default(now())
+  validTo              DateTime?
+  isActive            Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage   String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+
+  @@index([sourceCurrency])
+  @@index([destinationCurrency])
+  @@index([isActive])
+  @@index([validFrom])
+}
+
+// IME Bank & Payment Data
+model ImeBank {
+  id                    String   @id @default(uuid())
+  bankId               String?   @unique
+  bankCode              String    @unique
+  bankName              String
+  country               String   @default("NP")
+  isActive              Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage   String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([bankCode])
+  @@index([country])
+  @@index([isActive])
+}
+
+model ImeBankBranch {
+  id                    String   @id @default(uuid())
+  branchId              String?   @unique
+  bankId                String
+  bankCode              String
+  branchName            String
+  branchCode            String?   @unique
+  state                 String?
+  district              String?
+  city                  String?
+  isActive              Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage   String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([bankId])
+  @@index([bankCode])
+  @@index([branchCode])
+  @@index([isActive])
+}
+
+// Legacy IME Data (for backward compatibility)
 model ImeData {
   id               String   @id @default(uuid())
   name             String
