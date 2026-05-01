@@ -124,9 +124,9 @@ const commissionController = {
   assignSchemeToUser: async (req, res) => {
     const { schemeId, userId } = req.body || {};
     const { user_id: requestorId, identity } = req.user || {};
-    
+
     if (!schemeId || !userId) return res.status(400).json({ success: false, message: "userId and schemeId are required" });
-    
+
     try {
       // Basic check: is requestor allowed? (Can add hierarchy check here)
       const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
@@ -334,7 +334,7 @@ const commissionController = {
       }
 
       await prisma.$transaction(
-        shares.map(share => 
+        shares.map(share =>
           prisma.commissionShare.upsert({
             where: { schemeId_subServiceId: { schemeId: share.schemeId, subServiceId: share.subServiceId } },
             update: share,
@@ -539,9 +539,9 @@ const commissionController = {
       const users = await prisma.user.findMany({
         where: {
           id: {
-            in: await prisma.transactionLog.findMany({ 
+            in: await prisma.transactionLog.findMany({
               where: { transactionDoneForId: { not: null } },
-              select: { transactionDoneForId: true } 
+              select: { transactionDoneForId: true }
             }).then(logs => logs.map(l => l.transactionDoneForId))
           }
         },
@@ -603,13 +603,13 @@ const commissionController = {
       report.fullPathWithAdmin = pathIds;
 
       console.log("[DebugCommission] Final pathIds before query:", pathIds);
-      
+
       // 4. Fetch hierarchy users
       const pathUsers = await prisma.user.findMany({
-        where: { 
-          id: { 
-            in: pathIds.filter(id => typeof id === 'string' && id.length > 5) 
-          } 
+        where: {
+          id: {
+            in: pathIds.filter(id => typeof id === 'string' && id.length > 5)
+          }
         },
         select: { id: true, fullName: true, identity: true, commissionSchemeId: true }
       });
@@ -637,10 +637,10 @@ const commissionController = {
       for (let i = 0; i < hierarchy.length - 1; i++) {
         const sender = hierarchy[i];
         const receiver = hierarchy[i + 1];
-        
+
         let effectiveSchemeId = null;
         let isDefault = false;
-        
+
         if (receiver.commissionSchemeId) {
           const assignedScheme = await prisma.commissionScheme.findFirst({
             where: { id: receiver.commissionSchemeId, isActive: true }
@@ -685,7 +685,7 @@ const commissionController = {
             else if (identity.includes("DISTRICT")) shareKey = "districtPartner";
             else if (identity.includes("SAATHI")) shareKey = "saathi";
             else if (identity.includes("MEMBER")) shareKey = "member";
-            
+
             check.shareKey = shareKey;
             check.shareValue = share[shareKey] || 0;
             if (!shareKey) check.issue = `Unknown identity type: ${receiver.identity}`;

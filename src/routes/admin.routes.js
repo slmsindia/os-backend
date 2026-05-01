@@ -5,13 +5,14 @@ const authMiddleware = require("../middleware/auth.middleware");
 const { checkRole } = require("../middleware/role.middleware");
 // Assuming we'll use identity check instead of role check for these
 const { checkIdentity } = require("../middleware/identity.middleware");
+const { checkPermission } = require("../middleware/permission.middleware");
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
 // Get dashboard statistics (Moved to top for priority)
-router.get("/stats", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getStats);
+router.get("/stats", checkPermission("REPORT_VIEW"), adminController.getStats);
 
 router.post("/create-white-label-admin", checkIdentity(["SUPER_ADMIN"]), adminController.createWhiteLabelAdmin);
 router.post("/create-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminController.createAdmin);
@@ -23,16 +24,15 @@ router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", 
 router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
 
 // Get all users (with filtering and pagination)
-router.get("/users", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getAllUsers);
+router.get("/users", checkPermission("HIERARCHY_VIEW"), adminController.getAllUsers);
 
 // Get specific user details by ID
-router.get("/users/:id", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getUserById);
+router.get("/users/:id", checkPermission("HIERARCHY_VIEW"), adminController.getUserById);
 
 // Get membership applications for approve/reject flow
-router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminMembershipController.getMembershipApplications);
-
+router.get("/members", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getMembershipApplications);
 
 // Toggle user status (Activate/Deactivate)
-router.post("/users/:userId/toggle-status", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), adminController.toggleUserStatus);
+router.post("/users/:userId/toggle-status", checkPermission("USER_TOGGLE_STATUS"), adminController.toggleUserStatus);
 
 module.exports = router;

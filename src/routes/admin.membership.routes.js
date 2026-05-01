@@ -1,8 +1,7 @@
 const express = require("express");
 const adminMembershipController = require("../controllers/admin.membership.controller");
 const authMiddleware = require("../middleware/auth.middleware");
-const { checkIdentity } = require("../middleware/identity.middleware");
-const { checkMembershipAccess } = require("../middleware/membership.middleware");
+const { checkPermission } = require("../middleware/permission.middleware");
 
 const router = express.Router();
 
@@ -10,19 +9,19 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Delegation (Only for top admins)
-router.post("/membership/delegate-approval", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminMembershipController.delegateApproval);
+router.post("/membership/delegate-approval", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.delegateApproval);
 
 // Membership price management (Only for top admins)
-router.put("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminMembershipController.updateMembershipPrice);
-router.post("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminMembershipController.updateMembershipPrice);
+router.put("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembershipController.updateMembershipPrice);
+router.post("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembershipController.updateMembershipPrice);
 
 // Membership applications (Accessible by admins and delegated users)
-router.post("/membership/create-user", adminMembershipController.createUser);
-router.post("/agent/create", adminMembershipController.createUser); // Alias for agent creation
-router.get("/membership/applications", checkMembershipAccess, adminMembershipController.getMembershipApplications);
-router.get("/membership/applications/:applicationId", checkMembershipAccess, adminMembershipController.getApplicationDetails);
-router.post("/membership/applications/:applicationId/approve", checkMembershipAccess, adminMembershipController.approveApplication);
-router.post("/membership/applications/:applicationId/reject", checkMembershipAccess, adminMembershipController.rejectApplication);
+router.post("/membership/create-user", checkPermission("HIERARCHY_VIEW"), adminMembershipController.createUser);
+router.post("/agent/create", checkPermission("HIERARCHY_VIEW"), adminMembershipController.createUser); // Alias for agent creation
+router.get("/membership/applications", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getMembershipApplications);
+router.get("/membership/applications/:applicationId", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getApplicationDetails);
+router.post("/membership/applications/:applicationId/approve", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.approveApplication);
+router.post("/membership/applications/:applicationId/reject", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.rejectApplication);
 
 // Education management
 router.post("/education", adminMembershipController.createEducation);

@@ -89,8 +89,8 @@ const membershipController = {
     }
 
     try {
-      const user = await prisma.user.findUnique({
-        where: { mobile },
+      const user = await prisma.user.findFirst({
+        where: { mobile, tenantId: req.tenant_id },
         select: { id: true, fullName: true, identity: true }
       });
 
@@ -126,7 +126,7 @@ const membershipController = {
    * Create membership application and initiate payment
    */
   createApplication: async (req, res) => {
-    const { user_id: userId, tenant_id: tenantId } = req.user;
+    const { user_id: userId, tenant_id: tenantId, identity: requesterIdentity } = req.user;
     const body = req.body;
 
     try {
@@ -170,7 +170,7 @@ const membershipController = {
           return res.status(400).json({ success: false, message: "Invalid phone number. Must be 10 digits." });
         }
         
-        const existingUser = await prisma.user.findUnique({ where: { mobile } });
+        const existingUser = await prisma.user.findFirst({ where: { mobile, tenantId } });
         if (existingUser) {
           // If user exists, we check if they are already a member or pending
           // (They can still apply if they are just a basic USER)
@@ -188,7 +188,7 @@ const membershipController = {
           targetUserId = body.userId;
         } else if (body.mobile || body.contactNumber1) {
           const lookupMobile = body.mobile || body.contactNumber1;
-          const userByMobile = await prisma.user.findUnique({ where: { mobile: lookupMobile } });
+          const userByMobile = await prisma.user.findFirst({ where: { mobile: lookupMobile, tenantId } });
           if (userByMobile) {
             targetUserId = userByMobile.id;
           } else {
@@ -294,7 +294,7 @@ const membershipController = {
 
       const mappedData = mapComplexToFlat();
 
-      const requesterIdentity = req.user.identity;
+
       const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(requesterIdentity);
       const isPartner = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'].includes(requesterIdentity);
       const isFree = isTopAdmin;

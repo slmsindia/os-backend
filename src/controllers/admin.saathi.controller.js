@@ -106,7 +106,7 @@ const adminSaathiController = {
         
         // No immediate upgrade, wait for admin approval
       } else if (mobile) {
-        targetUser = await prisma.user.findUnique({ where: { mobile } });
+        targetUser = await prisma.user.findFirst({ where: { mobile, tenantId } });
         if (targetUser) {
           if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
           // Existing user → no immediate upgrade, wait for approval
@@ -147,12 +147,20 @@ const adminSaathiController = {
       }
 
       // 3. Payment Validation & Transaction
-      // 3. Check for previous paid but rejected application
+      // 3. Check for existing application to avoid duplicates
       const existingApplication = await prisma.saathiApplication.findFirst({
         where: { userId: targetUserId },
         include: { payment: true },
         orderBy: { createdAt: 'desc' }
       });
+
+      // We update the existing record if it is either:
+      // 1. REJECTED but already paid (Resubmission)
+      // 2. Currently PENDING (Updating payment method or details)
+      const shouldUpdateExisting = existingApplication && (
+        (existingApplication.status === 'REJECTED' && (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID')) ||
+        (existingApplication.status === 'PENDING')
+      );
 
       const isPaidResubmission = existingApplication && 
                                 existingApplication.status === 'REJECTED' && 
@@ -228,10 +236,33 @@ const adminSaathiController = {
         }
 
         let appResult;
-        if (isPaidResubmission) {
+        if (shouldUpdateExisting) {
           appResult = await tx.saathiApplication.update({
             where: { id: existingApplication.id },
-            data: { ...appData, rejectionReason: null }
+            data: { 
+              ...appData, 
+              rejectionReason: null,
+              payment: {
+                upsert: {
+                  create: {
+                    id: generateUuid(),
+                    amount,
+                    method: paymentMethod,
+                    razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                  },
+                  update: {
+                    amount,
+                    method: paymentMethod,
+                    razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                  }
+                }
+              }
+            },
+            include: { payment: true }
           });
         } else {
           appResult = await tx.saathiApplication.create({

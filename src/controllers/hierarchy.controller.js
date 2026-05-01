@@ -326,6 +326,7 @@ const hierarchyController = {
           ...u,
           balance: u.wallet?.balance || 0,
           hierarchyInfo: {
+            whiteLabel: partners.find(p => p.identity.includes('WHITE_LABEL')),
             countryHead: partners.find(p => p.identity.includes('COUNTRY')),
             statePartner: partners.find(p => p.identity.includes('STATE')),
             districtPartner: partners.find(p => p.identity.includes('DISTRICT'))
@@ -334,10 +335,10 @@ const hierarchyController = {
       });
 
       if (exportCsv === "true") {
-        const headers = ["ID", "Name", "Mobile", "Email", "Role", "Status", "Balance", "Country Head", "State Partner", "District Partner", "Created At"];
+        const headers = ["ID", "Name", "Mobile", "Email", "Role", "Status", "Balance", "White Label", "Country Head", "State Partner", "District Partner", "Created At"];
         let csv = headers.join(",") + "\n";
         enrichedUsers.forEach(u => {
-          const values = [u.id, u.fullName, u.mobile, u.email || "N/A", u.identity, u.approvalStatus, u.balance, u.hierarchyInfo.countryHead?.fullName || "N/A", u.hierarchyInfo.statePartner?.fullName || "N/A", u.hierarchyInfo.districtPartner?.fullName || "N/A", u.createdAt.toISOString()];
+          const values = [u.id, u.fullName, u.mobile, u.email || "N/A", u.identity, u.approvalStatus, u.balance, u.hierarchyInfo.whiteLabel?.fullName || "N/A", u.hierarchyInfo.countryHead?.fullName || "N/A", u.hierarchyInfo.statePartner?.fullName || "N/A", u.hierarchyInfo.districtPartner?.fullName || "N/A", u.createdAt.toISOString()];
           csv += values.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
         });
         res.setHeader('Content-Type', 'text/csv');
