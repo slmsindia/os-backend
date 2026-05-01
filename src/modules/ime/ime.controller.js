@@ -702,6 +702,17 @@ const updateReceiver = async (req, res) => {
 const getPaymentModes = async (req, res) => {
   try {
     const result = await imeService.getPaymentModes();
+    
+    // Save to database
+    if (result?.success && result?.data) {
+      const body = imeStorageService.extractSoapBody(result);
+      const firstKey = Object.keys(body)[0];
+      const payload = firstKey ? body[firstKey] : {};
+      const dataList = payload?.DataList || [];
+      
+      await imeStorageService.saveStaticData('WSST-PMDV1', '', dataList);
+    }
+
     return ok(res, 'Payment modes retrieved', result);
   } catch (error) {
     return fail(res, error);
@@ -749,16 +760,96 @@ const getBankBranches = async (req, res) => {
 const getStaticData = async (req, res) => {
   const startTime = Date.now();
   try {
-    const type = req.query.type || req.body?.type || req.body?.TypeCode;
-    const reference = req.query.reference || req.body?.reference || req.body?.ReferenceValue;
+    // Map legacy paths to type codes (Exact match with your 32 items list)
+    const pathMapping = {
+      '/Countries': 'WSST-CONV1',
+      '/States': 'WSST-STTV1',
+      '/Districts': 'WSST-DISV1',
+      '/Municipalities': 'WSST-MUNV1',
+      '/Genders': 'WSST-GDRV1',
+      '/MaritalStatus': 'WSST-MSSV1',
+      '/Occupation': 'WSST-OCPV1',
+      '/SourceOfFundList': 'WSST-SOFV1',
+      '/GetIdTypes': 'WSST-IDTV1',
+      '/IDPlaceofIssue': 'WSST-POIV1',
+      '/RelationshipList': 'WSST-RELV1',
+      '/PurposeOfRemittance': 'WSST-PORV1',
+      '/TransactionCancelReason': 'WSST-TCRV1',
+      '/BankList': 'WSST-BKLV1',
+      '/BankBranchList': 'WSST-BBLV1',
+      '/GetAccountType': 'WSST-ACCV1',
+      '/CSPRegistrationTypeList': 'WSST-REGV1',
+      '/CSPAddressProofTypeList': 'WSST-ADPV1',
+      '/CSPBusinessTypeList': 'WSST-BUSV1',
+      '/CSPDocumentTypeList': 'WSST-ADOV1',
+      '/CSPOwnerAddressProofTypeList': 'WSST-OAPV1',
+      '/OwnerCategoryTypes': 'WSST-CATV1',
+      '/DeviceList': 'WSST-DEVV1',
+      '/ConnectivityTypeList': 'WSST-CTVV1',
+      '/EducationalQualificationList': 'WSST-EDQV1',
+      '/CustomerAnnualIncomeList': 'WSST-CAIV1',
+      '/PhysicallyHandicappedList': 'WSST-PHCV1',
+      '/AlternateOccupationList': 'WSST-AOCV1',
+      '/OwnerIdTypeList': 'WSST-OIDV1',
+      '/AdditionalCourseList': 'WSST-ADCV1',
+      '/OwnerByAgentList': 'WSST-OBAV1',
+      '/BankByAgentList': 'WSST-BBAV1'
+    };
+
+    let type = req.query.type || req.body?.type || req.body?.TypeCode;
+    let reference = req.query.reference || req.body?.reference || req.body?.ReferenceValue || Object.values(req.params || {})[0];
+    
+    // Auto-detect type and reference from path if missing
+    if (!type) {
+      const path = req.path || '';
+      for (const [key, val] of Object.entries(pathMapping)) {
+        // Special handling for parameterized paths
+        if (path.includes('/States/')) { type = 'WSST-STTV1'; break; }
+        if (path.includes('/Districts/')) { type = 'WSST-DISV1'; break; }
+        if (path.includes('/Municipalities/')) { type = 'WSST-MUNV1'; break; }
+        if (path.includes('/BankList/')) { type = 'WSST-BKLV1'; break; }
+        if (path.includes('/BankBranchList/')) { type = 'WSST-BBLV1'; break; }
+        if (path.includes('/GetIdTypes/')) { type = 'WSST-IDTV1'; break; }
+        if (path.includes('/IDPlaceofIssue/')) { type = 'WSST-POIV1'; break; }
+        if (path.includes('/OwnerByAgentList/')) { type = 'WSST-OBAV1'; break; }
+        if (path.includes('/BankByAgentList/')) { type = 'WSST-BBAV1'; break; }
+        
+        if (path.endsWith(key)) {
+          type = val;
+          break;
+        }
+      }
+    }
+
+    // Auto-detect reference from path if it's a parameterized legacy route
+    if (!reference && req.params) {
+      reference = req.params.CountryId || req.params.StateId || req.params.DistrictId || req.params.BankId || req.params.IdTypeId;
+    }
+
+    // Set smart defaults for types that require a reference
+    if (!reference) {
+      const typesNeedingCountry = ['WSST-IDTV1', 'WSST-STTV1', 'WSST-BKLV1'];
+      if (typesNeedingCountry.includes(type)) {
+        reference = 'IND'; // Default to India for ID Types, States, and Banks
+      }
+    }
     
     if (!String(type || '').trim()) {
       return badRequest(res, 'type query parameter is required');
     }
 
+    // --- DB FIRST LOGIC ---
+    // 1. Try to fetch from database first
+    const dbData = await imeStorageService.getStaticData(type, reference);
+    if (dbData) {
+      // Standardize response format even from DB
+      return ok(res, 'Data retrieved from database', dbData);
+    }
+
+    // 2. If not in DB, fetch from IME Live
     const result = await imeService.getStaticData(type, reference || '');
     
-    // Save static data to database if successful
+    // 3. Save to database for next time if successful
     if (result?.success && result?.data) {
       const body = imeStorageService.extractSoapBody(result);
       const firstKey = Object.keys(body)[0];
@@ -780,7 +871,7 @@ const getStaticData = async (req, res) => {
       req
     );
     
-    return ok(res, 'Static data retrieved', result);
+    return ok(res, 'Data retrieved from IME Live', result);
   } catch (error) {
     // Log error
     await logAndSaveImeResponse(
@@ -976,7 +1067,7 @@ const cspBusinessTypeListLegacy = fetchStaticType('CSPBusinessTypeList', 'CSP bu
 const cspDocumentTypeListLegacy = fetchStaticType('CSPDocumentTypeList', 'CSP document types retrieved');
 const ownerCategoryTypesLegacy = fetchStaticType('OwnerCategoryTypes', 'Owner category types retrieved');
 const educationalQualificationListLegacy = fetchStaticType('EducationalQualificationList', 'Educational qualification list retrieved');
-const municipalitiesLegacy = fetchStaticType('Municipality', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
+const municipalitiesLegacy = fetchStaticType('WSST-MUNV1', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
 const relationshipListLegacy = fetchStaticType('Relationship', 'Relationship list retrieved');
 const idPlaceOfIssueLegacy = async (req, res) => {
   try {

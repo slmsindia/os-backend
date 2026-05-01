@@ -18,8 +18,8 @@ router.get('/customers/requery', imeController.customerRequery);
 router.get('/customers/:customerId', imeController.getCustomer);
 router.post('/customers/validate', imeController.validateCustomer);
 
-// IME Modern Transactions Endpoints
-router.post('/transactions/send', imeController.sendMoney);
+// IME Transactions Endpoints
+router.post('/SendTransaction', imeController.sendTransaction);
 router.get('/transactions/:transactionId/status', imeController.getTransactionStatus);
 router.post('/transactions/:transactionId/cancel', imeController.cancelTransaction);
 router.post('/transactions/confirm', imeController.confirmSendTransaction);
@@ -29,19 +29,48 @@ router.post('/receivers', imeController.createReceiver);
 router.get('/receivers/:receiverId', imeController.getReceiver);
 router.patch('/receivers/:receiverId', imeController.updateReceiver);
 
-// IME Data Endpoints
-router.get('/data', imeController.listImeData);
-router.post('/data', imeController.createImeData);
-router.patch('/data/:id', imeController.updateImeData);
-router.delete('/data/:id', imeController.deleteImeData);
 
 // IME Static & Utility Endpoints
-router.get('/payment-modes', imeController.getPaymentModes);
 router.post('/bank-accounts/validate', imeController.validateBankAccount);
-router.get('/banks', imeController.getBankList);
-router.get('/bank-branches', imeController.getBankBranches);
-router.get('/static-data', imeController.getStaticData);
-router.get('/id-issue-places', imeController.getIssuePlaces);
+
+// Standard Legacy Aliases (Full 32 items support)
+router.get('/GetAccountType', imeController.getStaticData);
+router.get('/Countries', imeController.getStaticData);
+router.get('/Genders', imeController.getStaticData);
+router.get('/MaritalStatus', imeController.getStaticData);
+router.get('/Occupation', imeController.getStaticData);
+router.get('/PurposeOfRemittance', imeController.getStaticData);
+router.get('/TransactionCancelReason', imeController.getStaticData);
+router.get('/GetIdTypes', imeController.getStaticData);
+router.get('/GetIdentityTypes', imeController.getStaticData);
+router.get('/CSPRegistrationTypeList', imeController.getStaticData);
+router.get('/CSPAddressProofTypeList', imeController.getStaticData);
+router.get('/CSPOwnerAddressProofTypeList', imeController.getStaticData);
+router.get('/CSPBusinessTypeList', imeController.getStaticData);
+router.get('/CSPDocumentTypeList', imeController.getStaticData);
+router.get('/OwnerCategoryTypes', imeController.getStaticData);
+router.get('/EducationalQualificationList', imeController.getStaticData);
+router.get('/RelationshipList', imeController.getStaticData);
+router.get('/IDPlaceofIssue', imeController.getStaticData);
+router.get('/SourceOfFundList', imeController.getStaticData);
+router.get('/DeviceList', imeController.getStaticData);
+router.get('/ConnectivityTypeList', imeController.getStaticData);
+router.get('/CustomerAnnualIncomeList', imeController.getStaticData);
+router.get('/PhysicallyHandicappedList', imeController.getStaticData);
+router.get('/AlternateOccupationList', imeController.getStaticData);
+router.get('/OwnerIdTypeList', imeController.getStaticData);
+router.get('/AdditionalCourseList', imeController.getStaticData);
+router.get('/OwnerByAgentList/:AgentId', imeController.getStaticData);
+router.get('/BankByAgentList/:AgentId', imeController.getStaticData);
+
+// Parameterized Legacy Routes
+router.get('/States/:CountryId', imeController.getStaticData);
+router.get('/Districts/:StateId', imeController.getStaticData);
+router.get('/Municipalities/:DistrictId', imeController.getStaticData);
+router.get('/GetIdTypes/:CountryId', imeController.getStaticData);
+router.get('/BankList/:CountryId', imeController.getStaticData);
+router.get('/BankBranchList/:BankId', imeController.getStaticData);
+
 router.post('/kyc/verify', imeController.verifyKYC);
 router.get('/compliance/:customerId/status', imeController.getComplianceStatus);
 router.get('/customers/:customerId/transactions', imeController.getTransactionHistory);

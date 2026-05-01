@@ -197,14 +197,14 @@ const imeSendTransactionBody = {
         ],
         properties: {
           // Sender Details
-          SenderName: { type: "string", example: "Hemraj Thapa", description: "Sender's full name" },
-          SenderMobileNo: { type: "string", example: "7041897207", description: "Registered customer mobile number" },
+          SenderName: { type: "string", example: "Sandesh Pandey", description: "Sender's full name" },
+          SenderMobileNo: { type: "string", example: "9800000000", description: "Registered customer mobile number" },
           Occupation: { type: "string", example: "8081", description: "Occupation ID from IME Static Data (WSST-OCPV1)" },
           
           // Receiver Details  
           ReceiverName: { type: "string", example: "Sita Sharma", description: "Receiver full name in Nepal" },
           ReceiverAddress: { type: "string", example: "Kathmandu, Nepal", description: "Receiver address" },
-          ReceiverGender: { type: "string", example: "F", description: "Receiver gender (M/F)" },
+          ReceiverGender: { type: "string", example: "1801", description: "Receiver gender (M/F)" },
           ReceiverMobileNo: { type: "string", example: "9801234567", description: "Receiver mobile number in Nepal" },
           ReceiverCity: { type: "string", example: "Kathmandu", description: "Receiver's city (optional)" },
           ReceiverCountry: { type: "string", example: "NPL", description: "Always NPL for Nepal" },
@@ -221,12 +221,12 @@ const imeSendTransactionBody = {
           Relationship: { type: "string", example: "7001", description: "Relationship ID from IME Static Data (WSST-RELV1)" },
           PurposeOfRemittance: { type: "string", example: "7001", description: "Purpose ID from IME Static Data (WSST-PORV1)" },
           PaymentType: { type: "string", example: "C", description: "C = Cash, B = Bank Deposit" },
-          CalcBy: { type: "string", example: "P", description: "C = Collection Amount, P = Payout Amount" },
+          CalcBy: { type: "string", example: "C", description: "C = Collection Amount, P = Payout Amount" },
           
           // Bank Details (required if PaymentType = B)
-          BankId: { type: "string", example: "NABIL", description: "Bank ID - mandatory if PaymentType = B" },
-          BankBranchId: { type: "string", example: "123", description: "Bank Branch ID - mandatory if PaymentType = B" },
-          BankAccountNumber: { type: "string", example: "001100220033", description: "Beneficiary account - mandatory if PaymentType = B" }
+          BankId: { type: "string", example: "", description: "Bank ID - mandatory if PaymentType = B" },
+          BankBranchId: { type: "string", example: "", description: "Bank Branch ID - mandatory if PaymentType = B" },
+          BankAccountNumber: { type: "string", example: "", description: "Beneficiary account - mandatory if PaymentType = B" }
         }
       }
     }
@@ -1477,47 +1477,87 @@ const paths = {
       responses: { 200: { description: "Success" } }
     }
   },
-  "/api/ime/transactions/send": {
+  "/api/ime/SendTransaction": {
     post: {
       tags: ["IME 4: Transaction Flow"],
-      summary: "Send Money",
-      requestBody: imeSendMoneyBody,
+      summary: "Create Money Transfer Transaction",
+      description: "Creates a new transaction. ForexSessionId from GetCalculation must be used immediately.",
+      requestBody: imeSendTransactionBody,
+      responses: {
+        200: {
+          description: "Transaction created",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean" },
+                  RefNo: { type: "string" },
+                  AgentTxnRefId: { type: "string" },
+                  CollectAmount: { type: "string" },
+                  ServiceCharge: { type: "string" },
+                  ExchangeRate: { type: "string" },
+                  PayoutAmount: { type: "string" },
+                  PayoutCurrency: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/api/ime/calculation": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Get Calculation",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
+              properties: {
+                RemitAmount: { type: "string", example: "1000" },
+                PaymentType: { type: "string", example: "C" },
+                PayoutCountry: { type: "string", example: "NPL" },
+                CalcBy: { type: "string", example: "C" }
+              }
+            }
+          }
+        }
+      },
       responses: { 200: { description: "Success" } }
     }
   },
-  "/api/ime/static-data": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get Static Data",
-      description: "Fetch static lists from IME and save to database. Use 'type' for data type (e.g., WSST-BKLV1 for Banks, WSST-IDTV1 for ID Types).",
-      parameters: [
-        { name: "type", in: "query", required: true, schema: { type: "string" }, description: "Type Code (e.g., WSST-BKLV1, WSST-IDTV1, WSST-GDRV1)" },
-        { name: "reference", in: "query", schema: { type: "string" }, description: "Optional reference value (e.g., State ID for Districts)" }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/banks": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get Bank List",
-      parameters: [
-        { name: "country", in: "query", schema: { type: "string", default: "NP" } }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/bank-branches": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get Bank Branches",
-      parameters: [
-        { name: "country", in: "query", schema: { type: "string", default: "NP" } },
-        { name: "bank", in: "query", required: true, schema: { type: "string" } }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
+  "/api/ime/Countries": { get: { tags: ["IME 1: Static Data"], summary: "Country List (WSST-CONV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/States/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "State List (WSST-STTV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/Districts/{StateId}": { get: { tags: ["IME 1: Static Data"], summary: "District List (WSST-DISV1)", parameters: [{ name: "StateId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/Municipalities/{DistrictId}": { get: { tags: ["IME 1: Static Data"], summary: "Municipality List (WSST-MUNV1)", parameters: [{ name: "DistrictId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/Genders": { get: { tags: ["IME 1: Static Data"], summary: "Gender List (WSST-GDRV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/MaritalStatus": { get: { tags: ["IME 1: Static Data"], summary: "Marital Status (WSST-MSSV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/Occupation": { get: { tags: ["IME 1: Static Data"], summary: "Occupation List (WSST-OCPV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/SourceOfFundList": { get: { tags: ["IME 1: Static Data"], summary: "Source of Fund (WSST-SOFV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/GetIdTypes/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "ID Type List by Country (WSST-IDTV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/IDPlaceofIssue": { get: { tags: ["IME 1: Static Data"], summary: "ID Place of Issue List (WSST-POIV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/RelationshipList": { get: { tags: ["IME 1: Static Data"], summary: "Relationship List (WSST-RELV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/PurposeOfRemittance": { get: { tags: ["IME 1: Static Data"], summary: "Purpose List (WSST-PORV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/TransactionCancelReason": { get: { tags: ["IME 1: Static Data"], summary: "Cancel Reason (WSST-TCRV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/BankList/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank List (WSST-BKLV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/BankBranchList/{BankId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank Branch List (WSST-BBLV1)", parameters: [{ name: "BankId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/GetAccountType": { get: { tags: ["IME 1: Static Data"], summary: "Account Type List (WSST-ACCV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/DeviceList": { get: { tags: ["IME 1: Static Data"], summary: "Device List (WSST-DEVV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/ConnectivityTypeList": { get: { tags: ["IME 1: Static Data"], summary: "Connectivity Type (WSST-CTVV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/OwnerCategoryTypes": { get: { tags: ["IME 1: Static Data"], summary: "Owner Category (WSST-CATV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/EducationalQualificationList": { get: { tags: ["IME 1: Static Data"], summary: "Education List (WSST-EDQV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/CustomerAnnualIncomeList": { get: { tags: ["IME 1: Static Data"], summary: "Annual Income (WSST-CAIV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/PhysicallyHandicappedList": { get: { tags: ["IME 1: Static Data"], summary: "Physically Handicapped List (WSST-PHCV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/AlternateOccupationList": { get: { tags: ["IME 1: Static Data"], summary: "Alternate Occupation (WSST-AOCV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/OwnerIdTypeList": { get: { tags: ["IME 1: Static Data"], summary: "Owner ID Type (WSST-OIDV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/AdditionalCourseList": { get: { tags: ["IME 1: Static Data"], summary: "Additional Course (WSST-ADCV1)", responses: { 200: { description: "Success" } } } },
+  "/api/ime/OwnerByAgentList/{AgentId}": { get: { tags: ["IME 1: Static Data"], summary: "Owner By Agent (WSST-OBAV1)", parameters: [{ name: "AgentId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
+  "/api/ime/BankByAgentList/{AgentId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank By Agent (WSST-BBAV1)", parameters: [{ name: "AgentId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
   "/api/ime/customers/search/mobile/{mobile}": {
     get: {
       tags: ["IME 3: Customer Module"],
@@ -2235,22 +2275,6 @@ const paths = {
     }
   },
 
-  "/api/ime/GetIdTypes": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get ID Type List (WSST-IDTV1)",
-      responses: { 200: { description: "ID types" } }
-    }
-  },
-
-  "/api/ime/GetIdentityTypes": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get Identity Types (Alternative endpoint)",
-      responses: { 200: { description: "Identity types" } }
-    }
-  },
-
   "/api/ime/BankList/{CountryId}": {
     get: {
       tags: ["IME 1: Static Data"],
@@ -2348,14 +2372,6 @@ const paths = {
     }
   },
 
-  "/api/ime/IDPlaceofIssue": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get ID Place of Issue List (WSST-POIV1)",
-      responses: { 200: { description: "Places of issue" } }
-    }
-  },
-
   "/api/ime/SourceOfFundList": {
     get: {
       tags: ["IME 1: Static Data"],
@@ -2364,17 +2380,6 @@ const paths = {
     }
   },
 
-  "/api/ime/bank-branches": {
-    get: {
-      tags: ["IME 1: Static Data"],
-      summary: "Get Bank Branches (Query parameter version)",
-      parameters: [
-        { name: "bankId", in: "query", required: false, schema: { type: "string" } },
-        { name: "countryCode", in: "query", required: false, schema: { type: "string" } }
-      ],
-      responses: { 200: { description: "Bank branches" } }
-    }
-  },
 
   // ==================== WALLET ENDPOINTS ====================
   "/api/wallet": {
@@ -3607,66 +3612,8 @@ paths["/api/ime/receivers/{receiverId}"] = {
 };
 
 // IME Data Storage Operations
-paths["/api/ime/data"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "List IME data",
-    responses: {
-      200: { description: "IME data list" },
-      500: { description: "Server error" }
-    }
-  },
-  post: {
-    tags: ["IME"],
-    summary: "Create IME data",
-    requestBody: imeDataBody,
-    responses: {
-      200: { description: "IME data created" },
-      400: { description: "Validation error" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/data/{id}"] = {
-  patch: {
-    tags: ["IME 1: Static Data"],
-    summary: "Update IME data",
-    parameters: [
-      { name: "id", in: "path", required: true, schema: { type: "string" } }
-    ],
-    requestBody: imeDataBody,
-    responses: {
-      200: { description: "IME data updated" },
-      400: { description: "Validation error" },
-      500: { description: "Server error" }
-    }
-  },
-  delete: {
-    tags: ["IME 1: Static Data"],
-    summary: "Delete IME data",
-    parameters: [
-      { name: "id", in: "path", required: true, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "IME data deleted" },
-      404: { description: "Data not found" },
-      500: { description: "Server error" }
-    }
-  }
-};
 
 // Bank & Payment Operations
-paths["/api/ime/payment-modes"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get payment modes",
-    responses: {
-      200: { description: "Payment modes retrieved" },
-      500: { description: "Server error" }
-    }
-  }
-};
 
 paths["/api/ime/bank-accounts/validate"] = {
   post: {
@@ -3681,67 +3628,6 @@ paths["/api/ime/bank-accounts/validate"] = {
   }
 };
 
-paths["/api/ime/banks"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get bank list",
-    parameters: [
-      { name: "country", in: "query", required: false, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "Bank list retrieved" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/bank-branches"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get bank branches",
-    parameters: [
-      { name: "country", in: "query", required: false, schema: { type: "string" } },
-      { name: "countryCode", in: "query", required: false, schema: { type: "string" } },
-      { name: "bank", in: "query", required: false, schema: { type: "string" } },
-      { name: "bankId", in: "query", required: false, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "Bank branches retrieved" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/static-data"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get static data",
-    parameters: [
-      { name: "type", in: "query", required: true, schema: { type: "string" } },
-      { name: "reference", in: "query", required: false, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "Static data retrieved" },
-      400: { description: "Type parameter required" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/id-issue-places"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get ID issue places",
-    parameters: [
-      { name: "country", in: "query", required: false, schema: { type: "string" } },
-      { name: "idType", in: "query", required: false, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "ID issue places retrieved" },
-      500: { description: "Server error" }
-    }
-  }
-};
 
 // Compliance & Verification
 paths["/api/ime/kyc/verify"] = {
@@ -3923,29 +3809,12 @@ paths["/api/ime/ekyc/aadhar-reprocess"] = {
 // Update existing IME paths with proper request bodies
 paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
 paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
-paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
+paths["/api/ime/SendTransaction"].post.requestBody = imeSendTransactionBody;
 paths["/api/ime/transactions/{transactionId}/cancel"].post.requestBody = imeCancelTransactionBody;
 paths["/api/ime/receivers"].post.requestBody = imeCreateReceiverBody;
-paths["/api/ime/data"].post.requestBody = imeDataBody;
-paths["/api/ime/data/{id}"].patch.requestBody = imeDataBody;
 paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
 paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
 
-// IME Storage Endpoints
-paths["/api/ime/storage/static-data"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get stored IME static data",
-    parameters: [
-      { name: "typeCode", in: "query", schema: { type: "string" }, description: "Static data type code" },
-      { name: "reference", in: "query", schema: { type: "string" }, description: "Reference value" }
-    ],
-    responses: {
-      200: { description: "Static data retrieved successfully" },
-      404: { description: "Static data not found" }
-    }
-  }
-};
 
 paths["/api/ime/storage/customers"] = {
   get: {
@@ -4019,34 +3888,7 @@ paths["/api/ime/storage/receivers"] = {
   }
 };
 
-paths["/api/ime/storage/banks"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get stored IME banks",
-    parameters: [
-      { name: "country", in: "query", schema: { type: "string" }, description: "Country filter" },
-      { name: "isActive", in: "query", schema: { type: "boolean" }, description: "Active status filter" }
-    ],
-    responses: {
-      200: { description: "Banks retrieved successfully" }
-    }
-  }
-};
 
-paths["/api/ime/storage/exchange-rates"] = {
-  get: {
-    tags: ["IME 1: Static Data"],
-    summary: "Get stored IME exchange rates",
-    parameters: [
-      { name: "sourceCurrency", in: "query", schema: { type: "string" }, description: "Source currency" },
-      { name: "destinationCurrency", in: "query", schema: { type: "string" }, description: "Destination currency" },
-      { name: "isActive", in: "query", schema: { type: "boolean" }, description: "Active status filter" }
-    ],
-    responses: {
-      200: { description: "Exchange rates retrieved successfully" }
-    }
-  }
-};
 
 paths["/api/ime/storage/api-logs"] = {
   get: {

@@ -56,6 +56,44 @@ class ImeStorageService {
   }
 
   /**
+   * Get static data from database
+   */
+  async getStaticData(typeCode, reference = null) {
+    try {
+      const data = await prisma.imeStaticData.findMany({
+        where: {
+          typeCode,
+          reference: reference || null,
+          isActive: true
+        },
+        orderBy: { dataValue: 'asc' }
+      });
+
+      if (!data || data.length === 0) return null;
+
+      // Transform to standard IME response format
+      return {
+        success: true,
+        message: 'Data retrieved from database',
+        source: 'DATABASE',
+        data: [{
+          GetStaticDataResult: {
+            Response: { Code: '000', Message: 'Success' },
+            DataList: data.map(item => ({
+              Code: item.dataId,
+              Description: item.dataValue,
+              ... (item.rawData || {})
+            }))
+          }
+        }]
+      };
+    } catch (error) {
+      console.error('Error fetching static data from DB:', error);
+      return null;
+    }
+  }
+
+  /**
    * Save static data from GetStaticData API
    */
   async saveStaticData(typeCode, reference, dataList, agentSessionId = null) {
@@ -63,24 +101,32 @@ class ImeStorageService {
       if (!Array.isArray(dataList)) return;
 
       for (const item of dataList) {
+        // Robust key detection for different IME response formats
+        const code = String(item.Code || item.ID || item.Id || item.Value || '');
+        const description = String(item.Description || item.Name || item.Text || item.Value || '');
+        
+        if (!code) continue;
+
         await prisma.imeStaticData.upsert({
           where: {
-            typeCode_dataId: {
+            typeCode_dataId_reference: {
               typeCode,
-              dataId: String(item.Id || item.id)
+              dataId: code,
+              reference: reference || null
             }
           },
           update: {
-            dataValue: String(item.Value || item.value || ''),
-            reference: reference || null,
+            dataValue: description,
+            rawData: item,
             isActive: true,
             updatedAt: new Date()
           },
           create: {
             typeCode,
+            dataId: code,
+            dataValue: description,
             reference: reference || null,
-            dataId: String(item.Id || item.id),
-            dataValue: String(item.Value || item.value || ''),
+            rawData: item,
             agentSessionId
           }
         });

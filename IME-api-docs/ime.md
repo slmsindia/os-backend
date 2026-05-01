@@ -47,6 +47,8 @@ The API uses **SOAP Web Services** (XML-based) for Phase 1, and **REST/POST** en
 | **Support** | `support@imeindia.com` | `+91-0120-4798200` |
 
 > ⚠️ **Beginner Tip:** Always test on the UAT environment first. Never run untested code on production.
+>
+> 🔑 **UAT Testing Tip:** In the Testing (UAT) environment, the OTP for **ALL modules** (Customer Registration, Send Transaction, etc.) is always **`9851`**.
 
 ---
 

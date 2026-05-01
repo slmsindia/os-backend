@@ -369,8 +369,9 @@ model ImeStaticData {
   id          String   @id @default(uuid())
   typeCode    String   // WSST-GDRV1, WSST-STTV1, etc.
   reference   String?  // Country code, State ID, etc.
-  dataId      String   // The ID value from IME
-  dataValue   String   // The display value (Male, Female, etc.)
+  dataId      String   // The ID/Code value from IME
+  dataValue   String   // The display value (Name/Description)
+  rawData     Json?    // Full IME response backup
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -378,7 +379,7 @@ model ImeStaticData {
   @@index([typeCode])
   @@index([reference])
   @@index([dataId])
-  @@unique([typeCode, dataId])
+  @@unique([typeCode, dataId, reference]) // Unique within type and its parent reference
 }
 
 // IME Customer Registration Data
