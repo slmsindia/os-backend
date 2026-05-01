@@ -13,6 +13,71 @@ const jsonBody = {
   },
 };
 
+const membershipApplyBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "firstName", "lastName", "email", "gender", "educationId", 
+          "sectorId", "jobRoleId", "maritalStatus", "citizenship", 
+          "isMigrantWorker", "monthlyIncome", "currentCountry", 
+          "currentState", "currentDistrict", "currentAddress", 
+          "currentPincode", "permanentCountry", "permanentState", 
+          "permanentDistrict", "permanentAddress", "permanentPincode", 
+          "docNumber", "docTypeId", "docFrontUrl", "docBackUrl"
+        ],
+        properties: {
+          firstName: { type: "string", example: "Hemraj" },
+          lastName: { type: "string", example: "Thapa" },
+          email: { type: "string", example: "thapahemraj204@gmail.com" },
+          gender: { type: "string", enum: ["MALE", "FEMALE", "OTHER"], example: "MALE" },
+          educationId: { type: "string", example: "edu-uuid" },
+          sectorId: { type: "string", example: "sector-uuid" },
+          jobRoleId: { type: "string", example: "job-uuid" },
+          maritalStatus: { type: "string", enum: ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"], example: "SINGLE" },
+          citizenship: { type: "string", example: "Indian" },
+          isMigrantWorker: { type: "boolean", example: false },
+          monthlyIncome: { type: "string", example: "50000" },
+          currentCountry: { type: "string", example: "India" },
+          currentState: { type: "string", example: "Gujarat" },
+          currentDistrict: { type: "string", example: "Ahmedabad" },
+          currentAddress: { type: "string", example: "Satellite Area" },
+          currentPincode: { type: "string", example: "380015" },
+          permanentCountry: { type: "string", example: "India" },
+          permanentState: { type: "string", example: "Gujarat" },
+          permanentDistrict: { type: "string", example: "Ahmedabad" },
+          permanentAddress: { type: "string", example: "Satellite Area" },
+          permanentPincode: { type: "string", example: "380015" },
+          docNumber: { type: "string", example: "123456789012" },
+          docTypeId: { type: "string", example: "doc-type-uuid" },
+          docFrontUrl: { type: "string", example: "https://example.com/front.jpg" },
+          docBackUrl: { type: "string", example: "https://example.com/back.jpg" }
+        }
+      }
+    }
+  }
+};
+
+const membershipVerifyPaymentBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["applicationId", "razorpay_order_id", "razorpay_payment_id", "razorpay_signature"],
+        properties: {
+          applicationId: { type: "string", example: "app-uuid" },
+          razorpay_order_id: { type: "string", example: "order_9A33X99mq3" },
+          razorpay_payment_id: { type: "string", example: "pay_9A33X99mq3" },
+          razorpay_signature: { type: "string", example: "signature-string" }
+        }
+      }
+    }
+  }
+};
+
 const imeCreateCustomerBody = {
   required: true,
   content: {
@@ -24,43 +89,33 @@ const imeCreateCustomerBody = {
           "LastName",
           "Gender",
           "DateOfBirth",
-          "IDType",
-          "IDNumber",
           "PhoneNumber",
-          "Nationality",
-          "MaritalStatus",
-          "FatherOrMotherName",
-          "Occupation",
-          "State",
-          "District",
-          "Municipality",
-          "Address",
-          "IDIssueDate",
-          "IdData"
+          "Nationality"
         ],
         properties: {
-          FirstName: { type: "string", example: "Ram" },
-          LastName: { type: "string", example: "Bahadur" },
-          Gender: { type: "string", enum: ["M", "F"], example: "M" },
-          DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
-          IDType: { type: "string", enum: ["PP", "DL", "NP_ID", "AADHAR"], example: "NP_ID" },
-          IDNumber: { type: "string", example: "29383-239334-2" },
-          IDIssueDate: { type: "string", example: "2018-02-15" },
-          PhoneNumber: { type: "string", example: "9841234567" },
-          CountryCode: { type: "string", example: "NP" },
+          MobileNo: { type: "string", example: "7041897207" },
+          FirstName: { type: "string", example: "Hemraj" },
+          LastName: { type: "string", example: "Thapa" },
           Nationality: { type: "string", example: "NPL" },
-          MaritalStatus: { type: "string", example: "Single" },
-          FatherOrMotherName: { type: "string", example: "Dhan Bahadur Thapa" },
-          Occupation: { type: "string", example: "Service" },
-          SourceOfFund: { type: "string", example: "Salary" },
-          State: { type: "string", example: "Bagmati" },
-          District: { type: "string", example: "Kathmandu" },
-          Municipality: { type: "string", example: "Kathmandu" },
-          Address: { type: "string", example: "Baneshwor" }
-          ,IdData: { type: "string", example: "<base64-id-document>" }
-          ,IdDataType: { type: "string", example: "image/jpeg" }
-          ,OTPToken: { type: "string", example: "IME-OTP-TOKEN" }
-          ,OTP: { type: "string", example: "123456" }
+          Gender: { type: "string", example: "1801" },
+          DOB: { type: "string", example: "1995/06/15" },
+          MaritalStatus: { type: "string", example: "1902" },
+          FatherOrMotherName: { type: "string", example: "Bir Bahadur Thapa" },
+          Occupation: { type: "string", example: "8081" },
+          SourceOfFund: { type: "string", example: "8051" },
+          IDType: { type: "string", example: "1301" },
+          IDNumber: { type: "string", example: "7041897207" },
+          IDIssueDate: { type: "string", example: "2018/02/15" },
+          IdPlaceOfIssue: { type: "string", example: "5025" },
+          State: { type: "string", example: "1006" },
+          District: { type: "string", example: "5054" },
+          Municipality: { type: "string", example: "9557" },
+          Address: { type: "string", example: "Dullu Municipality word 11 kalbhairab" },
+          TempState: { type: "string", example: "1019" },
+          TempDistrict: { type: "string", example: "5234" },
+          TempAddress: { type: "string", example: "Mumbai Central" },
+          IdData: { type: "string", example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" },
+          IdDataType: { type: "string", example: "jpeg" }
         }
       }
     }
@@ -3063,6 +3118,65 @@ const paths = {
         403: { description: "Forbidden" },
       },
     },
+    get: {
+      tags: ["Admin"],
+      summary: "Get document types",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Document types list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/skill": {
+    post: {
+      tags: ["Admin"],
+      summary: "Create skill",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Skill created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+    get: {
+      tags: ["Admin"],
+      summary: "Get skills",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Skills list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/membership/delegate-approval": {
+    post: {
+      tags: ["Admin"],
+      summary: "Delegate membership approval authority",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Authority delegated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/membership/create-user": {
+    post: {
+      tags: ["Admin"],
+      summary: "Directly create a user/member (Admin only)",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "User created" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
   },
 
   // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
@@ -3094,13 +3208,72 @@ const paths = {
     },
   },
 
-  "/api/admin/members": {
+  "/api/admin/membership/price": {
+    put: {
+      tags: ["Admin"],
+      summary: "Update membership price",
+      security: bearerSecurity,
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Price updated" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/membership/applications": {
     get: {
       tags: ["Admin"],
-      summary: "Get all members/membership applications (with filtering and pagination)",
+      summary: "Get all membership applications",
       security: bearerSecurity,
+      parameters: [
+        { name: "status", in: "query", schema: { type: "string", enum: ["PENDING", "APPROVED", "REJECTED"] } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "limit", in: "query", schema: { type: "integer" } }
+      ],
       responses: {
-        200: { description: "Members list" },
+        200: { description: "Applications list" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/membership/applications/{id}": {
+    get: {
+      tags: ["Admin"],
+      summary: "Get application details",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      responses: {
+        200: { description: "Application details" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+        404: { description: "Application not found" },
+      },
+    },
+  },
+  "/api/admin/membership/applications/{id}/approve": {
+    post: {
+      tags: ["Admin"],
+      summary: "Approve membership application",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      responses: {
+        200: { description: "Application approved" },
+        401: { description: "Unauthorized" },
+        403: { description: "Forbidden" },
+      },
+    },
+  },
+  "/api/admin/membership/applications/{id}/reject": {
+    post: {
+      tags: ["Admin"],
+      summary: "Reject membership application",
+      security: bearerSecurity,
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Application rejected" },
         401: { description: "Unauthorized" },
         403: { description: "Forbidden" },
       },
@@ -3116,6 +3289,74 @@ const paths = {
         200: { description: "Dashboard statistics" },
         401: { description: "Unauthorized" },
         403: { description: "Forbidden" },
+      },
+    },
+  },
+
+  // ==================== MEMBERSHIP ENDPOINTS ====================
+  "/api/membership/price": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get current membership price",
+      responses: {
+        200: { description: "Current price" },
+      },
+    },
+  },
+  "/api/membership/reference-data": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get all reference data for application form",
+      description: "Returns lists of education, sectors, job roles, and document types",
+      responses: {
+        200: { description: "Reference data list" },
+      },
+    },
+  },
+  "/api/membership/apply": {
+    post: {
+      tags: ["Membership"],
+      summary: "Submit membership application",
+      security: bearerSecurity,
+      requestBody: membershipApplyBody,
+      responses: {
+        201: { description: "Application submitted and payment order created" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+  "/api/membership/verify-payment": {
+    post: {
+      tags: ["Membership"],
+      summary: "Verify Razorpay payment",
+      security: bearerSecurity,
+      requestBody: membershipVerifyPaymentBody,
+      responses: {
+        200: { description: "Payment verified and application updated" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+  "/api/membership/status": {
+    get: {
+      tags: ["Membership"],
+      summary: "Get user application status",
+      security: bearerSecurity,
+      responses: {
+        200: { description: "Current status" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+  "/api/membership/resubmit": {
+    post: {
+      tags: ["Membership"],
+      summary: "Resubmit rejected application",
+      security: bearerSecurity,
+      requestBody: membershipApplyBody,
+      responses: {
+        200: { description: "Application resubmitted" },
+        401: { description: "Unauthorized" },
       },
     },
   },
@@ -4043,6 +4284,30 @@ imeLegacyRoutes.forEach(routeName => {
     };
   }
 });
+
+// Override legacy request bodies with detailed schemas
+if (paths["/api/ime/CustomerRegistration"]) {
+  paths["/api/ime/CustomerRegistration"].post.requestBody = imeCreateCustomerBody;
+}
+if (paths["/api/ime/SendTransaction"]) {
+  paths["/api/ime/SendTransaction"].post.requestBody = imeSendTransactionBody;
+}
+if (paths["/api/ime/GetStaticData"]) {
+  paths["/api/ime/GetStaticData"].post.requestBody = {
+    required: true,
+    content: {
+      "application/json": {
+        schema: {
+          type: "object",
+          properties: {
+            TypeCode: { type: "string", example: "WSST-GDRV1" },
+            ReferenceValue: { type: "string", example: "NPL" }
+          }
+        }
+      }
+    }
+  };
+}
 
 // Legacy GET routes with parameters
 ["States/{CountryId}", "Districts/{StateId}", "BankList/{CountryId}", "BankBranchList/{BankId}", 

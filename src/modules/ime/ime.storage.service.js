@@ -32,7 +32,12 @@ class ImeStorageService {
           endpointPath,
           requestMethod,
           requestPayload,
-          responsePayload,
+          responsePayload: {
+            ...responsePayload,
+            data: Array.isArray(responsePayload.data) 
+              ? responsePayload.data.map(item => item === undefined ? null : item)
+              : responsePayload.data
+          },
           statusCode,
           imeResponseCode,
           imeResponseMessage,

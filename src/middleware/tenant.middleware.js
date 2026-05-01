@@ -37,6 +37,14 @@ module.exports = async (req, res, next) => {
     next();
   } catch (err) {
     console.error("CRITICAL: Tenant Middleware Database Error:", err.message);
+    
+    // In development mode, provide a hardcoded fallback if DB is completely unreachable
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Using hardcoded fallback tenant_id due to database error");
+      req.tenant_id = "default-tenant-id"; // Adjust if you have a specific UUID format
+      return next();
+    }
+
     // If it's a connection error, inform the user
     if (err.message.includes("too many clients") || err.message.includes("connection")) {
        return res.status(503).json({ 
