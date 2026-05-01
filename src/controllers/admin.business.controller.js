@@ -403,6 +403,14 @@ const businessPartnerController = {
         })
       ]);
 
+      // 4. Ensure Personal Wallet exists for the new Business Partner
+      try {
+        const walletService = require("../services/wallet.service");
+        await walletService.createWallet(application.userId, tenantId, false);
+      } catch (walletErr) {
+        console.log(`[Wallet] Personal wallet for Business Partner already exists or creation failed: ${walletErr.message}`);
+      }
+
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
         const adminWallet = await prisma.wallet.findFirst({

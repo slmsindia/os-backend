@@ -425,6 +425,14 @@ const adminSaathiController = {
           data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
+      
+      // 4. Ensure Personal Wallet exists for the new Saathi
+      try {
+        const walletService = require("../services/wallet.service");
+        await walletService.createWallet(application.userId, tenantId, false);
+      } catch (walletErr) {
+        console.log(`[Wallet] Personal wallet for Saathi already exists or creation failed: ${walletErr.message}`);
+      }
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {

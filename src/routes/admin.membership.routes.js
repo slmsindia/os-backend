@@ -2,6 +2,7 @@ const express = require("express");
 const adminMembershipController = require("../controllers/admin.membership.controller");
 const authMiddleware = require("../middleware/auth.middleware");
 const { checkPermission } = require("../middleware/permission.middleware");
+const { checkIdentity } = require("../middleware/identity.middleware");
 
 const router = express.Router();
 
@@ -16,8 +17,8 @@ router.put("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembership
 router.post("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembershipController.updateMembershipPrice);
 
 // Membership applications (Accessible by admins and delegated users)
-router.post("/membership/create-user", checkPermission("HIERARCHY_VIEW"), adminMembershipController.createUser);
-router.post("/agent/create", checkPermission("HIERARCHY_VIEW"), adminMembershipController.createUser); // Alias for agent creation
+router.post("/membership/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminMembershipController.createUser);
+router.post("/agent/create", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminMembershipController.createUser); // Alias for agent creation
 router.get("/membership/applications", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getMembershipApplications);
 router.get("/membership/applications/:applicationId", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getApplicationDetails);
 router.post("/membership/applications/:applicationId/approve", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.approveApplication);

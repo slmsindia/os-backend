@@ -14,14 +14,9 @@ const checkPermission = (requiredPermission) => {
         return next();
       }
 
-      // 2. Only SUB_ADMIN (and potentially others) need explicit permission check
-      if (identity !== 'SUB_ADMIN') {
-        console.log(`[PermissionDebug] Denied: Identity ${identity} is not SUB_ADMIN and not Top Admin.`);
-        return res.status(403).json({ 
-          success: false, 
-          message: `Forbidden: Your identity (${identity}) does not have access to this feature.` 
-        });
-      }
+      // 2. Roles that require explicit permission check in the database
+      // This includes SUB_ADMIN, COUNTRY_HEAD, STATE_PARTNER, DISTRICT_PARTNER, etc.
+      // (Basically anyone not in the Top Admin bypass list)
 
       console.log(`[PermissionDebug] Checking ${requiredPermission} for Sub-Admin ID: ${userId}`);
 

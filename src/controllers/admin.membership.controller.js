@@ -25,6 +25,8 @@ const adminMembershipController = {
       .toUpperCase();
 
     try {
+      console.log(`[CreateUserEntry] Creator: ${creatorId}, Tenant: ${tenantId}, Mobile: ${mobile}, TargetIdentity: ${sanitizedIdentity}`);
+      
       // 1. Hierarchical Role Validation
       const creatorIdentity = req.user.identity;
       const targetIdentity = sanitizedIdentity;
@@ -121,6 +123,8 @@ const adminMembershipController = {
         where: { mobile, tenantId }
       });
 
+      console.log(`[LookupDebug] Found existing user: ${existing ? 'YES (ID: ' + existing.id + ')' : 'NO'}`);
+
       // ─── CASE A: User Already Exists → Upgrade their identity directly ───
       if (existing) {
         // Process fee/wallet deduction for the upgrade
@@ -142,11 +146,14 @@ const adminMembershipController = {
           ? (creatorRecord.path ? `${creatorRecord.path}/${creatorRecord.id}` : `/${creatorRecord.id}`)
           : (existing.path || '');
 
+        console.log(`[UpgradeDebug] Upgrading user ${existing.id} from ${existing.identity} to ${targetIdentity}`);
+
         // Upgrade the existing user's identity AND fix hierarchy (parentId + path)
         const upgradedUser = await prisma.user.update({
           where: { id: existing.id },
           data: {
             identity: targetIdentity,
+            userType: targetIdentity, // Ensure userType is also updated
             approvalStatus: 'APPROVED',
             approvedAt: new Date(),
             parentId: creatorId,    // Link to creator so hierarchy queries work
@@ -220,6 +227,7 @@ const adminMembershipController = {
         dateOfBirth: new Date(dateOfBirth),
         password: hashedPassword,
         identity: targetIdentity,
+        userType: targetIdentity,
         tenantId,
         parentId: creatorId
       };
