@@ -422,6 +422,7 @@ const membershipController = {
       // Method 1 (Razorpay)
       const receipt = `member_${application.id.slice(0, 28)}`;
       const order = await razorpayService.createOrder(
+        tenantId,
         config.membershipPrice,
         config.currency,
         receipt
@@ -453,7 +454,7 @@ const membershipController = {
           orderId: order.id,
           amount: config.membershipPrice,
           currency: config.currency,
-          key: process.env.RAZORPAY_KEY_ID
+          key: await razorpayService.getKeyId(tenantId)
         }
       });
     } catch (err) {
@@ -524,11 +525,14 @@ const membershipController = {
       }
 
       // Verify signature
-      const isValid = razorpayService.verifyPaymentSignature({
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature
-      });
+      const isValid = await razorpayService.verifyPaymentSignature(
+        application.user.tenantId,
+        {
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature
+        }
+      );
 
       if (!isValid) {
         await prisma.membershipPayment.update({

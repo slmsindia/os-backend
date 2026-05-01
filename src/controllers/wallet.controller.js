@@ -13,8 +13,10 @@ const walletController = {
     const { user_id: userId, identity, tenant_id: tenantId } = req.user;
 
     try {
+      console.log(`[Wallet] Getting wallet for user: ${userId}, identity: ${identity}, tenant: ${tenantId}`);
       // 1. Use the Smart Resolver to find the correct wallet (Personal or Shared)
       let wallet = await walletService.resolveWallet(userId, tenantId, identity);
+      console.log(`[Wallet] Resolved wallet: ${wallet ? wallet.id : 'NONE'}`);
 
       // 2. Handle missing wallets (Lazy initialization for non-admin roles)
       if (!wallet) {

@@ -535,8 +535,41 @@ const adminController = {
         return res.status(404).json({ success: false, message: "User not found in your tenant" });
       }
 
-      // Check hierarchy: Admin can only deactivate those below them
-      // (For now allowing any tenant-admin to toggle tenant-users)
+      // --- Hierarchy & Rank Check ---
+      const myIdentity = req.user.identity;
+      const isSuperAdmin = myIdentity === "SUPER_ADMIN";
+      const isWLAdmin = myIdentity === "WHITE_LABEL_ADMIN";
+
+      // 1. Rank Check: Cannot deactivate someone with higher or equal rank
+      const roleRank = {
+        "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
+        "COUNTRY_HEAD": 4, "STATE_PARTNER": 5, "DISTRICT_PARTNER": 6,
+        "BUSINESS_PARTNER": 7, "SAATHI": 8, "MEMBER": 9, "AGENT": 10, "USER": 11
+      };
+      
+      const myRank = roleRank[myIdentity] ?? 99;
+      const targetRank = roleRank[user.identity] ?? 99;
+
+      if (!isSuperAdmin && myRank >= targetRank) {
+        return res.status(403).json({ 
+          success: false, 
+          message: `Your role (${myIdentity}) cannot deactivate a ${user.identity}.` 
+        });
+      }
+
+      // 2. Hierarchy Check: Must be in your path (unless you are WL_ADMIN/SUPER_ADMIN)
+      if (!isSuperAdmin && !isWLAdmin) {
+        const isChild = user.parentId === adminId;
+        const isDescendant = user.path && user.path.includes(adminId);
+        
+        if (!isChild && !isDescendant) {
+          return res.status(403).json({ 
+            success: false, 
+            message: "You can only deactivate users within your own hierarchy branch." 
+          });
+        }
+      }
+      // ------------------------------
       
       const updatedUser = await prisma.user.update({
         where: { id: userId },
@@ -560,6 +593,169 @@ const adminController = {
       });
     } catch (err) {
       console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Get Razorpay Settings for the current White Label
+   */
+  getRazorpaySettings: async (req, res) => {
+    const { tenant_id: tenantId, identity } = req.user;
+
+    if (identity !== "WHITE_LABEL_ADMIN") {
+      return res.status(403).json({ success: false, message: "Only White Label Admin allowed" });
+    }
+
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { razorpayKeyId: true }
+      });
+
+      res.json({ success: true, data: tenant });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Update Razorpay Settings for the current White Label
+   */
+  updateRazorpaySettings: async (req, res) => {
+    const { tenant_id: tenantId, identity, user_id: adminId } = req.user;
+    const { razorpayKeyId, razorpayKeySecret } = req.body;
+
+    if (identity !== "WHITE_LABEL_ADMIN") {
+      return res.status(403).json({ success: false, message: "Only White Label Admin allowed" });
+    }
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      return res.status(400).json({ success: false, message: "Key ID and Key Secret are required" });
+    }
+
+    try {
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          razorpayKeyId,
+          razorpayKeySecret
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "UPDATE_TENANT_RAZORPAY_OWN",
+        targetId: tenantId,
+        tenantId,
+        metadata: { keyId: razorpayKeyId }
+      });
+
+      res.json({ success: true, message: "Razorpay credentials updated successfully" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Internal Hierarchy Transfer (Within same tenant)
+   * Allowed for White Label Admin
+   */
+  transferHierarchyInternal: async (req, res) => {
+    const { targetUserId, newParentId } = req.body;
+    const { tenant_id: tenantId, identity, user_id: adminId } = req.user;
+
+    if (identity !== "WHITE_LABEL_ADMIN") {
+      return res.status(403).json({ success: false, message: "Only White Label Admin can perform internal transfers." });
+    }
+
+    if (!targetUserId || !newParentId) {
+      return res.status(400).json({ success: false, message: "targetUserId and newParentId are required" });
+    }
+
+    try {
+      const [targetUser, newParent] = await Promise.all([
+        prisma.user.findUnique({ where: { id: targetUserId } }),
+        prisma.user.findUnique({ where: { id: newParentId } })
+      ]);
+
+      if (!targetUser || !newParent) {
+        return res.status(404).json({ success: false, message: "User or new parent not found" });
+      }
+
+      if (targetUser.tenantId !== tenantId || newParent.tenantId !== tenantId) {
+        return res.status(403).json({ success: false, message: "Both users must belong to your tenant." });
+      }
+
+      // Avoid circular dependency: New parent cannot be the target user or a descendant of the target user
+      if (newParentId === targetUserId || (newParent.path && newParent.path.includes(targetUserId))) {
+        return res.status(400).json({ success: false, message: "Circular transfer detected. New parent cannot be the user itself or one of its descendants." });
+      }
+
+      // Fetch all descendants to update their paths
+      const descendants = await prisma.user.findMany({
+        where: { 
+          tenantId,
+          OR: [
+            { id: targetUserId },
+            { path: { contains: targetUserId } }
+          ]
+        }
+      });
+
+      await prisma.$transaction(async (tx) => {
+        // Recalculate prefix based on new parent
+        const newRootPrefix = newParent.path ? `${newParent.path}/${newParent.id}` : `/${newParent.id}`;
+        
+        for (const u of descendants) {
+          let newPath = "";
+          if (u.id === targetUserId) {
+            newPath = newRootPrefix;
+          } else {
+            // Relocate descendant path relative to the target user
+            const currentPath = u.path || "";
+            const targetIndex = currentPath.indexOf(targetUserId);
+            
+            if (targetIndex !== -1) {
+              const relativePath = currentPath.substring(targetIndex);
+              newPath = `${newRootPrefix}/${relativePath}`.replace(/\/\//g, '/');
+            } else {
+              // Fallback
+              newPath = `${newRootPrefix}/${targetUserId}/${u.id}`.replace(/\/\//g, '/');
+            }
+          }
+
+          await tx.user.update({
+            where: { id: u.id },
+            data: {
+              path: newPath,
+              ...(u.id === targetUserId ? { parentId: newParent.id } : {})
+            }
+          });
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "INTERNAL_HIERARCHY_TRANSFER",
+        targetId: targetUserId,
+        tenantId,
+        metadata: { 
+          targetUserName: targetUser.fullName, 
+          newParentName: newParent.fullName,
+          descendantCount: descendants.length 
+        }
+      });
+
+      res.json({ 
+        success: true, 
+        message: `Successfully transferred ${targetUser.fullName} and ${descendants.length - 1} subordinates to ${newParent.fullName}.` 
+      });
+
+    } catch (err) {
+      console.error("Internal Transfer Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }

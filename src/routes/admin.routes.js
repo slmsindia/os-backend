@@ -35,4 +35,11 @@ router.get("/members", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipCon
 // Toggle user status (Activate/Deactivate)
 router.post("/users/:userId/toggle-status", checkPermission("USER_TOGGLE_STATUS"), adminController.toggleUserStatus);
 
+// Razorpay Multi-tenant Settings (White Label Admin only)
+router.get("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.getRazorpaySettings);
+router.post("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.updateRazorpaySettings);
+
+// Internal Hierarchy Transfer (White Label Admin only)
+router.post("/transfer-hierarchy", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.transferHierarchyInternal);
+
 module.exports = router;

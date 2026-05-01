@@ -54,6 +54,7 @@ const walletService = {
     try {
       // Shared Corporate Wallet logic
       if (['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(identity)) {
+        console.log(`[WalletService] Resolving corporate wallet for tenant: ${tenantId}`);
         let corporateWallet = await prisma.wallet.findFirst({
           where: { 
             tenantId,

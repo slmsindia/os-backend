@@ -460,7 +460,7 @@ const adminMembershipController = {
       }
 
       // Hierarchy Visibility Rule (Scalable Version):
-      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
       if (!topRoles.includes(adminIdentity)) {
         // Check if path field exists in the client for optimized search
         const hasPath = Object.keys(prisma.user.fields || {}).includes('path') || 
@@ -596,7 +596,7 @@ const adminMembershipController = {
         where: { id: adminId }
       });
 
-      const canApprove = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity) || 
+      const canApprove = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity) || 
                         admin.canApproveMembership;
 
       if (!canApprove) {
@@ -617,7 +617,7 @@ const adminMembershipController = {
 
       // STRICT HIERARCHY CHECK: 
       // If not a Top Admin, you can only approve users in your own hierarchy
-      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
       if (!topRoles.includes(adminIdentity)) {
         const descendantIds = await adminMembershipController.getDescendantIds(adminId);
         if (!descendantIds.includes(application.userId) && application.createdById !== adminId) {
