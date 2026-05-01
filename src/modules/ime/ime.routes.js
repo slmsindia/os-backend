@@ -48,24 +48,5 @@ router.get('/compliance/:customerId/status', imeController.getComplianceStatus);
 router.get('/customers/:customerId/transactions', imeController.getTransactionHistory);
 router.get('/exchange-rate', imeController.getExchangeRate);
 
-// IME API endpoints as per IME.md (Phase 1 / Legacy)
-router.post('/GetStaticData', imeController.getStaticData);
-router.post('/CSPRegistration', imeController.cspRegistration);
-router.post('/CSPDocumentUpload', imeController.cspDocumentUpload);
-router.post('/CSPCheck', imeController.cspCheck);
-router.post('/BalanceInquiry', imeController.balanceInquiry);
-router.post('/CheckCustomer', imeController.checkCustomer);
-router.post('/SendOTP', imeController.sendOtp);
-router.post('/CustomerRegistration', imeController.customerRegistration);
-router.post('/ConfirmCustomerRegistration', imeController.confirmCustomerRegistration);
-router.post('/GetCalculation', imeController.getCalculation);
-router.post('/SendTransaction', imeController.sendTransaction);
-router.post('/ConfirmSendTransaction', imeController.confirmSendTransaction);
-router.post('/TransactionInquiry', imeController.transactionInquiry);
-router.post('/TransactionInquiryDefault', imeController.transactionInquiryDefault);
-router.post('/AmendTransaction', imeController.amendTransaction);
-router.post('/CancelTransaction', imeController.cancelTransaction);
-router.post('/CustomerMobileAmendment', imeController.customerMobileAmendment);
-router.post('/CheckCSP', imeController.checkCSP);
 
 module.exports = router;

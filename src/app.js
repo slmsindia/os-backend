@@ -15,7 +15,6 @@ const adminMembershipRoutes = require("./routes/admin.membership.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
 const imeRoutes = require("./modules/ime/ime.routes");
-const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
 const cspRoutes = require("./modules/csp/csp.routes");
 const rdRoutes = require('./routes/rd.routes');
 const membershipRoutes = require("./routes/membership.routes");
@@ -113,8 +112,6 @@ app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/ime", imeRoutes);
-app.use("/api/IME", imeLegacyRoutes);
-app.use("/api/ime", imeLegacyRoutes); // Map legacy routes to lowercase as well for Swagger
 app.use("/api", cspRoutes);
 app.use('/api/rd', rdRoutes);
 app.use("/api/business", businessRoutes);
