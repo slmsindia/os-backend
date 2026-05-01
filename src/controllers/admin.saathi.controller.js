@@ -228,7 +228,7 @@ const adminSaathiController = {
         let razorpayOrder = null;
         if (paymentMethod === 'RAZORPAY') {
           try {
-            razorpayOrder = await razorpayService.createOrder(amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
+            razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
           } catch (err) {
             console.error("Razorpay Order Error:", err);
             throw new Error("Failed to create Razorpay order. Please check configuration.");
@@ -312,7 +312,7 @@ const adminSaathiController = {
             id: application.payment.razorpayOrderId,
             amount: application.payment.amount,
             currency: application.payment.currency,
-            key: process.env.RAZORPAY_KEY_ID
+            key: await razorpayService.getKeyId(tenantId)
           } : null
         }
       });
@@ -331,7 +331,7 @@ const adminSaathiController = {
     
     try {
       const admin = await prisma.user.findUnique({ where: { id: adminId } });
-      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity) || 
+      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity) || 
                        admin.canApproveSaathi;
 
       if (!canView) {
@@ -359,7 +359,7 @@ const adminSaathiController = {
 
     try {
       const admin = await prisma.user.findUnique({ where: { id: adminId } });
-      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity) || 
+      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity) || 
                        admin.canApproveSaathi;
 
       if (!canView) {
@@ -398,7 +398,7 @@ const adminSaathiController = {
       }
 
       // 1. Permission Check (Admin or Delegated Partner)
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity);
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity);
       if (!isTopAdmin) {
         const approver = await prisma.user.findUnique({ where: { id: adminId } });
         if (!approver.canApproveSaathi) {
@@ -425,6 +425,14 @@ const adminSaathiController = {
           data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
+      
+      // 4. Ensure Personal Wallet exists for the new Saathi
+      try {
+        const walletService = require("../services/wallet.service");
+        await walletService.createWallet(application.userId, tenantId, false);
+      } catch (walletErr) {
+        console.log(`[Wallet] Personal wallet for Saathi already exists or creation failed: ${walletErr.message}`);
+      }
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
@@ -581,11 +589,14 @@ const adminSaathiController = {
       }
 
       // Verify signature
-      const isValid = razorpayService.verifyPaymentSignature({
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature
-      });
+      const isValid = await razorpayService.verifyPaymentSignature(
+        application.user.tenantId,
+        {
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature
+        }
+      );
 
       if (!isValid) {
         await prisma.saathiPayment.update({
@@ -606,12 +617,14 @@ const adminSaathiController = {
         }
       });
 
-      // Log in Wallet History (Only log for Partner, DO NOT credit Admin here)
+      // Log in Wallet History & Credit Admin Corporate Wallet
       try {
         const creator = await prisma.user.findUnique({ where: { id: application.createdById } });
         const partnerWallet = await walletService.resolveWallet(application.createdById, tenantId, creator?.identity);
+        const adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         
         if (partnerWallet) {
+          // Log debit for partner (Already paid via Razorpay, so just history)
           await prisma.walletTransaction.create({
             data: {
               id: generateUuid(),
@@ -625,8 +638,30 @@ const adminSaathiController = {
             }
           });
         }
+
+        if (adminWallet) {
+          // Actually credit the Admin corporate wallet
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.payment.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.payment.amount,
+              type: "CREDIT",
+              category: "COMMISSION",
+              description: `Saathi Application Fee received via RAZORPAY (User: ${application.userId})`,
+              referenceId: application.id,
+              tenantId: tenantId
+            }
+          });
+          console.log(`[Wallet] Credited Admin Wallet (${adminWallet.id}) with ${application.payment.amount} from Saathi Razorpay.`);
+        }
       } catch (logErr) {
-        console.error("Failed to log Saathi Razorpay log:", logErr);
+        console.error("Failed to log Saathi Razorpay log/credit:", logErr);
       }
 
       await logAction({

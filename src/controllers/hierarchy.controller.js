@@ -354,6 +354,179 @@ const hierarchyController = {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * Request Hierarchy Transfer via Referral Code
+   * POST /api/admin/hierarchy/request-transfer
+   */
+  requestTransfer: async (req, res) => {
+    const { user_id: userId, tenant_id: tenantId } = req.user;
+    const { referralCode } = req.body;
+
+    if (!referralCode) return res.status(400).json({ success: false, message: "Referral code required" });
+
+    try {
+      const [user, newParent] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId } }),
+        prisma.user.findUnique({ where: { referralCode } })
+      ]);
+
+      if (!user) return res.status(404).json({ success: false, message: "User not found" });
+      if (!newParent) return res.status(404).json({ success: false, message: "Invalid referral code. New parent not found." });
+
+      if (newParent.id === userId) return res.status(400).json({ success: false, message: "You cannot transfer to yourself." });
+      if (newParent.id === user.parentId) return res.status(400).json({ success: false, message: "You are already under this parent." });
+
+      // Hierarchy Rule: New parent must be a higher level (lower rank number)
+      const roleRank = {
+        "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
+        "COUNTRY_HEAD": 4, "STATE_PARTNER": 5, "DISTRICT_PARTNER": 6,
+        "BUSINESS_PARTNER": 7, "SAATHI": 8, "MEMBER": 9, "AGENT": 10, "USER": 11
+      };
+
+      const myRank = roleRank[user.identity] ?? 99;
+      const parentRank = roleRank[newParent.identity] ?? 99;
+
+      if (parentRank >= myRank) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `A ${user.identity} cannot move under a ${newParent.identity}. Parent must be of a higher level.` 
+        });
+      }
+
+      // Check for existing pending request
+      const existingRequest = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" }
+      });
+
+      if (existingRequest) {
+        return res.status(400).json({ success: false, message: "You already have a pending transfer request." });
+      }
+
+      // Create Request with 24h schedule
+      const scheduledAt = new Date();
+      scheduledAt.setHours(scheduledAt.getHours() + 24);
+
+      const request = await prisma.hierarchyTransferRequest.create({
+        data: {
+          id: generateUuid(),
+          userId,
+          oldParentId: user.parentId,
+          newParentId: newParent.id,
+          tenantId,
+          scheduledAt,
+          status: "PENDING"
+        },
+        include: { newParent: { select: { fullName: true, identity: true } } }
+      });
+
+      res.json({
+        success: true,
+        message: `Transfer request submitted. It will be automatically processed on ${scheduledAt.toLocaleString()} (after 24 hours).`,
+        data: request
+      });
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Withdraw Hierarchy Transfer Request
+   * POST /api/admin/hierarchy/withdraw-transfer
+   */
+  withdrawTransfer: async (req, res) => {
+    const { user_id: userId } = req.user;
+    try {
+      const request = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" }
+      });
+
+      if (!request) return res.status(404).json({ success: false, message: "No pending transfer request found." });
+
+      await prisma.hierarchyTransferRequest.update({
+        where: { id: request.id },
+        data: { status: "WITHDRAWN" }
+      });
+
+      res.json({ success: true, message: "Transfer request withdrawn successfully." });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Execute Scheduled Transfers (Older than 24h)
+   * This can be called by a cron job or manually for testing.
+   */
+  executeScheduledTransfers: async (req, res) => {
+    try {
+      const pendingRequests = await prisma.hierarchyTransferRequest.findMany({
+        where: { 
+          status: "PENDING",
+          scheduledAt: { lte: new Date() }
+        },
+        include: { user: true, newParent: true }
+      });
+
+      if (pendingRequests.length === 0) {
+        return res.json({ success: true, message: "No transfers ready for processing.", count: 0 });
+      }
+
+      let processedCount = 0;
+      for (const req of pendingRequests) {
+        // Execute the transfer (using the internal transfer logic pattern)
+        const targetUserId = req.userId;
+        const newParent = req.newParent;
+        const tenantId = req.tenantId;
+
+        const descendants = await prisma.user.findMany({
+          where: { OR: [{ id: targetUserId }, { path: { contains: targetUserId } }] }
+        });
+
+        await prisma.$transaction(async (tx) => {
+          const newRootPrefix = newParent.path ? `${newParent.path}/${newParent.id}` : `/${newParent.id}`;
+          
+          for (const u of descendants) {
+            let newPath = "";
+            if (u.id === targetUserId) {
+              newPath = newRootPrefix;
+            } else {
+              const currentPath = u.path || "";
+              const targetIndex = currentPath.indexOf(targetUserId);
+              newPath = targetIndex !== -1 
+                ? `${newRootPrefix}/${currentPath.substring(targetIndex)}`.replace(/\/\//g, '/')
+                : `${newRootPrefix}/${targetUserId}/${u.id}`.replace(/\/\//g, '/');
+            }
+
+            await tx.user.update({
+              where: { id: u.id },
+              data: {
+                path: newPath,
+                ...(u.id === targetUserId ? { parentId: newParent.id } : {})
+              }
+            });
+          }
+
+          // Mark request as completed
+          await tx.hierarchyTransferRequest.update({
+            where: { id: req.id },
+            data: { status: "COMPLETED" }
+          });
+        });
+
+        processedCount++;
+      }
+
+      res.json({ success: true, message: `Processed ${processedCount} scheduled transfers.`, count: processedCount });
+
+    } catch (err) {
+      console.error("Scheduled Transfer Execution Error:", err);
+      res.status(500).json({ success: false, message: "Execution failed" });
+    }
   }
 };
 

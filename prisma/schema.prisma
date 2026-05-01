@@ -25,6 +25,10 @@ model Tenant {
   surveyQuestions SurveyQuestion[]
   qrCodes         QRCode[]
   walletTransactions WalletTransaction[]
+
+  // Razorpay Multi-tenant Credentials
+  razorpayKeyId      String?
+  razorpayKeySecret  String?
 }
 
 enum Gender {
@@ -108,6 +112,11 @@ model User {
 
   surveyAnswers      SurveyAnswer[]
 
+  // Relations for Hierarchy Transfer
+  transferRequests    HierarchyTransferRequest[] @relation("UserTransferRequests")
+  oldParentTransfers  HierarchyTransferRequest[] @relation("OldParentTransfers")
+  newParentTransfers  HierarchyTransferRequest[] @relation("NewParentTransfers")
+
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
@@ -117,6 +126,21 @@ model User {
   @@index([commissionSchemeId])
   @@index([mobile])
   @@unique([mobile, tenantId])
+}
+
+model HierarchyTransferRequest {
+  id              String   @id @default(uuid())
+  userId          String
+  oldParentId     String?
+  newParentId     String
+  status          String   @default("PENDING") // PENDING, WITHDRAWN, COMPLETED
+  scheduledAt     DateTime
+  tenantId        String
+  createdAt       DateTime @default(now())
+
+  user            User     @relation("UserTransferRequests", fields: [userId], references: [id])
+  oldParent       User?    @relation("OldParentTransfers", fields: [oldParentId], references: [id])
+  newParent       User     @relation("NewParentTransfers", fields: [newParentId], references: [id])
 }
 
 // ... (existing models)

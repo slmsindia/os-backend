@@ -227,6 +227,40 @@ const superAdminController = {
       console.error(err);
       res.status(500).json({ success: false, message: err.message });
     }
+  },
+  
+  /**
+   * Update Razorpay credentials for a specific White Label
+   */
+  updateTenantRazorpay: async (req, res) => {
+    const { tenantId, razorpayKeyId, razorpayKeySecret } = req.body;
+    const { user_id: adminId, identity } = req.user;
+
+    if (identity !== "SUPER_ADMIN") {
+      return res.status(403).json({ success: false, message: "Only Super Admin allowed" });
+    }
+
+    try {
+      const tenant = await prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          razorpayKeyId,
+          razorpayKeySecret
+        }
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "UPDATE_TENANT_RAZORPAY",
+        targetId: tenantId,
+        metadata: { keyId: razorpayKeyId }
+      });
+
+      res.json({ success: true, message: `Razorpay credentials updated for ${tenant.name}` });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: err.message });
+    }
   }
 };
 

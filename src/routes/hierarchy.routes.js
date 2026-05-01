@@ -31,4 +31,9 @@ router.get("/user-history/:targetUserId", hierarchyController.getUserWalletHisto
  */
 router.get("/user-details/:targetUserId", hierarchyController.getCompleteUserInfo);
 
+// --- Hierarchy Transfer Self-Service ---
+router.post("/request-transfer", hierarchyController.requestTransfer);
+router.post("/withdraw-transfer", hierarchyController.withdrawTransfer);
+router.get("/execute-transfers", hierarchyController.executeScheduledTransfers);
+
 module.exports = router;
