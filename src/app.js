@@ -29,6 +29,8 @@ const adminSaathiRoutes = require("./routes/admin.saathi.routes");
 const hierarchyRoutes = require("./routes/hierarchy.routes");
 const commissionRoutes = require("./routes/commission.routes");
 const adminContentRoutes = require("./routes/admin.content.routes");
+const reportRoutes = require("./routes/report.routes");
+const adminPermissionRoutes = require("./routes/admin.permission.routes");
 
 const app = express();
 
@@ -107,7 +109,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin", adminMembershipRoutes);
-app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/ime", imeRoutes);
@@ -124,6 +126,8 @@ app.use("/api/admin/hierarchy", hierarchyRoutes);
 app.use("/api/Remittance", remittanceRoutes);
 app.use("/api/Commission", commissionRoutes);
 app.use("/api/Admin/Content", adminContentRoutes);
+app.use("/api/admin/reports", reportRoutes);
+app.use("/api/admin/permissions", adminPermissionRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 

@@ -10,6 +10,9 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+// Get dashboard statistics (Moved to top for priority)
+router.get("/stats", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getStats);
+
 router.post("/create-white-label-admin", checkIdentity(["SUPER_ADMIN"]), adminController.createWhiteLabelAdmin);
 router.post("/create-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminController.createAdmin);
 router.post("/create-sub-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.createSubAdmin);
@@ -28,8 +31,6 @@ router.get("/users/:id", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADM
 // Get membership applications for approve/reject flow
 router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminMembershipController.getMembershipApplications);
 
-// Get dashboard statistics
-router.get("/stats", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "SUPPORT_TEAM"]), adminController.getStats);
 
 // Toggle user status (Activate/Deactivate)
 router.post("/users/:userId/toggle-status", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), adminController.toggleUserStatus);

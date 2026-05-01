@@ -75,7 +75,7 @@ const adminMembershipController = {
 
       // 2. Fee & Payment Logic (calculated before checking if user exists, used in both upgrade and create paths)
       const SHARED_WALLET_ROLES = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'AGENT'];
-      const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'ADMIN', 'SUB_ADMIN', 'AGENT'];
+      const PAID_ROLES = ['BUSINESS_PARTNER', 'SAATHI', 'MEMBER', 'USER', 'AGENT'];
       
       let fee = 0;
       if (PAID_ROLES.includes(targetIdentity)) {
@@ -97,7 +97,7 @@ const adminMembershipController = {
         } else if (targetIdentity === 'AGENT') {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'AGENT_REGISTRATION_FEE' } });
           fee = setting ? parseFloat(setting.value) : 500;
-        } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
+        } else if (['AGENT'].includes(targetIdentity)) {
           const setting = await prisma.globalSetting.findUnique({ where: { key: 'ADMIN_REGISTRATION_FEE' } });
           fee = setting ? parseFloat(setting.value) : 5000;
         }
@@ -105,7 +105,7 @@ const adminMembershipController = {
 
       // Validate Payment Method
       if (fee > 0) {
-        if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
+        if (['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(targetIdentity)) {
           if (!['CASH', 'RAZORPAY'].includes(paymentMethod)) {
             return res.status(400).json({ success: false, message: `${targetIdentity} can only use CASH or RAZORPAY for registration fees.` });
           }
@@ -116,8 +116,10 @@ const adminMembershipController = {
         }
       }
 
-      // 3. Check if mobile exists
-      const existing = await prisma.user.findUnique({ where: { mobile } });
+      // 3. Check if mobile exists (using findFirst because mobile alone is no longer unique globally)
+      const existing = await prisma.user.findFirst({
+        where: { mobile, tenantId }
+      });
 
       // ─── CASE A: User Already Exists → Upgrade their identity directly ───
       if (existing) {
@@ -687,25 +689,31 @@ const adminMembershipController = {
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. First, credit the full payment amount to the Admin Corporate Wallet
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.payment.amount } }
-          });
+          // 1. Credit Admin Corporate Wallet ONLY IF it wasn't a WALLET payment 
+          // (Because WALLET payments are credited to Admin immediately at application creation)
+          const isWalletPayment = application.paymentType === 'WALLET';
+          
+          if (!isWalletPayment) {
+            await prisma.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: application.payment.amount } }
+            });
 
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.payment.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Membership fee received from user ${application.userId}`,
-              tenantId
-            }
-          });
-
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
+            await prisma.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: application.payment.amount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                description: `Membership fee received from user ${application.userId} (via ${application.paymentType})`,
+                tenantId
+              }
+            });
+            console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.payment.amount}`);
+          } else {
+            console.log(`[Commission] Admin Wallet already credited via WALLET payment at application creation.`);
+          }
 
           // 2. Now distribute from Admin down to the hierarchy
           // Lookup by slug first, then fall back to name

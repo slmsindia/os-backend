@@ -16,8 +16,6 @@ router.get("/members", hierarchyController.getDescendants);
 /**
  * @route GET /api/admin/hierarchy/children
  * @desc Get direct children (Tree Navigation)
- * @query {string} parentId - (Optional) Parent user ID to explore
- * @query {string} identity - (Optional) Filter by identity (CTP, STP, etc.)
  */
 router.get("/children", hierarchyController.getDirectChildren);
 
@@ -26,5 +24,11 @@ router.get("/children", hierarchyController.getDirectChildren);
  * @desc Get wallet history for a specific descendant
  */
 router.get("/user-history/:targetUserId", hierarchyController.getUserWalletHistory);
+
+/**
+ * @route GET /api/admin/hierarchy/user-details/:targetUserId
+ * @desc Get 360-degree user info (stats, personal info, etc.)
+ */
+router.get("/user-details/:targetUserId", hierarchyController.getCompleteUserInfo);
 
 module.exports = router;

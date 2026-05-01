@@ -16,7 +16,7 @@ router.use(authMiddleware);
 // Create membership application
 router.post("/apply", membershipController.createApplication);
 
-// Verify payment
+// Verify payment 
 router.post("/verify-payment", membershipController.verifyPayment);
 
 // Get application status

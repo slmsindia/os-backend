@@ -178,7 +178,6 @@ const membershipController = {
       }
 
       // Check if this is Method 2 (Admin/Partner creating for someone else)
-      const requesterIdentity = req.user.identity;
       const isMethod2 = AUTHORIZED_CREATOR_ROLES.includes(requesterIdentity);
 
       // For Method 2, targetUserId can be from body, or looked up by mobile if provided
@@ -295,17 +294,17 @@ const membershipController = {
 
       const mappedData = mapComplexToFlat();
 
-      const isWalletPayment = (body.paymentMode === 2);
-      if (req.user.identity === 'USER' && isWalletPayment) {
-        return res.status(400).json({ success: false, message: "Basic users must use Razorpay for payment. Wallet option is not available." });
-      }
+      const requesterIdentity = req.user.identity;
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(requesterIdentity);
+      const isPartner = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'].includes(requesterIdentity);
+      const isFree = isTopAdmin;
 
       // Create or Update membership application and documents in a TRANSACTION
       const result = await prisma.$transaction(async (tx) => {
         let partnerWallet = null;
         let adminWallet = null;
 
-        if (isMethod2 && !isPaidResubmission && isWalletPayment) {
+        if (isPartner && !isPaidResubmission && body.paymentMode === 2 && !isFree) {
           partnerWallet = await walletService.resolveWallet(userId, tenantId, requesterIdentity);
           if (!partnerWallet || partnerWallet.balance < config.membershipPrice) {
             throw new Error("Insufficient partner wallet balance");
@@ -316,25 +315,18 @@ const membershipController = {
         if (isPaidResubmission) {
           app = await tx.membershipApplication.update({
             where: { id: existingApplication.id },
-            data: {
-              ...mappedData,
-              status: 'PENDING',
-              createdById: isMethod2 ? userId : null
-            }
+            data: { ...mappedData, status: 'PENDING', createdById: userId }
           });
         } else {
-          // Always create a brand new application — never delete old ones.
-          // This ensures every submission appears separately in the admin pending list.
           app = await tx.membershipApplication.create({
             data: {
               id: generateUuid(),
               userId: targetUserId,
               ...mappedData,
               status: 'PENDING',
-              createdById: isMethod2 ? userId : null,
-              paymentType: isMethod2 ? 
-                (body.paymentMode === 3 ? 'CASH' : (body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET')) : 
-                'RAZORPAY'
+              createdById: userId,
+              paymentType: isFree ? 'ADMIN_BYPASS' : (body.paymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
+              tnxStatus: isFree ? 1 : 0
             }
           });
         }
@@ -355,17 +347,16 @@ const membershipController = {
           });
         }
 
-        // Record wallet transaction history immediately for Wallet/Cash
-        if (partnerWallet && adminWallet && (isWalletPayment || body.paymentMode === 3)) {
-          const paymentMethod = body.paymentMode === 3 ? 'CASH' : 'WALLET';
+        // Record wallet transaction history for Partner
+        if (partnerWallet && adminWallet && body.paymentMode === 2 && !isFree) {
           await walletService.payCreationFeeWithHistory(
             partnerWallet.id,
             adminWallet.id,
             config.membershipPrice,
-            "Membership Application Fee",
+            `Membership Upgrade for ${mappedData.firstName} (User ID: ${targetUserId})`,
             app.id,
             tenantId,
-            paymentMethod,
+            'WALLET',
             tx
           );
         }
