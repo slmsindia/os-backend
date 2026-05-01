@@ -136,14 +136,14 @@ const businessPartnerController = {
       // Case 2: No User ID provided, creating for a NEW person (Admin/Partner led)
       else if (body.contactNumber1 && body.ownerName) {
         // Check if a user with this contact number already exists
-        targetUser = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
+        targetUser = await prisma.user.findFirst({ where: { mobile: body.contactNumber1, tenantId } });
         
         if (targetUser) {
           if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
           // Existing user → no immediate upgrade, wait for approval
         } else {
           // Double check to ensure no race condition or existing mobile
-          const mobileExists = await prisma.user.findUnique({ where: { mobile: body.contactNumber1 } });
+          const mobileExists = await prisma.user.findFirst({ where: { mobile: body.contactNumber1, tenantId } });
           if (mobileExists) {
             return res.status(409).json({ success: false, message: "User with this mobile number already exists." });
           }
@@ -191,14 +191,18 @@ const businessPartnerController = {
 
 
 
-      // 3. Check for previous paid but rejected application
+      // 3. Check for existing application to avoid duplicates
       const existingApplication = await prisma.businessPartnerApplication.findFirst({
         where: { userId: targetUserId },
         orderBy: { createdAt: 'desc' }
       });
 
-      // For BP, since payment is inside the same table/model, we check its own status or a linked payment
-      // Note: In BP model, status is 'REJECTED' and we assume if it's there it was paid or handled
+      // We update if it's REJECTED or currently PENDING
+      const shouldUpdateExisting = existingApplication && (
+        existingApplication.status === 'REJECTED' || 
+        existingApplication.status === 'PENDING'
+      );
+
       const isPaidResubmission = existingApplication && existingApplication.status === 'REJECTED';
 
       const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
@@ -265,10 +269,14 @@ const businessPartnerController = {
         }
 
         let appResult;
-        if (isPaidResubmission) {
+        if (shouldUpdateExisting) {
           appResult = await tx.businessPartnerApplication.update({
             where: { id: existingApplication.id },
-            data: { ...appData, rejectionReason: null }
+            data: { 
+              ...appData, 
+              rejectionReason: null,
+              razorPayReferenceNo: razorpayOrder ? razorpayOrder.id : (appData.razorPayReferenceNo || null)
+            }
           });
         } else {
           appResult = await tx.businessPartnerApplication.create({

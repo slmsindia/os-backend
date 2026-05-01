@@ -69,17 +69,85 @@ const superAdminController = {
     }
   },
 
-  /**
-   * Get all tenants
-   */
   getAllTenants: async (req, res) => {
     try {
-      const tenants = await prisma.tenant.findMany({
-        include: {
-          _count: { select: { users: true } }
+      const [tenants, userStats] = await Promise.all([
+        prisma.tenant.findMany({
+          include: {
+            _count: { select: { users: true } },
+            users: {
+              where: { identity: 'WHITE_LABEL_ADMIN' },
+              select: { id: true, fullName: true },
+              take: 1
+            }
+          }
+        }),
+        prisma.user.groupBy({
+          by: ['tenantId', 'identity'],
+          _count: { _all: true }
+        })
+      ]);
+      
+      const formattedTenants = tenants.map(t => {
+        // Build identity distribution for this specific tenant
+        const stats = userStats
+          .filter(s => s.tenantId === t.id)
+          .reduce((acc, s) => {
+            acc[s.identity] = s._count._all;
+            return acc;
+          }, {});
+
+        return {
+          ...t,
+          adminId: t.users[0]?.id || null,
+          adminName: t.users[0]?.fullName || "N/A",
+          identityStats: stats,
+          users: undefined 
+        };
+      });
+
+      res.json({ success: true, data: formattedTenants });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  /**
+   * Get main identities (Country Heads) of a tenant for hierarchy transfer
+   */
+  getTenantRoots: async (req, res) => {
+    const { tenantId } = req.params;
+    try {
+      // 1. Find the White Label Admin for this tenant
+      const admin = await prisma.user.findFirst({
+        where: { tenantId, identity: 'WHITE_LABEL_ADMIN' }
+      });
+
+      if (!admin) {
+        return res.json({ success: true, data: [], message: "No White Label Admin found for this tenant." });
+      }
+
+      // 2. Find all "Root" users of the operational hierarchy
+      // We look for users who are NOT the admin AND (have no parent OR report to the admin)
+      const roots = await prisma.user.findMany({
+        where: { 
+          tenantId, 
+          id: { not: admin.id },
+          OR: [
+            { parentId: null },
+            { parentId: admin.id }
+          ]
+        },
+        select: { 
+          id: true, 
+          fullName: true, 
+          mobile: true, 
+          identity: true,
+          email: true
         }
       });
-      res.json({ success: true, data: tenants });
+
+      res.json({ success: true, data: roots, adminId: admin.id });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -124,8 +192,16 @@ const superAdminController = {
           if (u.id === targetUserId) {
             newPath = newRootPrefix;
           } else {
-            const relativePath = u.path.substring(u.path.indexOf(targetUserId));
-            newPath = `${newRootPrefix}/${relativePath}`.replace(/\/\//g, '/');
+            const currentPath = u.path || "";
+            const targetIndex = currentPath.indexOf(targetUserId);
+            
+            if (targetIndex !== -1) {
+              const relativePath = currentPath.substring(targetIndex);
+              newPath = `${newRootPrefix}/${relativePath}`.replace(/\/\//g, '/');
+            } else {
+              // Fallback: If path is broken, just put them directly under the target user
+              newPath = `${newRootPrefix}/${targetUserId}/${u.id}`.replace(/\/\//g, '/');
+            }
           }
 
           await tx.user.update({
@@ -138,11 +214,8 @@ const superAdminController = {
           });
         }
 
-        // Update Wallets, Apps, etc.
+        // Update Wallets, Transactions, etc.
         await tx.wallet.updateMany({ where: { userId: { in: allIds } }, data: { tenantId: newTenantId } });
-        await tx.membershipApplication.updateMany({ where: { userId: { in: allIds } }, data: { tenantId: newTenantId } });
-        await tx.saathiApplication.updateMany({ where: { userId: { in: allIds } }, data: { tenantId: newTenantId } });
-        await tx.businessPartnerApplication.updateMany({ where: { userId: { in: allIds } }, data: { tenantId: newTenantId } });
         await tx.walletTransaction.updateMany({
            where: { wallet: { userId: { in: allIds } } },
            data: { tenantId: newTenantId }
