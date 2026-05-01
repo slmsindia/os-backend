@@ -393,6 +393,12 @@ const sendCustomerOtp = async (req, res) => {
       });
     }
 
+    // Save OTP log if successful
+    if (finalMeta?.code === '0') {
+      const otpToken = imeStorageService.extractImeResponse(finalResult).otpToken;
+      await imeStorageService.saveOtpLog(referenceValue, moduleUsed, referenceValue, otpToken, finalResult);
+    }
+
     return ok(res, 'Customer OTP sent successfully', {
       ...finalResult,
       moduleUsed,
@@ -419,6 +425,15 @@ const confirmCustomer = async (req, res) => {
         imeCode: imeMeta.code,
         ...result
       });
+    }
+
+    // Update OTP verification status in database
+    if (imeMeta.code === '0') {
+      // If we have a mobile number in the request, update it
+      const mobile = req.body.MobileNo || req.body.mobile;
+      if (mobile) {
+        await imeStorageService.updateOtpVerification(mobile, req.body.OTP, true);
+      }
     }
 
     return ok(res, 'Customer confirmed successfully', result);

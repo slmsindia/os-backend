@@ -1403,107 +1403,145 @@ const paths = {
 
 
   // IME endpoints as per ime.routes.js and IME.md
-  "/api/ime/GetStaticData": {
+  // IME Modern Customers Endpoints
+  "/api/ime/customers": {
     post: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Register Customer (Modern)",
+      description: "Registers a new customer in IME system and saves to local database.",
+      requestBody: imeCreateCustomerBody,
+      responses: {
+        200: { description: "Customer registration successful" },
+        400: { description: "Validation error" }
+      }
+    },
+    get: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Get Stored Customers",
+      parameters: [
+        { name: "mobile", in: "query", schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Success" } }
+    }
+  },
+  "/api/ime/customers/send-otp": {
+    post: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Send OTP to Customer",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["ReferenceValue"],
+              properties: {
+                ReferenceValue: { type: "string", example: "9812345678" },
+                Module: { type: "string", example: "CR" }
+              }
+            }
+          }
+        }
+      },
+      responses: { 200: { description: "OTP sent" } }
+    }
+  },
+  "/api/ime/customers/confirm": {
+    post: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Confirm Customer Registration",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["CustomerToken", "OTPToken", "OTP"],
+              properties: {
+                CustomerToken: { type: "string" },
+                OTPToken: { type: "string" },
+                OTP: { type: "string", example: "123456" }
+              }
+            }
+          }
+        }
+      },
+      responses: { 200: { description: "Customer confirmed" } }
+    }
+  },
+  "/api/ime/customers/validate": {
+    post: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Validate Customer",
+      requestBody: imeValidateCustomerBody,
+      responses: { 200: { description: "Success" } }
+    }
+  },
+  "/api/ime/transactions/send": {
+    post: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Send Money",
+      requestBody: imeSendMoneyBody,
+      responses: { 200: { description: "Success" } }
+    }
+  },
+  "/api/ime/static-data": {
+    get: {
       tags: ["IME 1: Static Data"],
-      summary: "Get IME Static Data",
-      description: "Fetch static data from IME (banks, branches, etc.)",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["TypeCode"],
-              properties: {
-                TypeCode: { type: "string", example: "WSST-BKLV1" },
-                ReferenceValue: { type: "string", example: "104" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "Static data fetched" }, 400: { description: "Invalid request" } }
+      summary: "Get Static Data",
+      description: "Fetch static lists from IME and save to database. Use 'type' for data type (e.g., WSST-BKLV1 for Banks, WSST-IDTV1 for ID Types).",
+      parameters: [
+        { name: "type", in: "query", required: true, schema: { type: "string" }, description: "Type Code (e.g., WSST-BKLV1, WSST-IDTV1, WSST-GDRV1)" },
+        { name: "reference", in: "query", schema: { type: "string" }, description: "Optional reference value (e.g., State ID for Districts)" }
+      ],
+      responses: { 200: { description: "Success" } }
     }
   },
-  "/api/ime/CSPRegistration": {
-    post: {
-      tags: ["IME 2: CSP Module"],
-      summary: "Register CSP (Customer Service Point)",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["PartnerCSPCode", "CSPName", "RegistrationType", "RegistrationNumber", "BusinessType", "ContractExpiryDate", "ContractRenewalDate", "PANNumber"],
-              properties: {
-                PartnerCSPCode: { type: "string", example: "CSP001" },
-                CSPName: { type: "string", example: "My CSP Center" },
-                RegistrationType: { type: "string", example: "4501" },
-                RegistrationNumber: { type: "string", example: "REG12345" },
-                BusinessType: { type: "string", example: "6200" },
-                ContractExpiryDate: { type: "string", example: "2025/12/31" },
-                ContractRenewalDate: { type: "string", example: "2026/01/01" },
-                PANNumber: { type: "string", example: "123456789" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "CSP registered" }, 400: { description: "Invalid input" } }
+  "/api/ime/banks": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Bank List",
+      parameters: [
+        { name: "country", in: "query", schema: { type: "string", default: "NP" } }
+      ],
+      responses: { 200: { description: "Success" } }
     }
   },
-  "/api/ime/CSPDocumentUpload": {
-    post: {
-      tags: ["IME 2: CSP Module"],
-      summary: "Upload CSP Document",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["DocumentType", "ReferenceId", "DocumentData", "DocumentFormat"],
-              properties: {
-                DocumentType: { type: "string", example: "17001" },
-                ReferenceId: { type: "string", example: "CSP001" },
-                DocumentData: { type: "string", example: "base64string..." },
-                DocumentFormat: { type: "string", example: "pdf" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "Document uploaded" }, 400: { description: "Invalid input" } }
+  "/api/ime/bank-branches": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Bank Branches",
+      parameters: [
+        { name: "country", in: "query", schema: { type: "string", default: "NP" } },
+        { name: "bank", in: "query", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Success" } }
     }
   },
-  "/api/ime/CSPCheck": {
-    post: {
-      tags: ["IME 2: CSP Module"],
-      summary: "Check CSP Registration Status",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["PartnerCSPCode"],
-              properties: {
-                PartnerCSPCode: { type: "string", example: "CSP001" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "CSP status fetched" }, 400: { description: "Invalid input" } }
+  "/api/ime/customers/search/mobile/{mobile}": {
+    get: {
+      tags: ["IME 3: Customer Module"],
+      summary: "Search Customer by Mobile",
+      parameters: [
+        { name: "mobile", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Success" } }
+    }
+  },
+  "/api/ime/transactions/{transactionId}/status": {
+    get: {
+      tags: ["IME 4: Transaction Flow"],
+      summary: "Get Transaction Status",
+      parameters: [
+        { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Success" } }
     }
   },
   "/api/ime/calculation": {
     post: {
       tags: ["IME 4: Transaction Flow"],
-      summary: "Get Exchange Rate Calculation",
-      description: "Calculate exchange rate and service charges. Returns ForexSessionId required for SendTransaction. Minimum amount is 700 INR.",
+      summary: "Get Calculation",
       requestBody: {
         required: true,
         content: {
@@ -1512,297 +1550,16 @@ const paths = {
               type: "object",
               required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
               properties: {
-                PayoutAgentId: { 
-                  type: "string", 
-                  description: "Bank ID from GetStaticData - Mandatory if PaymentType=B",
-                  example: "1001"
-                },
-                RemitAmount: { 
-                  type: "string", 
-                  example: "10000", 
-                  description: "Amount in INR (minimum 700 INR)",
-                  minimum: 700
-                },
-                PaymentType: { 
-                  type: "string", 
-                  example: "C", 
-                  description: "Payment type in Nepal",
-                  enum: ["C", "B"]
-                },
-                PayoutCountry: { 
-                  type: "string", 
-                  example: "NPL",
-                  description: "Always NPL for Nepal",
-                  enum: ["NPL"]
-                },
-                CalcBy: { 
-                  type: "string", 
-                  example: "C", 
-                  description: "Calculation method",
-                  enum: ["C", "P"]
-                }
-              }
-            },
-            example: {
-              "RemitAmount": "10000",
-              "PaymentType": "C",
-              "PayoutCountry": "NPL",
-              "CalcBy": "C"
-            }
-          }
-        }
-      },
-      responses: {
-        200: {
-          description: "Calculation result with ForexSessionId",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  success: { type: "boolean" },
-                  message: { type: "string" },
-                  data: { type: "object" }
-                }
-              }
-            }
-          }
-        },
-        400: { description: "Invalid request - Check parameters" },
-        500: { description: "Server error" }
-      }
-    }
-  },
-
-  "/api/ime/send-otp": {
-    post: {
-      tags: ["IME 4: Transaction Flow"],
-      summary: "Send OTP",
-      description: "Send OTP for customer registration, transaction confirmation, etc.",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["Module", "ReferenceValue"],
-              properties: {
-                Module: { 
-                  type: "string", 
-                  example: "CR",
-                  description: "Module: CR=Customer Registration, ST=Send Transaction, MT=Mobile Amendment, CT=Cancel Transaction",
-                  enum: ["CR", "ST", "MT", "CT"]
-                },
-                ReferenceValue: { 
-                  type: "string", 
-                  example: "9841234567",
-                  description: "Mobile number or transaction ID depending on module"
-                }
-              }
-            },
-            example: {
-              "Module": "CR",
-              "ReferenceValue": "9841234567"
-            }
-          }
-        }
-      },
-      responses: {
-        200: { description: "OTP sent successfully" },
-        400: { description: "Invalid request" }
-      }
-    }
-  },
-
-  // ==================== IME PHASE 2 eKYC ENDPOINTS ====================
-  "/api/ime/ekyc/generate-ott": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Generate OTT (One-Time Token) for Aadhar Validation",
-      description: "Generates OTT and returns URL for Aadhar number entry. For customers (203), OTP and OTPToken are required.",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["EntityType", "EntityId", "Owner"],
-              properties: {
-                EntityType: { type: "string", example: "203", description: "201=CSP, 203=Customer" },
-                EntityId: { type: "string", example: "9812345678", description: "PartnerBranchId for CSP, MobileNo for Customer" },
-                Owner: { type: "string", example: "Owner Name" },
-                OTPToken: { type: "string", example: "OTP_TOKEN_123", description: "Required only for Customer (203)" },
-                OTP: { type: "string", example: "1234", description: "Required only for Customer (203)" }
+                RemitAmount: { type: "string", example: "10000" },
+                PaymentType: { type: "string", example: "C" },
+                PayoutCountry: { type: "string", example: "NPL" },
+                CalcBy: { type: "string", example: "C" }
               }
             }
           }
         }
       },
-      responses: {
-        200: {
-          description: "OTT generated successfully",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  success: { type: "boolean" },
-                  message: { type: "string" },
-                  url: { type: "string", description: "URL to open for Aadhar validation" }
-                }
-              }
-            }
-          }
-        },
-        400: { description: "Missing required fields" }
-      }
-    }
-  },
-
-  "/api/ime/ekyc/get-unique-id": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Get Unique Identifier After Aadhar Validation",
-      description: "Called after user opens OTT URL and completes Aadhar number entry",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["EntityType", "EntityId"],
-              properties: {
-                EntityType: { type: "string", example: "203" },
-                EntityId: { type: "string", example: "9812345678" }
-              }
-            }
-          }
-        }
-      },
-      responses: {
-        200: { description: "Unique ID retrieved" },
-        400: { description: "Invalid request" }
-      }
-    }
-  },
-
-  "/api/ime/ekyc/bio-kyc": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Submit Biometric Fingerprint Data for KYC",
-      description: "Submits biometric fingerprint data captured from biometric device",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["EntityType", "EntityId", "Pid"],
-              properties: {
-                EntityType: { type: "string", example: "203" },
-                EntityId: { type: "string", example: "9812345678" },
-                Pid: { type: "string", description: "Base64 encoded PID XML from biometric device" }
-              }
-            }
-          }
-        }
-      },
-      responses: {
-        200: { description: "Bio KYC completed" },
-        400: { description: "Invalid biometric data" }
-      }
-    }
-  },
-
-  "/api/ime/ekyc/customer-onboarding": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Complete Customer Registration After eKYC",
-      description: "Final step after biometric KYC to complete customer registration",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["MobileNo"],
-              properties: {
-                MobileNo: { type: "string", example: "9812345678" }
-              }
-            }
-          }
-        }
-      },
-      responses: {
-        200: { description: "Customer onboarding completed" },
-        400: { description: "Invalid request" }
-      }
-    }
-  },
-
-  "/api/ime/ekyc/customer-requery": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Get Full Customer Details from IME",
-      description: "Retrieves comprehensive customer information from IME system",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["MobileNo"],
-              properties: {
-                MobileNo: { type: "string", example: "9812345678" }
-              }
-            }
-          }
-        }
-      },
-      responses: {
-        200: { description: "Customer details retrieved" },
-        404: { description: "Customer not found" }
-      }
-    }
-  },
-
-  "/api/ime/ekyc/check-entity-status": {
-    post: {
-      tags: ["IME 6: Phase 2 eKYC"],
-      summary: "Check Entity Onboarding Status",
-      description: "Check the current stage in the onboarding process for CSP or Customer",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["EntityType", "EntityId"],
-              properties: {
-                EntityType: { type: "string", example: "203" },
-                EntityId: { type: "string", example: "9812345678" }
-              }
-            }
-          }
-        }
-      },
-      responses: {
-        200: {
-          description: "Entity status retrieved",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  success: { type: "boolean" },
-                  status: { type: "string" },
-                  isEligibleForTxn: { type: "string", example: "Y" }
-                }
-              }
-            }
-          }
-        }
-      }
+      responses: { 200: { description: "Success" } }
     }
   },
 

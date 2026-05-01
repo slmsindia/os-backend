@@ -17,7 +17,6 @@ router.get('/customers/search/mobile/:mobile', imeController.searchCustomerByMob
 router.get('/customers/requery', imeController.customerRequery);
 router.get('/customers/:customerId', imeController.getCustomer);
 router.post('/customers/validate', imeController.validateCustomer);
-router.post('/customers/confirm-registration', imeController.confirmCustomerRegistration);
 
 // IME Modern Transactions Endpoints
 router.post('/transactions/send', imeController.sendMoney);
