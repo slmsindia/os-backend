@@ -702,7 +702,8 @@ const createReceiver = async (req, res) => {
       where: {
         customerId: finalCustomerId,
         mobileNumber: ReceiverMobileNo
-      }
+      },
+      select: { id: true, mobileNumber: true, fullName: true }
     });
 
     if (existingReceiver) {
@@ -714,7 +715,7 @@ const createReceiver = async (req, res) => {
       });
     }
 
-    // Save receiver to database
+    // Build receiverData — only confirmed columns (purposeOfRemittance, city, countryCode not yet in DB)
     const receiverData = {
       customerId: finalCustomerId,
       fullName: ReceiverName,
@@ -723,13 +724,10 @@ const createReceiver = async (req, res) => {
       mobileNumber: ReceiverMobileNo,
       gender: ReceiverGender,
       address: ReceiverAddress,
-      city: ReceiverCity,
-      countryCode: ReceiverCountry || 'NP',
       state: ReceiverState,
       district: ReceiverDistrict,
       municipality: ReceiverMunicipality,
       relationship: Relationship,
-      purposeOfRemittance: PurposeOfRemittance,
       paymentMode: PaymentType === 'B' ? 'BANK' : 'CASH',
       bankCode: BankId,
       bankBranchId: BankBranchId,
@@ -762,9 +760,20 @@ const getReceiver = async (req, res) => {
     }
 
     // 1. Check if the ID matches a CustomerId (Sender). If so, return ALL their receivers.
+    const receiverSelect = {
+      id: true, receiverId: true, customerId: true,
+      firstName: true, middleName: true, lastName: true, fullName: true,
+      mobileNumber: true, gender: true, relationship: true,
+      paymentMode: true, bankCode: true, bankBranchId: true, accountNumber: true,
+      address: true, state: true, district: true, municipality: true,
+      isActive: true, imeResponseCode: true, imeResponseMessage: true,
+      agentSessionId: true, createdAt: true, updatedAt: true
+    };
+
     const senderReceivers = await prisma.imeReceiver.findMany({
       where: { customerId: receiverId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      select: receiverSelect
     });
 
     if (senderReceivers && senderReceivers.length > 0) {
@@ -779,7 +788,8 @@ const getReceiver = async (req, res) => {
           { receiverId: receiverId },
           { mobileNumber: receiverId }
         ]
-      }
+      },
+      select: receiverSelect
     });
 
     if (dbReceiver) {
@@ -1320,54 +1330,53 @@ const confirmSendTransactionLegacy = async (req, res) => {
     const result = await imeService.callIMEMethod('ConfirmSendTransaction', params);
     const imeMeta = getImeResponseMeta(result);
 
-    // Update transaction status in database if successful
-    if (imeMeta.code === '0') {
-      const payload = getImePayload(result);
-      const response = payload.Response || {};
-      const icn = response.RefNo || response.ICN || ''; // In Confirm, RefNo is often the ICN
-      
-      await prisma.imeTransaction.updateMany({
-        where: {
-          OR: [
-            { agentTxnRefId: params.RefNo }, // During SendTransaction, we might have saved it with this
-            { transactionId: params.RefNo }
-          ]
-        },
-        data: {
-          status: 'Success',
-          icn: icn,
-          completedAt: new Date(),
-          updatedAt: new Date()
-        }
-      });
+    // After confirm, call TransactionInquiry and update DB
+    if (params.RefNo) {
+      try {
+        const inquiryResult = await imeService.callIMEMethod('TransactionInquiry', {
+          RefNoType: '1',
+          RefNo: String(params.RefNo)
+        });
+        const inquiryPayload = getImePayload(inquiryResult);
+        const txDetails = inquiryPayload?.TransactionDetails || inquiryPayload || {};
+
+        const newStatus = imeMeta.code === '0' ? 'Confirmed'
+          : imeMeta.code === '108' ? 'Compliance'
+          : 'Pending';
+
+        await prisma.imeTransaction.updateMany({
+          where: {
+            OR: [
+              { transactionId: String(params.RefNo) },
+              { agentTxnRefId: String(params.RefNo) }
+            ]
+          },
+          data: {
+            status: newStatus,
+            responseCode: imeMeta.code,
+            responseMessage: imeMeta.message,
+            exchangeRate: txDetails?.ExchangeRate ? parseFloat(txDetails.ExchangeRate) : undefined,
+            serviceCharge: txDetails?.ServiceCharge ? parseFloat(txDetails.ServiceCharge) : undefined,
+            completedAt: imeMeta.code === '0' ? new Date() : undefined,
+          }
+        });
+        console.log(`[IME] ConfirmSendTransaction RefNo=${params.RefNo}: Code=${imeMeta.code}, Status=${newStatus}`);
+      } catch (e) {
+        console.error('[IME] Post-confirm TransactionInquiry failed:', e.message);
+      }
     }
 
-    // Log API response
     await logAndSaveImeResponse(
-      'ConfirmSendTransaction',
-      '/api/ime/ConfirmSendTransaction',
-      'POST',
-      params,
-      result,
-      true,
-      Date.now() - startTime,
-      req
+      'ConfirmSendTransaction', '/api/ime/ConfirmSendTransaction', 'POST',
+      params, result, true, Date.now() - startTime, req
     );
     
     return ok(res, 'Send transaction confirmed', result);
   } catch (error) {
-    // Log error
     await logAndSaveImeResponse(
-      'ConfirmSendTransaction',
-      '/api/ime/ConfirmSendTransaction',
-      'POST',
-      req.body,
-      { error: error.message },
-      false,
-      Date.now() - startTime,
-      req
+      'ConfirmSendTransaction', '/api/ime/ConfirmSendTransaction', 'POST',
+      req.body, { error: error.message }, false, Date.now() - startTime, req
     );
-    
     return fail(res, error);
   }
 };
@@ -1568,6 +1577,10 @@ const sendTransactionLegacy = async (req, res) => {
         params.ReceiverAddress = params.ReceiverAddress || dbReceiver.address || 'Nepal';
         params.ReceiverGender = params.ReceiverGender || dbReceiver.gender;
         params.ReceiverCountry = params.ReceiverCountry || dbReceiver.countryCode || 'NPL';
+        // Normalize country code: IME requires 3-letter NPL, not NP
+        if (['NP', 'NEPAL', 'Nepal'].includes(params.ReceiverCountry)) {
+          params.ReceiverCountry = 'NPL';
+        }
         params.ReceiverState = params.ReceiverState || dbReceiver.state;
         params.ReceiverDistrict = params.ReceiverDistrict || dbReceiver.district;
         params.ReceiverMunicipality = params.ReceiverMunicipality || dbReceiver.municipality;
@@ -1584,32 +1597,73 @@ const sendTransactionLegacy = async (req, res) => {
     
     // Save transaction data to database if successful (Code 0)
     if (imeMeta.code === '0') {
-      const transactionData = {
-        agentTxnRefId: params.AgentTxnRefId,
-        forexSessionId: params.ForexSessionId,
-        senderName: params.SenderName,
-        senderMobile: params.SenderMobileNo,
-        receiverName: params.ReceiverName,
-        receiverMobile: params.ReceiverMobileNo,
-        receiverAddress: params.ReceiverAddress,
-        receiverGender: params.ReceiverGender,
-        receiverCountry: params.ReceiverCountry || 'NPL',
-        receiverState: params.ReceiverState,
-        receiverDistrict: params.ReceiverDistrict,
-        receiverMunicipality: params.ReceiverMunicipality,
-        collectAmount: params.CollectAmount,
-        payoutAmount: params.PayoutAmount,
-        sourceOfFund: params.SourceOfFund,
-        relationship: params.Relationship,
-        purposeOfRemittance: params.PurposeOfRemittance,
-        paymentMode: params.PaymentType,
-        bankCode: params.BankId,
-        bankBranchId: params.BankBranchId,
-        bankAccountNumber: params.BankAccountNumber,
-        calcBy: params.CalcBy
-      };
+      const imePayload = getImePayload(result);
+      const sendTxResp = imePayload?.SendTransactionResponse || imePayload;
+      const refNo = sendTxResp?.RefNo;
 
-      await imeStorageService.saveTransaction(transactionData, result);
+      try {
+        await prisma.imeTransaction.create({
+          data: {
+            transactionId: refNo ? String(refNo) : null,
+            agentTxnRefId: params.AgentTxnRefId || null,
+            forexSessionId: params.ForexSessionId || null,
+            senderName: params.SenderName || 'Unknown',
+            senderMobile: params.SenderMobileNo || '',
+            receiverName: params.ReceiverName || 'Unknown',
+            receiverMobile: params.ReceiverMobileNo || '',
+            receiverAddress: params.ReceiverAddress || null,
+            receiverGender: params.ReceiverGender || null,
+            receiverCountry: params.ReceiverCountry || 'NPL',
+            receiverState: params.ReceiverState || null,
+            receiverDistrict: params.ReceiverDistrict || null,
+            receiverMunicipality: params.ReceiverMunicipality || null,
+            collectAmount: params.CollectAmount ? parseFloat(params.CollectAmount) : null,
+            payoutAmount: params.PayoutAmount ? parseFloat(params.PayoutAmount) : null,
+            sourceOfFund: params.SourceOfFund || null,
+            relationship: params.Relationship || null,
+            purposeOfRemittance: params.PurposeOfRemittance || null,
+            paymentMode: params.PaymentType || 'C',
+            bankCode: params.BankId || null,
+            bankBranchId: params.BankBranchId || null,
+            bankAccountNumber: params.BankAccountNumber || null,
+            status: 'Pending',
+            responseCode: imeMeta.code,
+            responseMessage: imeMeta.message,
+            exchangeRate: sendTxResp?.ExchangeRate ? parseFloat(sendTxResp.ExchangeRate) : null,
+            serviceCharge: sendTxResp?.ServiceCharge ? parseFloat(sendTxResp.ServiceCharge) : null,
+          }
+        });
+        console.log(`[IME] Transaction saved to DB: RefNo=${refNo}`);
+      } catch (saveErr) {
+        console.error('[IME] Failed to save transaction to DB:', saveErr.message);
+      }
+
+      // Auto TransactionInquiry to get latest status
+      if (refNo) {
+        try {
+          const inquiryResult = await imeService.callIMEMethod('TransactionInquiry', {
+            RefNoType: '1',
+            RefNo: String(refNo)
+          });
+          const inquiryPayload = getImePayload(inquiryResult);
+          const txDetails = inquiryPayload?.TransactionDetails || inquiryPayload || {};
+          const inquiryCode = inquiryPayload?.Response?.Code;
+
+          await prisma.imeTransaction.updateMany({
+            where: { agentTxnRefId: params.AgentTxnRefId },
+            data: {
+              status: inquiryCode === '0' ? 'Confirmed' : 'Pending',
+              responseCode: inquiryCode || imeMeta.code,
+              responseMessage: txDetails?.Status || inquiryPayload?.Response?.Message || imeMeta.message,
+              exchangeRate: txDetails?.ExchangeRate ? parseFloat(txDetails.ExchangeRate) : null,
+              serviceCharge: txDetails?.ServiceCharge ? parseFloat(txDetails.ServiceCharge) : null,
+            }
+          });
+          console.log(`[IME] TransactionInquiry for RefNo ${refNo}: Code=${inquiryCode}`);
+        } catch (e) {
+          console.error('[IME] Auto TransactionInquiry failed:', e.message);
+        }
+      }
     }
 
     // Log API response
@@ -1626,7 +1680,6 @@ const sendTransactionLegacy = async (req, res) => {
     
     return ok(res, 'Transaction send request submitted', result);
   } catch (error) {
-    // Log error
     await logAndSaveImeResponse(
       'SendTransaction',
       '/api/ime/SendTransaction',
@@ -1637,10 +1690,11 @@ const sendTransactionLegacy = async (req, res) => {
       Date.now() - startTime,
       req
     );
-    
     return fail(res, error);
   }
 };
+
+
 const transactionInquiryLegacy = proxyImeMethod('TransactionInquiry', 'Transaction inquiry fetched');
 const transactionInquiryDefaultLegacy = proxyImeMethod('TransactionInquiryDefault', 'Transaction inquiry default fetched');
 const bankListLegacy = async (req, res) => {
@@ -1668,9 +1722,50 @@ const getStoredTransactions = async (req, res) => {
   try {
     const transactions = await prisma.imeTransaction.findMany({
       orderBy: { createdAt: 'desc' },
-      take: req.query.limit ? parseInt(req.query.limit) : 50
+      take: req.query.limit ? parseInt(req.query.limit) : 50,
+      select: {
+        id: true,
+        transactionId: true,
+        agentTxnRefId: true,
+        icn: true,
+        forexSessionId: true,
+        senderCustomerId: true,
+        senderName: true,
+        senderMobile: true,
+        receiverCustomerId: true,
+        receiverId: true,
+        receiverName: true,
+        receiverMobile: true,
+        receiverAddress: true,
+        receiverGender: true,
+        receiverCountry: true,
+        receiverState: true,
+        receiverDistrict: true,
+        receiverMunicipality: true,
+        collectAmount: true,
+        payoutAmount: true,
+        sendAmount: true,
+        serviceCharge: true,
+        exchangeRate: true,
+        sourceCurrency: true,
+        destinationCurrency: true,
+        paymentMode: true,
+        purposeOfRemittance: true,
+        sourceOfFund: true,
+        relationship: true,
+        bankCode: true,
+        bankBranchId: true,
+        bankAccountNumber: true,
+        status: true,
+        responseCode: true,
+        responseMessage: true,
+        otpProcessId: true,
+        agentSessionId: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
-    return ok(res, 'Stored transactions retrieved', transactions);
+    return ok(res, 'Stored transactions retrieved', { data: transactions });
   } catch (error) {
     return fail(res, error);
   }

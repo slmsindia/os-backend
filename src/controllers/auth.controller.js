@@ -289,6 +289,26 @@ const authController = {
         return res.status(401).json({ message: "invalid mobile or pass" });
       }
 
+      // Track Login Location
+      try {
+        const { getLocationData } = require("../utils/location");
+        const loc = getLocationData(req);
+        await prisma.userLoginLog.create({
+          data: {
+            userId: user.id,
+            ip: loc.ip,
+            state: loc.state,
+            city: loc.city,
+            pincode: loc.pincode,
+            lat: loc.lat,
+            long: loc.long,
+            deviceInfo: loc.deviceInfo
+          }
+        });
+      } catch (logErr) {
+        console.error("Login location tracking failed:", logErr);
+      }
+
       if (user.approvalStatus === "DEACTIVATED") {
         return res.status(403).json({ 
           success: false, 

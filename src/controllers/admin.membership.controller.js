@@ -219,6 +219,10 @@ const adminMembershipController = {
         }
       }
 
+      // Extract Location Data for Registration
+      const { getLocationData } = require("../utils/location");
+      const loc = getLocationData(req);
+
       const userData = {
         id: generateUuid(),
         mobile,
@@ -229,7 +233,13 @@ const adminMembershipController = {
         identity: targetIdentity,
         userType: targetIdentity,
         tenantId,
-        parentId: creatorId
+        parentId: creatorId,
+        // Add Location Fields
+        registrationState: loc.state,
+        registrationCity: loc.city,
+        registrationPincode: loc.pincode,
+        registrationLat: loc.lat,
+        registrationLong: loc.long
       };
 
       // Only add path if the model supports it

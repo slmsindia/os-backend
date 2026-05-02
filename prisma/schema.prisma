@@ -117,6 +117,13 @@ model User {
   oldParentTransfers  HierarchyTransferRequest[] @relation("OldParentTransfers")
   newParentTransfers  HierarchyTransferRequest[] @relation("NewParentTransfers")
 
+  // Support System Relations
+  createdTickets    SupportTicket[]  @relation("CreatedTickets")
+  assignedTickets   SupportTicket[]  @relation("AssignedTickets")
+  sentSupportMessages SupportMessage[] @relation("SentSupportMessages")
+  createdMarketing    MarketingContent[] @relation("CreatedMarketing")
+  loginLogs           UserLoginLog[]
+
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
@@ -125,6 +132,14 @@ model User {
   @@index([canApproveSaathi])
   @@index([commissionSchemeId])
   @@index([mobile])
+  
+  // Registration Location Data
+  registrationState   String?
+  registrationCity    String?
+  registrationPincode String?
+  registrationLat     Float?
+  registrationLong    Float?
+
   @@unique([mobile, tenantId])
 }
 
@@ -1520,7 +1535,132 @@ model WalletTransaction {
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
   createdAt   DateTime @default(now())
 
+  // Transaction Location Data
+  txnState    String?
+  txnCity     String?
+  txnPincode  String?
+  txnLat      Float?
+  txnLong     Float?
+
   @@index([walletId])
   @@index([category])
   @@index([tenantId])
+}
+
+model SupportTicket {
+  id           String           @id @default(uuid())
+  ticketNumber String           @unique // e.g., TKT-1001
+  subject      String
+  description  String?
+  status       TicketStatus     @default(OPEN)
+  priority     TicketPriority   @default(MEDIUM)
+  
+  creatorId    String
+  creator      User             @relation("CreatedTickets", fields: [creatorId], references: [id])
+  
+  assignedToId String
+  assignedTo   User             @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  
+  tenantId     String
+  
+  messages     SupportMessage[]
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  closedAt     DateTime?
+
+  @@index([creatorId])
+  @@index([assignedToId])
+  @@index([tenantId])
+}
+
+model SupportMessage {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  
+  senderId  String
+  sender    User     @relation("SentSupportMessages", fields: [senderId], references: [id])
+  
+  message   String   @db.Text
+  fileUrl   String?
+  
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
+enum TicketStatus {
+  OPEN
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model MarketingContent {
+  id            String         @id @default(uuid())
+  type          MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER
+  title         String
+  content       String?        @db.Text
+  imageUrl      String?
+  linkUrl       String?
+  
+  // Targeting
+  targetType    TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC
+  targetIdentity Identity?     // If targetType is IDENTITY
+  targetUserId  String?        // If targetType is BRANCH or SPECIFIC
+  
+  isActive      Boolean        @default(true)
+  isGlobalDeactivated Boolean  @default(false) // Master switch for Super Admin
+  
+  creatorId     String
+  creator       User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  
+  tenantId      String
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([type])
+}
+
+enum MarketingType {
+  BANNER
+  NOTIFICATION
+  NOTICE
+  HOVER
+}
+
+enum TargetType {
+  ALL
+  IDENTITY
+  BRANCH
+  SPECIFIC
+}
+
+model UserLoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  ip        String?
+  state     String?
+  city      String?
+  pincode   String?
+  lat       Float?
+  long      Float?
+  
+  deviceInfo String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([pincode])
+  @@index([createdAt])
 }

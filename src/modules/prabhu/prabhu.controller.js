@@ -656,8 +656,11 @@ module.exports = {
         });
       }
 
+      const { getLocationData } = require("../../utils/location");
+      const loc = getLocationData(req);
+
       await walletService.ensureSufficientBalance(appUserId, transferAmount, tenantId, identity);
-      deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount, tenantId, identity);
+      deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount, tenantId, identity, null, "Prabhu Remittance", null, loc);
 
       const payload = {
         ...req.body,
@@ -758,7 +761,15 @@ module.exports = {
 };
 
 const getTransferAmount = (payload = {}) => {
-  const candidates = [payload.transferAmount, payload.collectedAmount, payload.sendAmount];
+  // collectionAmount includes transferAmount + serviceCharge
+  // We prioritize this to ensure the full amount is deducted from the wallet.
+  const candidates = [
+    payload.collectionAmount, 
+    payload.collectedAmount, 
+    payload.totalAmount,
+    payload.transferAmount, 
+    payload.sendAmount
+  ];
 
   for (const value of candidates) {
     const parsed = Number.parseFloat(value);
