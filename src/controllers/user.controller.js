@@ -157,7 +157,12 @@ const userController = {
         userType: user.userType,
         role: user.role?.name,
         approvalStatus: user.approvalStatus,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        registrationState: user.registrationState,
+        registrationCity: user.registrationCity,
+        registrationPincode: user.registrationPincode,
+        registrationLat: user.registrationLat,
+        registrationLong: user.registrationLong
       }));
 
       res.json({ success: true, users: data });

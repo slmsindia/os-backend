@@ -668,6 +668,9 @@ const walletController = {
     }
 
     try {
+      const { getLocationData } = require("../utils/location");
+      const loc = getLocationData(req);
+
       const targetWallet = await prisma.wallet.findUnique({
         where: { userId: targetUserId }
       });
@@ -693,7 +696,13 @@ const walletController = {
             type: "DEBIT",
             category: "ADMIN_ADJUSTMENT",
             description: reason || "Admin manual deduction",
-            tenantId
+            tenantId,
+            // Add Location Data
+            txnState: loc.state,
+            txnCity: loc.city,
+            txnPincode: loc.pincode,
+            txnLat: loc.lat,
+            txnLong: loc.long
           }
         });
 

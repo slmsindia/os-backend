@@ -41,6 +41,9 @@ const hierarchyController = {
             id: true, mobile: true, fullName: true, email: true, gender: true,
             dateOfBirth: true, identity: true, approvalStatus: true,
             profilePhoto: true, createdAt: true,
+            registrationState: true, registrationCity: true,
+            registrationPincode: true, registrationLat: true,
+            registrationLong: true,
             wallet: { select: { balance: true } },
             _count: { select: { children: true } }
           },

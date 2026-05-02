@@ -240,7 +240,7 @@ const walletService = {
    * @param {string} identity - User identity
    * @returns {Promise<Object>} Updated wallet
    */
-  deductBalanceIfSufficient: async (userId, amount, tenantId, identity, creditWalletId = null, description = null, referenceId = null) => {
+  deductBalanceIfSufficient: async (userId, amount, tenantId, identity, creditWalletId = null, description = null, referenceId = null, txnLoc = {}) => {
     const requiredAmount = normalizeAmount(amount);
 
     try {
@@ -302,7 +302,13 @@ const walletService = {
             category: "SERVICE_CHARGE",
             description: description || "Wallet deduction",
             referenceId: referenceId,
-            tenantId: tenantId
+            tenantId: tenantId,
+            // Location Data
+            txnState: txnLoc.state,
+            txnCity: txnLoc.city,
+            txnPincode: txnLoc.pincode,
+            txnLat: txnLoc.lat,
+            txnLong: txnLoc.long
           }
         });
 
@@ -325,7 +331,13 @@ const walletService = {
               category: "COMMISSION",
               description: description ? description.replace("deduction", "credit") : "Wallet credit",
               referenceId: referenceId,
-              tenantId: tenantId
+              tenantId: tenantId,
+              // Location Data (Same as deduction)
+              txnState: txnLoc.state,
+              txnCity: txnLoc.city,
+              txnPincode: txnLoc.pincode,
+              txnLat: txnLoc.lat,
+              txnLong: txnLoc.long
             }
           });
         }
