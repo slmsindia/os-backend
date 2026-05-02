@@ -5,6 +5,7 @@ const marketingController = {
    * Create Marketing Content (Admin only)
    */
   createContent: async (req, res) => {
+    console.log("[MarketingController] Incoming Body:", req.body);
     const { user_id: userId, tenant_id: tenantId } = req.user;
     const { type, title, content, imageUrl, linkUrl, targetType, targetIdentity, targetUserId } = req.body;
 
