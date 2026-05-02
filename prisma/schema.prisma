@@ -1269,6 +1269,13 @@ model CommissionScheme {
   id        String   @id @default(uuid())
   name      String
   isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false) // General scheme marker
+  
+  // Location Targeting
+  targetState    String?
+  targetCity     String?
+  targetPincode  String?
+  
   tenantId  String
   users     User[]   @relation("UserCommissionScheme")
   shares    CommissionShare[]
@@ -1276,6 +1283,9 @@ model CommissionScheme {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([targetPincode])
+  @@index([targetCity])
+  @@index([targetState])
 }
 
 model CommissionService {

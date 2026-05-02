@@ -50,7 +50,7 @@ const commissionController = {
    */
   addCommissionSchemes: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity } = req.user || {};
-    const { id, name } = req.body || {};
+    const { id, name, targetState, targetCity, targetPincode, isDefault } = req.body || {};
 
     if (!name) return res.status(400).json({ success: false, message: "Scheme name is required" });
 
@@ -64,6 +64,10 @@ const commissionController = {
         data: {
           id: id || generateUuid(),
           name,
+          targetState,
+          targetCity,
+          targetPincode,
+          isDefault: isDefault === true || isDefault === 'true',
           tenantId
         }
       });
@@ -87,12 +91,19 @@ const commissionController = {
    * 1.4 Scheme Update Karo
    */
   updateCommissionSchemes: async (req, res) => {
-    const { id, name } = req.body || {};
-    if (!id || !name) return res.status(400).json({ success: false, message: "ID and name are required" });
+    const { id, name, targetState, targetCity, targetPincode, isDefault, isActive } = req.body || {};
+    if (!id) return res.status(400).json({ success: false, message: "ID is required" });
     try {
       const scheme = await prisma.commissionScheme.update({
         where: { id },
-        data: { name }
+        data: { 
+          name,
+          targetState,
+          targetCity,
+          targetPincode,
+          isDefault: isDefault !== undefined ? (isDefault === true || isDefault === 'true') : undefined,
+          isActive: isActive !== undefined ? (isActive === true || isActive === 'true') : undefined
+        }
       });
       res.json({ success: true, data: scheme });
     } catch (err) {
