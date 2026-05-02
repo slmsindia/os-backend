@@ -4,8 +4,8 @@ const imeController = require('./ime.controller');
 const router = express.Router();
 
 // IME Base & Auth Endpoints
-router.post('/calculation', imeController.getCalculation);
-router.post('/send-otp', imeController.sendOtp);
+router.post('/GetCalculation', imeController.getCalculation);
+router.post('/SendOTP', imeController.sendOtp);
 router.post('/authenticate', imeController.authenticate);
 router.post('/login', imeController.login);
 
@@ -20,14 +20,18 @@ router.post('/customers/validate', imeController.validateCustomer);
 
 // IME Transactions Endpoints
 router.post('/SendTransaction', imeController.sendTransaction);
-router.get('/transactions/:transactionId/status', imeController.getTransactionStatus);
-router.post('/transactions/:transactionId/cancel', imeController.cancelTransaction);
-router.post('/transactions/confirm', imeController.confirmSendTransaction);
+router.post('/TransactionInquiry', imeController.transactionInquiry);
+router.post('/CancelTransaction', imeController.cancelTransaction);
+router.post('/ConfirmSendTransaction', imeController.confirmSendTransaction);
 
 // IME Receivers Endpoints
 router.post('/receivers', imeController.createReceiver);
 router.get('/receivers/:receiverId', imeController.getReceiver);
 router.patch('/receivers/:receiverId', imeController.updateReceiver);
+
+// IME Storage/Database Endpoints
+router.get('/storage/transactions', imeController.getStoredTransactions);
+router.get('/storage/receivers', imeController.getStoredReceivers);
 
 
 // IME Static & Utility Endpoints

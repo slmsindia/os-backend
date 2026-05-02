@@ -625,6 +625,25 @@ const cancelTransaction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'transactionId is required' });
     }
     const result = await imeService.cancelTransaction(transactionId, reason);
+    const imeMeta = getImeResponseMeta(result);
+
+    // Update status in database if successful
+    if (imeMeta.code === '0') {
+      await prisma.imeTransaction.updateMany({
+        where: {
+          OR: [
+            { transactionId: transactionId },
+            { icn: transactionId },
+            { agentTxnRefId: transactionId }
+          ]
+        },
+        data: {
+          status: 'Cancelled',
+          updatedAt: new Date()
+        }
+      });
+    }
+
     return ok(res, 'Transaction cancelled successfully', result);
   } catch (error) {
     return fail(res, error);
@@ -636,35 +655,100 @@ const cancelTransaction = async (req, res) => {
  */
 const createReceiver = async (req, res) => {
   try {
-    const missing = requiredFields(req.body || {}, [
-      'CustomerId',
-      'FirstName',
-      'LastName',
-      'IDType',
-      'IDNumber',
-      'PhoneNumber'
-    ]);
-    if (missing.length) {
-      return badRequest(res, 'Missing required receiver fields', missing);
+    const { 
+      CustomerId, 
+      ReceiverName, 
+      ReceiverMobileNo, 
+      ReceiverGender, 
+      ReceiverAddress,
+      ReceiverCity,
+      ReceiverCountry,
+      ReceiverState,
+      ReceiverDistrict,
+      ReceiverMunicipality,
+      Relationship,
+      PurposeOfRemittance,
+      PaymentType,
+      BankId,
+      BankBranchId,
+      BankAccountNumber
+    } = req.body;
+
+    if (!ReceiverName || ReceiverName.trim().length < 3) {
+      return badRequest(res, 'ReceiverName is mandatory and must be at least 3 characters');
     }
 
-    if (!['PP', 'DL', 'NP_ID'].includes(req.body.IDType)) {
-      return badRequest(res, 'IDType must be one of PP, DL, NP_ID');
+    if (!ReceiverMobileNo || !/^\d{7,15}$/.test(ReceiverMobileNo)) {
+      return badRequest(res, 'ReceiverMobileNo must be a valid numeric string between 7 and 15 digits');
     }
 
-    const result = await imeService.createReceiver(req.body);
+    if (PaymentType === 'B') {
+      const missingBank = requiredFields(req.body, ['BankId', 'BankBranchId', 'BankAccountNumber']);
+      if (missingBank.length) {
+        return badRequest(res, 'BankId, BankBranchId and BankAccountNumber are mandatory for Bank PaymentType', missingBank);
+      }
+    } else if (PaymentType !== 'C' && PaymentType !== undefined && PaymentType !== null && PaymentType !== '') {
+      // If provided but not B or C
+      if (!['C', 'B'].includes(PaymentType)) {
+        return badRequest(res, 'PaymentType must be C (Cash) or B (Bank)');
+      }
+    }
 
-    const imeMeta = getImeResponseMeta(result);
-    if (imeMeta.code && imeMeta.code !== '0') {
+    // Auto-generate CustomerId if empty
+    const finalCustomerId = CustomerId && CustomerId.trim() !== "" ? CustomerId : `AUTO-${require('crypto').randomUUID()}`;
+
+    // Check for duplicate receiver (same sender + same mobile)
+    const existingReceiver = await prisma.imeReceiver.findFirst({
+      where: {
+        customerId: finalCustomerId,
+        mobileNumber: ReceiverMobileNo
+      }
+    });
+
+    if (existingReceiver) {
       return res.status(400).json({
         success: false,
-        message: imeMeta.message || 'Receiver creation failed in IME',
-        imeCode: imeMeta.code,
-        ...result
+        message: 'Receiver with this mobile number already exists for this sender',
+        id: existingReceiver.id,
+        receiverId: existingReceiver.id
       });
     }
 
-    return ok(res, 'Receiver created successfully', result);
+    // Save receiver to database
+    const receiverData = {
+      customerId: finalCustomerId,
+      fullName: ReceiverName,
+      firstName: ReceiverName.split(' ')[0],
+      lastName: ReceiverName.split(' ').slice(1).join(' ') || '.',
+      mobileNumber: ReceiverMobileNo,
+      gender: ReceiverGender,
+      address: ReceiverAddress,
+      city: ReceiverCity,
+      countryCode: ReceiverCountry || 'NP',
+      state: ReceiverState,
+      district: ReceiverDistrict,
+      municipality: ReceiverMunicipality,
+      relationship: Relationship,
+      purposeOfRemittance: PurposeOfRemittance,
+      paymentMode: PaymentType === 'B' ? 'BANK' : 'CASH',
+      bankCode: BankId,
+      bankBranchId: BankBranchId,
+      accountNumber: BankAccountNumber
+    };
+
+    const savedReceiver = await prisma.imeReceiver.create({
+      data: receiverData
+    });
+
+    return ok(res, 'Receiver saved successfully to database', { 
+      success: true, 
+      id: savedReceiver.id,
+      receiverId: savedReceiver.id, // Set same as id to avoid confusion
+      data: {
+        ...savedReceiver,
+        receiverId: savedReceiver.id // Also update in the data object
+      }
+    });
   } catch (error) {
     return fail(res, error);
   }
@@ -676,8 +760,35 @@ const getReceiver = async (req, res) => {
     if (!receiverId) {
       return res.status(400).json({ success: false, message: 'receiverId is required' });
     }
+
+    // 1. Check if the ID matches a CustomerId (Sender). If so, return ALL their receivers.
+    const senderReceivers = await prisma.imeReceiver.findMany({
+      where: { customerId: receiverId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (senderReceivers && senderReceivers.length > 0) {
+      return ok(res, 'List of receivers for sender retrieved', senderReceivers);
+    }
+
+    // 2. Otherwise, look for a single receiver by ID, Remote ID, or Mobile
+    const dbReceiver = await prisma.imeReceiver.findFirst({
+      where: {
+        OR: [
+          { id: receiverId },
+          { receiverId: receiverId },
+          { mobileNumber: receiverId }
+        ]
+      }
+    });
+
+    if (dbReceiver) {
+      return ok(res, 'Receiver retrieved from database', dbReceiver);
+    }
+
+    // 3. Fallback to IME Live
     const result = await imeService.getReceiver(receiverId);
-    return ok(res, 'Receiver retrieved successfully', result);
+    return ok(res, 'Receiver retrieved from IME', result);
   } catch (error) {
     return fail(res, error);
   }
@@ -686,11 +797,70 @@ const getReceiver = async (req, res) => {
 const updateReceiver = async (req, res) => {
   try {
     const { receiverId } = req.params;
+    const updateData = req.body || {};
+
     if (!receiverId) {
       return res.status(400).json({ success: false, message: 'receiverId is required' });
     }
-    const result = await imeService.updateReceiver(receiverId, req.body);
-    return ok(res, 'Receiver updated successfully', result);
+
+    // 1. Update in local database first
+    const dbReceiver = await prisma.imeReceiver.findFirst({
+      where: {
+        OR: [
+          { id: receiverId },
+          { receiverId: receiverId },
+          { mobileNumber: receiverId }
+        ]
+      }
+    });
+
+    let updatedDbRecord = null;
+    if (dbReceiver) {
+      // Map body fields to DB fields
+      const mappedData = {};
+      if (updateData.ReceiverName) {
+        mappedData.fullName = updateData.ReceiverName;
+        mappedData.firstName = updateData.ReceiverName.split(' ')[0];
+        mappedData.lastName = updateData.ReceiverName.split(' ').slice(1).join(' ') || '.';
+      }
+      if (updateData.ReceiverMobileNo) mappedData.mobileNumber = updateData.ReceiverMobileNo;
+      if (updateData.ReceiverGender) mappedData.gender = updateData.ReceiverGender;
+      if (updateData.ReceiverAddress) mappedData.address = updateData.ReceiverAddress;
+      if (updateData.ReceiverCity) mappedData.city = updateData.ReceiverCity;
+      if (updateData.ReceiverCountry) mappedData.countryCode = updateData.ReceiverCountry;
+      if (updateData.ReceiverState) mappedData.state = updateData.ReceiverState;
+      if (updateData.ReceiverDistrict) mappedData.district = updateData.ReceiverDistrict;
+      if (updateData.ReceiverMunicipality) mappedData.municipality = updateData.ReceiverMunicipality;
+      if (updateData.Relationship) mappedData.relationship = updateData.Relationship;
+      if (updateData.PurposeOfRemittance) mappedData.purposeOfRemittance = updateData.PurposeOfRemittance;
+      if (updateData.PaymentType) mappedData.paymentMode = updateData.PaymentType === 'B' ? 'BANK' : 'CASH';
+      if (updateData.BankId) mappedData.bankCode = updateData.BankId;
+      if (updateData.BankBranchId) mappedData.bankBranchId = updateData.BankBranchId;
+      if (updateData.BankAccountNumber) mappedData.accountNumber = updateData.BankAccountNumber;
+
+      updatedDbRecord = await prisma.imeReceiver.update({
+        where: { id: dbReceiver.id },
+        data: mappedData
+      });
+    }
+
+    // 2. Proxy to IME Service (if they support it, otherwise it might fail silently or return error)
+    try {
+      const result = await imeService.updateReceiver(receiverId, updateData);
+      return ok(res, 'Receiver updated successfully', {
+        imeResult: result,
+        dbRecord: updatedDbRecord || 'No local record found to update'
+      });
+    } catch (imeError) {
+      // If IME update fails but DB succeeded, we still return success but mention IME failure
+      if (updatedDbRecord) {
+        return ok(res, 'Receiver updated in local database, but IME update failed', {
+          dbRecord: updatedDbRecord,
+          imeError: imeError.message
+        });
+      }
+      throw imeError;
+    }
   } catch (error) {
     return fail(res, error);
   }
@@ -1090,19 +1260,117 @@ const cancelTransactionLegacy = proxyImeMethod('CancelTransaction', 'Transaction
 const checkCSPLegacy = proxyImeMethod('CheckCSP', 'CSP status fetched', (req) => ({
   CSPCode: req.query.cspcode || req.query.CSPCode || req.query.cspCode || ''
 }));
-const checkCustomerLegacy = proxyImeMethod('CheckCustomer', 'Customer check completed', (req) => ({
-  MobileNo: req.params.mobileNo || ''
-}));
+const checkCustomerLegacy = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const mobileNo = req.params.mobileNo || req.query.mobileNo || req.body.MobileNo || '';
+    if (!mobileNo) {
+      return badRequest(res, 'MobileNo is required');
+    }
+
+    const result = await imeService.callIMEMethod('CheckCustomer', { MobileNo: mobileNo });
+    const imeMeta = getImeResponseMeta(result);
+
+    // Update customer status in database if record exists
+    if (imeMeta.code === '0') {
+      const payload = getImePayload(result);
+      const response = payload.Response || {};
+      
+      await imeStorageService.updateCustomerStatus(mobileNo, {
+        amlStatus: response.AMLStatus === 'True',
+        kycStatus: response.KYCStatus,
+        rejectionReason: response.RejectedReason,
+        amendmentStatus: response.AmendmentStatus,
+        amendmentMessage: response.AmendmentMessage,
+        newMobileNo: response.NewMobileNo
+      }, result);
+    }
+
+    // Log API response
+    await logAndSaveImeResponse(
+      'CheckCustomer',
+      '/api/ime/CheckCustomer',
+      'POST',
+      { MobileNo: mobileNo },
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+
+    return ok(res, 'Customer check completed', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
 const confirmCustomerRegistrationLegacy = proxyImeMethod('ConfirmCustomerRegistration', 'Customer registration confirmed', (req) => ({
   OTP: req.body?.otp || req.body?.OTP || '',
   CustomerToken: req.body?.customerToken || req.body?.CustomerToken || '',
   OTPToken: req.body?.otpToken || req.body?.OTPToken || ''
 }));
-const confirmSendTransactionLegacy = proxyImeMethod('ConfirmSendTransaction', 'Send transaction confirmed', (req) => ({
-  RefNo: req.body?.refNo || req.body?.RefNo || '',
-  OTPToken: req.body?.otpToken || req.body?.OTPToken || '',
-  OTP: req.body?.otp || req.body?.OTP || ''
-}));
+const confirmSendTransactionLegacy = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const params = {
+      RefNo: req.body?.refNo || req.body?.RefNo || '',
+      OTPToken: req.body?.otpToken || req.body?.OTPToken || '',
+      OTP: req.body?.otp || req.body?.OTP || ''
+    };
+    
+    const result = await imeService.callIMEMethod('ConfirmSendTransaction', params);
+    const imeMeta = getImeResponseMeta(result);
+
+    // Update transaction status in database if successful
+    if (imeMeta.code === '0') {
+      const payload = getImePayload(result);
+      const response = payload.Response || {};
+      const icn = response.RefNo || response.ICN || ''; // In Confirm, RefNo is often the ICN
+      
+      await prisma.imeTransaction.updateMany({
+        where: {
+          OR: [
+            { agentTxnRefId: params.RefNo }, // During SendTransaction, we might have saved it with this
+            { transactionId: params.RefNo }
+          ]
+        },
+        data: {
+          status: 'Success',
+          icn: icn,
+          completedAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+    }
+
+    // Log API response
+    await logAndSaveImeResponse(
+      'ConfirmSendTransaction',
+      '/api/ime/ConfirmSendTransaction',
+      'POST',
+      params,
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+    
+    return ok(res, 'Send transaction confirmed', result);
+  } catch (error) {
+    // Log error
+    await logAndSaveImeResponse(
+      'ConfirmSendTransaction',
+      '/api/ime/ConfirmSendTransaction',
+      'POST',
+      req.body,
+      { error: error.message },
+      false,
+      Date.now() - startTime,
+      req
+    );
+    
+    return fail(res, error);
+  }
+};
 const customerMobileAmendmentLegacy = proxyImeMethod('CustomerMobileAmendment', 'Customer mobile amendment submitted');
 const customerRegistrationLegacy = proxyImeMethod('CustomerRegistration', 'Customer registration submitted');
 const getCalculationLegacy = async (req, res) => {
@@ -1203,8 +1471,176 @@ const getCalculationLegacy = async (req, res) => {
     return fail(res, error);
   }
 };
-const sendOtpLegacy = proxyImeMethod('SendOTP', 'OTP sent');
-const sendTransactionLegacy = proxyImeMethod('SendTransaction', 'Transaction send request submitted');
+const sendOtpLegacy = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const params = req.body || {};
+    const result = await imeService.callIMEMethod('SendOTP', params);
+    const imeMeta = getImeResponseMeta(result);
+
+    // Save OTP log if successful
+    if (imeMeta.code === '0') {
+      const payload = getImePayload(result);
+      const response = payload.Response || {};
+      const mobile = params.ReferenceValue || '';
+      
+      await imeStorageService.saveOtpLog(
+        mobile,
+        params.Module || 'UNKNOWN',
+        params.ReferenceValue,
+        response.OTPToken,
+        result
+      );
+    }
+
+    // Log API response
+    await logAndSaveImeResponse(
+      'SendOTP',
+      '/api/ime/SendOTP',
+      'POST',
+      params,
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+
+    return ok(res, 'OTP sent', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+const sendTransactionLegacy = async (req, res) => {
+  const startTime = Date.now();
+  try {
+    let params = req.body || {};
+    
+    // SMART FEATURE: If SenderMobileNo is provided but SenderName is missing, look up in DB or IME
+    if (params.SenderMobileNo && (!params.SenderName || params.SenderName === 'NA')) {
+      let dbSender = await prisma.imeCustomer.findFirst({
+        where: { mobileNumber: params.SenderMobileNo }
+      });
+      
+      // If not in DB, try fetching from IME live
+      if (!dbSender) {
+        try {
+          const imeCustomerResult = await imeService.getCustomer(params.SenderMobileNo);
+          if (imeCustomerResult?.success) {
+            const customerPayload = getImePayload(imeCustomerResult);
+            if (customerPayload?.Response?.Code === '0' || customerPayload?.Response?.Code === '100') {
+              const custDetails = customerPayload.CustomerDetails || customerPayload;
+              params.SenderName = `${custDetails.FirstName || ''} ${custDetails.LastName || ''}`.trim();
+              params.Occupation = params.Occupation || custDetails.Occupation || '8081';
+              params.SourceOfFund = params.SourceOfFund || custDetails.SourceOfFund || '8051';
+              
+              // Save to DB for next time
+              await imeStorageService.saveCustomer({
+                mobileNumber: params.SenderMobileNo,
+                firstName: custDetails.FirstName || 'Sender',
+                lastName: custDetails.LastName || 'User',
+                occupation: params.Occupation,
+                sourceOfFund: params.SourceOfFund
+              }, imeCustomerResult);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to auto-fetch sender from IME:', e.message);
+        }
+      }
+
+      if (dbSender) {
+        params.SenderName = params.SenderName || `${dbSender.firstName} ${dbSender.lastName}`.trim();
+        params.Occupation = params.Occupation || dbSender.occupation || '8081'; // 8081 is Service
+        params.SourceOfFund = params.SourceOfFund || dbSender.sourceOfFund || '8051'; // 8051 is Salary
+      }
+    }
+    
+    // SMART FEATURE: If receiverId (database UUID) is provided, fetch details from DB
+    if (params.receiverId && params.receiverId.length > 20) {
+      const dbReceiver = await prisma.imeReceiver.findUnique({
+        where: { id: params.receiverId }
+      });
+      
+      if (dbReceiver) {
+        // Auto-fill missing IME fields from database record
+        params.ReceiverName = params.ReceiverName || `${dbReceiver.firstName} ${dbReceiver.lastName}`.trim();
+        params.ReceiverMobileNo = params.ReceiverMobileNo || dbReceiver.mobileNumber;
+        params.ReceiverAddress = params.ReceiverAddress || dbReceiver.address || 'Nepal';
+        params.ReceiverGender = params.ReceiverGender || dbReceiver.gender;
+        params.ReceiverCountry = params.ReceiverCountry || dbReceiver.countryCode || 'NPL';
+        params.ReceiverState = params.ReceiverState || dbReceiver.state;
+        params.ReceiverDistrict = params.ReceiverDistrict || dbReceiver.district;
+        params.ReceiverMunicipality = params.ReceiverMunicipality || dbReceiver.municipality;
+        params.Relationship = params.Relationship || dbReceiver.relationship;
+        params.PaymentType = params.PaymentType || (dbReceiver.bankCode ? 'B' : 'C');
+        params.BankId = params.BankId || dbReceiver.bankCode;
+        params.BankBranchId = params.BankBranchId || dbReceiver.bankBranchId;
+        params.BankAccountNumber = params.BankAccountNumber || dbReceiver.accountNumber;
+      }
+    }
+
+    const result = await imeService.callIMEMethod('SendTransaction', params);
+    const imeMeta = getImeResponseMeta(result);
+    
+    // Save transaction data to database if successful (Code 0)
+    if (imeMeta.code === '0') {
+      const transactionData = {
+        agentTxnRefId: params.AgentTxnRefId,
+        forexSessionId: params.ForexSessionId,
+        senderName: params.SenderName,
+        senderMobile: params.SenderMobileNo,
+        receiverName: params.ReceiverName,
+        receiverMobile: params.ReceiverMobileNo,
+        receiverAddress: params.ReceiverAddress,
+        receiverGender: params.ReceiverGender,
+        receiverCountry: params.ReceiverCountry || 'NPL',
+        receiverState: params.ReceiverState,
+        receiverDistrict: params.ReceiverDistrict,
+        receiverMunicipality: params.ReceiverMunicipality,
+        collectAmount: params.CollectAmount,
+        payoutAmount: params.PayoutAmount,
+        sourceOfFund: params.SourceOfFund,
+        relationship: params.Relationship,
+        purposeOfRemittance: params.PurposeOfRemittance,
+        paymentMode: params.PaymentType,
+        bankCode: params.BankId,
+        bankBranchId: params.BankBranchId,
+        bankAccountNumber: params.BankAccountNumber,
+        calcBy: params.CalcBy
+      };
+
+      await imeStorageService.saveTransaction(transactionData, result);
+    }
+
+    // Log API response
+    await logAndSaveImeResponse(
+      'SendTransaction',
+      '/api/ime/SendTransaction',
+      'POST',
+      params,
+      result,
+      true,
+      Date.now() - startTime,
+      req
+    );
+    
+    return ok(res, 'Transaction send request submitted', result);
+  } catch (error) {
+    // Log error
+    await logAndSaveImeResponse(
+      'SendTransaction',
+      '/api/ime/SendTransaction',
+      'POST',
+      req.body,
+      { error: error.message },
+      false,
+      Date.now() - startTime,
+      req
+    );
+    
+    return fail(res, error);
+  }
+};
 const transactionInquiryLegacy = proxyImeMethod('TransactionInquiry', 'Transaction inquiry fetched');
 const transactionInquiryDefaultLegacy = proxyImeMethod('TransactionInquiryDefault', 'Transaction inquiry default fetched');
 const bankListLegacy = async (req, res) => {
@@ -1220,6 +1656,39 @@ const bankBranchListLegacy = async (req, res) => {
     const countryCode = req.query.countrycode || req.query.countryCode || 'NP';
     const result = await imeService.getBankBranches(countryCode, req.params.BankId || '');
     return ok(res, 'Bank branch list retrieved', result);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+/**
+ * Storage / Database Fetchers
+ */
+const getStoredTransactions = async (req, res) => {
+  try {
+    const transactions = await prisma.imeTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: req.query.limit ? parseInt(req.query.limit) : 50
+    });
+    return ok(res, 'Stored transactions retrieved', transactions);
+  } catch (error) {
+    return fail(res, error);
+  }
+};
+
+const getStoredReceivers = async (req, res) => {
+  try {
+    const customerId = req.query.customerId;
+    const where = {};
+    if (customerId && customerId !== '0') {
+      where.customerId = customerId;
+    }
+    
+    const receivers = await prisma.imeReceiver.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }
+    });
+    return ok(res, 'Stored receivers retrieved', receivers);
   } catch (error) {
     return fail(res, error);
   }
@@ -1275,4 +1744,6 @@ module.exports = {
   transactionInquiryDefault: transactionInquiryDefaultLegacy,
   amendTransaction: amendTransactionLegacy,
   customerMobileAmendment: customerMobileAmendmentLegacy,
+  getStoredTransactions,
+  getStoredReceivers,
 };

@@ -176,32 +176,23 @@ const imeSendTransactionBody = {
       schema: {
         type: "object",
         required: [
-          "SenderName",
           "SenderMobileNo", 
-          "ReceiverName",
-          "ReceiverAddress",
-          "ReceiverGender",
-          "ReceiverMobileNo",
-          "ReceiverCountry",
-          "ReceiverState",
-          "ReceiverDistrict", 
-          "ReceiverMunicipality",
           "ForexSessionId",
           "CollectAmount",
           "PayoutAmount",
-          "SourceOfFund",
-          "Relationship",
-          "PurposeOfRemittance",
           "PaymentType",
           "CalcBy"
         ],
         properties: {
+          // Database Helper
+          receiverId: { type: "string", description: "Optional: Database UUID of a saved receiver. If provided, backend will auto-fill ReceiverName, Mobile, Bank info, etc." },
+          
           // Sender Details
           SenderName: { type: "string", example: "Sandesh Pandey", description: "Sender's full name" },
           SenderMobileNo: { type: "string", example: "9800000000", description: "Registered customer mobile number" },
           Occupation: { type: "string", example: "8081", description: "Occupation ID from IME Static Data (WSST-OCPV1)" },
           
-          // Receiver Details  
+          // Receiver Details (Mandatory if receiverId is NOT provided)
           ReceiverName: { type: "string", example: "Sita Sharma", description: "Receiver full name in Nepal" },
           ReceiverAddress: { type: "string", example: "Kathmandu, Nepal", description: "Receiver address" },
           ReceiverGender: { type: "string", example: "1801", description: "Receiver gender (M/F)" },
@@ -228,6 +219,21 @@ const imeSendTransactionBody = {
           BankBranchId: { type: "string", example: "", description: "Bank Branch ID - mandatory if PaymentType = B" },
           BankAccountNumber: { type: "string", example: "", description: "Beneficiary account - mandatory if PaymentType = B" }
         }
+      },
+      example: {
+        receiverId: "PASTE_DATABASE_RECEIVER_UUID_HERE",
+        SenderName: "Sandesh Pandey",
+        SenderMobileNo: "9800000000",
+        Occupation: "8081",
+        SourceOfFund: "8051",
+        Relationship: "2109",
+        PurposeOfRemittance: "3801",
+        ForexSessionId: "ABC123XYZ",
+        AgentTxnRefId: "TXN_REF_001",
+        CollectAmount: "10500",
+        PayoutAmount: "16000",
+        PaymentType: "C",
+        CalcBy: "C"
       }
     }
   }
@@ -253,18 +259,43 @@ const imeCreateReceiverBody = {
     "application/json": {
       schema: {
         type: "object",
-        required: ["CustomerId", "FirstName", "LastName", "IDType", "IDNumber", "PhoneNumber"],
+        required: ["ReceiverName", "ReceiverMobileNo"],
         properties: {
-          CustomerId: { type: "string", example: "CUST001" },
-          FirstName: { type: "string", example: "Hari" },
-          LastName: { type: "string", example: "Shrestha" },
-          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
-          IDNumber: { type: "string", example: "509XXXXXXXX" },
-          PhoneNumber: { type: "string", example: "9801234567" },
-          BankCode: { type: "string", example: "NABIL" },
-          AccountNumber: { type: "string", example: "1234567890" },
-          CountryCode: { type: "string", example: "NP" }
+          CustomerId: { type: "string", example: "", description: "Optional: links to a sender. If empty, a UUID will be generated." },
+          ReceiverName: { type: "string", example: "Deepak Bhandari" },
+          ReceiverMobileNo: { type: "string", example: "9812474752" },
+          ReceiverGender: { type: "string", example: "1801" },
+          ReceiverAddress: { type: "string", example: "Dullu Municipaliry, Word no 11, Kalbhairab Dailekh" },
+          ReceiverCity: { type: "string", example: "Every Where in Nepal" },
+          ReceiverCountry: { type: "string", example: "NPL" },
+          ReceiverState: { type: "string", example: "1006" },
+          ReceiverDistrict: { type: "string", example: "5054" },
+          ReceiverMunicipality: { type: "string", example: "9557" },
+          Relationship: { type: "string", example: "2109" },
+          PurposeOfRemittance: { type: "string", example: "3801" },
+          PaymentType: { type: "string", example: "C", description: "C = Cash, B = Bank" },
+          BankId: { type: "string", example: "", description: "Mandatory if PaymentType = B" },
+          BankBranchId: { type: "string", example: "", description: "Mandatory if PaymentType = B" },
+          BankAccountNumber: { type: "string", example: "", description: "Mandatory if PaymentType = B" }
         }
+      },
+      example: {
+        CustomerId: "7041897207",
+        ReceiverName: "Deepak Bhandari",
+        ReceiverMobileNo: "9812474752",
+        ReceiverGender: "1801",
+        ReceiverAddress: "Dullu Municipaliry, Word no 11, Kalbhairab Dailekh",
+        ReceiverCity: "Every Where in Nepal",
+        ReceiverCountry: "NPL",
+        ReceiverState: "1006",
+        ReceiverDistrict: "5054",
+        ReceiverMunicipality: "9557",
+        Relationship: "2109",
+        PurposeOfRemittance: "3801",
+        PaymentType: "B",
+        BankId: "117",
+        BankBranchId: "11701",
+        BankAccountNumber: "1234567890"
       }
     }
   }
@@ -281,6 +312,35 @@ const imeValidateBankAccountBody = {
           BankCode: { type: "string", example: "NABIL" },
           AccountNumber: { type: "string", example: "1234567890" },
           CountryCode: { type: "string", example: "NP" }
+        }
+      }
+    }
+  }
+};
+
+const imeUpdateReceiverBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        description: "All fields are optional for partial update",
+        properties: {
+          ReceiverName: { type: "string", example: "Deepak Bhandari" },
+          ReceiverMobileNo: { type: "string", example: "9812474752" },
+          ReceiverGender: { type: "string", example: "1801" },
+          ReceiverAddress: { type: "string", example: "Dullu Municipaliry" },
+          ReceiverCity: { type: "string", example: "Dailekh" },
+          ReceiverCountry: { type: "string", example: "NPL" },
+          ReceiverState: { type: "string", example: "1006" },
+          ReceiverDistrict: { type: "string", example: "5054" },
+          ReceiverMunicipality: { type: "string", example: "9557" },
+          Relationship: { type: "string", example: "2109" },
+          PurposeOfRemittance: { type: "string", example: "3801" },
+          PaymentType: { type: "string", example: "B", description: "C = Cash, B = Bank" },
+          BankId: { type: "string", example: "117" },
+          BankBranchId: { type: "string", example: "11701" },
+          BankAccountNumber: { type: "string", example: "1234567890" }
         }
       }
     }
@@ -1402,206 +1462,7 @@ const paths = {
   },
 
 
-  // IME endpoints as per ime.routes.js and IME.md
-  // IME Modern Customers Endpoints
-  "/api/ime/customers": {
-    post: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Register Customer (Modern)",
-      description: "Registers a new customer in IME system and saves to local database.",
-      requestBody: imeCreateCustomerBody,
-      responses: {
-        200: { description: "Customer registration successful" },
-        400: { description: "Validation error" }
-      }
-    },
-    get: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Get Stored Customers",
-      parameters: [
-        { name: "mobile", in: "query", schema: { type: "string" } }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/customers/send-otp": {
-    post: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Send OTP to Customer",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["ReferenceValue"],
-              properties: {
-                ReferenceValue: { type: "string", example: "9812345678" },
-                Module: { type: "string", example: "CR" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "OTP sent" } }
-    }
-  },
-  "/api/ime/customers/confirm": {
-    post: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Confirm Customer Registration",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["CustomerToken", "OTPToken", "OTP"],
-              properties: {
-                CustomerToken: { type: "string" },
-                OTPToken: { type: "string" },
-                OTP: { type: "string", example: "123456" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "Customer confirmed" } }
-    }
-  },
-  "/api/ime/customers/validate": {
-    post: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Validate Customer",
-      requestBody: imeValidateCustomerBody,
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/SendTransaction": {
-    post: {
-      tags: ["IME 4: Transaction Flow"],
-      summary: "Create Money Transfer Transaction",
-      description: "Creates a new transaction. ForexSessionId from GetCalculation must be used immediately.",
-      requestBody: imeSendTransactionBody,
-      responses: {
-        200: {
-          description: "Transaction created",
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                properties: {
-                  success: { type: "boolean" },
-                  RefNo: { type: "string" },
-                  AgentTxnRefId: { type: "string" },
-                  CollectAmount: { type: "string" },
-                  ServiceCharge: { type: "string" },
-                  ExchangeRate: { type: "string" },
-                  PayoutAmount: { type: "string" },
-                  PayoutCurrency: { type: "string" }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "/api/ime/calculation": {
-    post: {
-      tags: ["IME 4: Transaction Flow"],
-      summary: "Get Calculation",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
-              properties: {
-                RemitAmount: { type: "string", example: "1000" },
-                PaymentType: { type: "string", example: "C" },
-                PayoutCountry: { type: "string", example: "NPL" },
-                CalcBy: { type: "string", example: "C" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/Countries": { get: { tags: ["IME 1: Static Data"], summary: "Country List (WSST-CONV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/States/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "State List (WSST-STTV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/Districts/{StateId}": { get: { tags: ["IME 1: Static Data"], summary: "District List (WSST-DISV1)", parameters: [{ name: "StateId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/Municipalities/{DistrictId}": { get: { tags: ["IME 1: Static Data"], summary: "Municipality List (WSST-MUNV1)", parameters: [{ name: "DistrictId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/Genders": { get: { tags: ["IME 1: Static Data"], summary: "Gender List (WSST-GDRV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/MaritalStatus": { get: { tags: ["IME 1: Static Data"], summary: "Marital Status (WSST-MSSV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/Occupation": { get: { tags: ["IME 1: Static Data"], summary: "Occupation List (WSST-OCPV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/SourceOfFundList": { get: { tags: ["IME 1: Static Data"], summary: "Source of Fund (WSST-SOFV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/GetIdTypes/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "ID Type List by Country (WSST-IDTV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/IDPlaceofIssue": { get: { tags: ["IME 1: Static Data"], summary: "ID Place of Issue List (WSST-POIV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/RelationshipList": { get: { tags: ["IME 1: Static Data"], summary: "Relationship List (WSST-RELV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/PurposeOfRemittance": { get: { tags: ["IME 1: Static Data"], summary: "Purpose List (WSST-PORV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/TransactionCancelReason": { get: { tags: ["IME 1: Static Data"], summary: "Cancel Reason (WSST-TCRV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/BankList/{CountryId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank List (WSST-BKLV1)", parameters: [{ name: "CountryId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/BankBranchList/{BankId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank Branch List (WSST-BBLV1)", parameters: [{ name: "BankId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/GetAccountType": { get: { tags: ["IME 1: Static Data"], summary: "Account Type List (WSST-ACCV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/DeviceList": { get: { tags: ["IME 1: Static Data"], summary: "Device List (WSST-DEVV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/ConnectivityTypeList": { get: { tags: ["IME 1: Static Data"], summary: "Connectivity Type (WSST-CTVV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/OwnerCategoryTypes": { get: { tags: ["IME 1: Static Data"], summary: "Owner Category (WSST-CATV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/EducationalQualificationList": { get: { tags: ["IME 1: Static Data"], summary: "Education List (WSST-EDQV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/CustomerAnnualIncomeList": { get: { tags: ["IME 1: Static Data"], summary: "Annual Income (WSST-CAIV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/PhysicallyHandicappedList": { get: { tags: ["IME 1: Static Data"], summary: "Physically Handicapped List (WSST-PHCV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/AlternateOccupationList": { get: { tags: ["IME 1: Static Data"], summary: "Alternate Occupation (WSST-AOCV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/OwnerIdTypeList": { get: { tags: ["IME 1: Static Data"], summary: "Owner ID Type (WSST-OIDV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/AdditionalCourseList": { get: { tags: ["IME 1: Static Data"], summary: "Additional Course (WSST-ADCV1)", responses: { 200: { description: "Success" } } } },
-  "/api/ime/OwnerByAgentList/{AgentId}": { get: { tags: ["IME 1: Static Data"], summary: "Owner By Agent (WSST-OBAV1)", parameters: [{ name: "AgentId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/BankByAgentList/{AgentId}": { get: { tags: ["IME 1: Static Data"], summary: "Bank By Agent (WSST-BBAV1)", parameters: [{ name: "AgentId", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Success" } } } },
-  "/api/ime/customers/search/mobile/{mobile}": {
-    get: {
-      tags: ["IME 3: Customer Module"],
-      summary: "Search Customer by Mobile",
-      parameters: [
-        { name: "mobile", in: "path", required: true, schema: { type: "string" } }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/transactions/{transactionId}/status": {
-    get: {
-      tags: ["IME 4: Transaction Flow"],
-      summary: "Get Transaction Status",
-      parameters: [
-        { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
-      ],
-      responses: { 200: { description: "Success" } }
-    }
-  },
-  "/api/ime/calculation": {
-    post: {
-      tags: ["IME 4: Transaction Flow"],
-      summary: "Get Calculation",
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              required: ["RemitAmount", "PaymentType", "PayoutCountry", "CalcBy"],
-              properties: {
-                RemitAmount: { type: "string", example: "10000" },
-                PaymentType: { type: "string", example: "C" },
-                PayoutCountry: { type: "string", example: "NPL" },
-                CalcBy: { type: "string", example: "C" }
-              }
-            }
-          }
-        }
-      },
-      responses: { 200: { description: "Success" } }
-    }
-  },
+
 
   "/api/ime/ekyc/aadhar-registration": {
     post: {
@@ -1722,9 +1583,10 @@ const paths = {
             },
             example: {
               "RemitAmount": "10000",
-              "PaymentType": "C",
+              "PaymentType": "B",
               "PayoutCountry": "NPL",
-              "CalcBy": "C"
+              "CalcBy": "C",
+              "PayoutAgentId": "117"
             }
           }
         }
@@ -2377,6 +2239,100 @@ const paths = {
       tags: ["IME 1: Static Data"],
       summary: "Get Source of Fund List (WSST-SOFV1)",
       responses: { 200: { description: "Source of funds" } }
+    }
+  },
+
+  "/api/ime/GetIdTypes": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Identification Type List (WSST-IDTV1)",
+      responses: { 200: { description: "ID types" } }
+    }
+  },
+
+  "/api/ime/IDPlaceofIssue": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Place of Issue List (WSST-POIV1)",
+      responses: { 200: { description: "Place of issues" } }
+    }
+  },
+
+  "/api/ime/DeviceList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Device List (WSST-DEVV1)",
+      responses: { 200: { description: "Devices" } }
+    }
+  },
+
+  "/api/ime/ConnectivityTypeList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Connectivity Type List (WSST-CTVV1)",
+      responses: { 200: { description: "Connectivity types" } }
+    }
+  },
+
+  "/api/ime/CustomerAnnualIncomeList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Customer Annual Income List (WSST-CAIV1)",
+      responses: { 200: { description: "Annual income list" } }
+    }
+  },
+
+  "/api/ime/PhysicallyHandicappedList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Physically Handicapped List (WSST-PHCV1)",
+      responses: { 200: { description: "Handicapped list" } }
+    }
+  },
+
+  "/api/ime/AlternateOccupationList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Alternate Occupation List (WSST-AOCV1)",
+      responses: { 200: { description: "Alternate occupations" } }
+    }
+  },
+
+  "/api/ime/OwnerIdTypeList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Owner ID Type List (WSST-OIDV1)",
+      responses: { 200: { description: "Owner ID types" } }
+    }
+  },
+
+  "/api/ime/AdditionalCourseList": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Additional Course List (WSST-ADCV1)",
+      responses: { 200: { description: "Additional courses" } }
+    }
+  },
+
+  "/api/ime/OwnerByAgentList/{AgentId}": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Owner By Agent List (WSST-OBAV1)",
+      parameters: [
+        { name: "AgentId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Owners by agent" } }
+    }
+  },
+
+  "/api/ime/BankByAgentList/{AgentId}": {
+    get: {
+      tags: ["IME 1: Static Data"],
+      summary: "Get Bank By Agent List (WSST-BBAV1)",
+      parameters: [
+        { name: "AgentId", in: "path", required: true, schema: { type: "string" } }
+      ],
+      responses: { 200: { description: "Banks by agent" } }
     }
   },
 
@@ -3427,147 +3383,7 @@ paths["/api/ime/customers/validate"] = {
   }
 };
 
-// Customer Registration Flow Middleware
-paths["/api/ime/customers/register-complete"] = {
-  post: {
-    tags: ["IME 3: Customer Module"],
-    summary: "Complete customer registration",
-    requestBody: imeCreateCustomerBody,
-    responses: {
-      200: { description: "Registration completed" },
-      400: { description: "Validation error" },
-      500: { description: "Server error" }
-    }
-  }
-};
 
-paths["/api/ime/customers/confirm-registration"] = {
-  post: {
-    tags: ["IME 3: Customer Module"],
-    summary: "Confirm customer registration",
-    requestBody: {
-      required: true,
-      content: {
-        "application/json": {
-          schema: {
-            type: "object",
-            required: ["CustomerToken", "OTPToken", "OTP"],
-            properties: {
-              CustomerToken: { type: "string", example: "CUST-TOKEN-123" },
-              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
-              OTP: { type: "string", example: "123456" }
-            }
-          }
-        }
-      }
-    },
-    responses: {
-      200: { description: "Registration confirmed" },
-      400: { description: "Confirmation failed" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/customers/check-eligibility"] = {
-  post: {
-    tags: ["IME 3: Customer Module"],
-    summary: "Check customer eligibility",
-    requestBody: jsonBody,
-    responses: {
-      200: { description: "Eligibility checked" },
-      400: { description: "Bad request" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-// Transaction Operations
-paths["/api/ime/transactions/send"] = {
-  post: {
-    tags: ["IME 4: Transaction Flow"],
-    summary: "Send money/transaction",
-    requestBody: imeSendMoneyBody,
-    responses: {
-      200: { description: "Transaction sent successfully" },
-      400: { description: "Validation error" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/transactions/{transactionId}/status"] = {
-  get: {
-    tags: ["IME 4: Transaction Flow"],
-    summary: "Get transaction status",
-    parameters: [
-      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
-    ],
-    responses: {
-      200: { description: "Transaction status" },
-      404: { description: "Transaction not found" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/transactions/{transactionId}/cancel"] = {
-  post: {
-    tags: ["IME 4: Transaction Flow"],
-    summary: "Cancel transaction",
-    parameters: [
-      { name: "transactionId", in: "path", required: true, schema: { type: "string" } }
-    ],
-    requestBody: imeCancelTransactionBody,
-    responses: {
-      200: { description: "Transaction cancelled" },
-      400: { description: "Cancellation failed" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-// Transaction Flow Middleware
-paths["/api/ime/transactions/send-complete"] = {
-  post: {
-    tags: ["IME 4: Transaction Flow"],
-    summary: "Complete transaction sending",
-    requestBody: imeSendTransactionBody,
-    responses: {
-      200: { description: "Transaction completed" },
-      400: { description: "Validation error" },
-      500: { description: "Server error" }
-    }
-  }
-};
-
-paths["/api/ime/transactions/confirm"] = {
-  post: {
-    tags: ["IME 4: Transaction Flow"],
-    summary: "Confirm transaction",
-    requestBody: {
-      required: true,
-      content: {
-        "application/json": {
-          schema: {
-            type: "object",
-            required: ["RefNo", "OTPToken", "OTP"],
-            properties: {
-              RefNo: { type: "string", example: "TXN123456" },
-              OTPToken: { type: "string", example: "OTP-TOKEN-456" },
-              OTP: { type: "string", example: "123456" }
-            }
-          }
-        }
-      }
-    },
-    responses: {
-      200: { description: "Transaction confirmed" },
-      400: { description: "Confirmation failed" },
-      500: { description: "Server error" }
-    }
-  }
-};
 
 // Receiver Management
 paths["/api/ime/receivers"] = {
@@ -3583,12 +3399,19 @@ paths["/api/ime/receivers"] = {
   }
 };
 
-paths["/api/ime/receivers/{receiverId}"] = {
+paths["/api/ime/receivers/{idOrCustomerId}"] = {
   get: {
     tags: ["IME 3: Customer Module"],
-    summary: "Get receiver by ID",
+    summary: "Get Receiver(s) by ID or CustomerId",
+    description: "Retrieve a single receiver by their ID/Mobile, OR retrieve ALL receivers for a sender by providing the Sender's CustomerId (Mobile).",
     parameters: [
-      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+      {
+        name: "idOrCustomerId",
+        in: "path",
+        required: true,
+        description: "Database UUID / Receiver Mobile (for single) OR Sender CustomerId (for list)",
+        schema: { type: "string", example: "7041897207" }
+      }
     ],
     responses: {
       200: { description: "Receiver details" },
@@ -3600,9 +3423,9 @@ paths["/api/ime/receivers/{receiverId}"] = {
     tags: ["IME"],
     summary: "Update receiver",
     parameters: [
-      { name: "receiverId", in: "path", required: true, schema: { type: "string" } }
+      { name: "idOrCustomerId", in: "path", required: true, schema: { type: "string" } }
     ],
-    requestBody: jsonBody,
+    requestBody: imeUpdateReceiverBody,
     responses: {
       200: { description: "Receiver updated" },
       400: { description: "Validation error" },
@@ -3810,7 +3633,7 @@ paths["/api/ime/ekyc/aadhar-reprocess"] = {
 paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
 paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
 paths["/api/ime/SendTransaction"].post.requestBody = imeSendTransactionBody;
-paths["/api/ime/transactions/{transactionId}/cancel"].post.requestBody = imeCancelTransactionBody;
+paths["/api/ime/CancelTransaction"].post.requestBody = imeCancelTransactionBody;
 paths["/api/ime/receivers"].post.requestBody = imeCreateReceiverBody;
 paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
 paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;

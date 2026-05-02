@@ -484,6 +484,7 @@ model ImeReceiver {
   mobileNumber           String
   gender                String?
   relationship          String?
+  purposeOfRemittance   String?
   countryCode           String   @default("NP")
   paymentMode           String?  // CASH, BANK
   bankCode              String?
@@ -493,6 +494,7 @@ model ImeReceiver {
   state                 String?
   district              String?
   municipality          String?
+  city                  String?
   
   // Status
   isActive              Boolean  @default(true)
@@ -534,6 +536,7 @@ model ImeTransaction {
   receiverState        String?
   receiverDistrict     String?
   receiverMunicipality String?
+  receiverCity         String?
   
   // Transaction Details
   collectAmount         Float?  // Amount collected from sender
