@@ -74,6 +74,19 @@ const userController = {
           safeUser.profilePhoto = latestMemberApp.documents[0].frontImageUrl;
         }
       }
+      
+      // Logic to pick email from application if not in user record
+      if (!safeUser.email) {
+        const latestMemberApp = user.membershipApplications?.[0];
+        if (latestMemberApp?.email) {
+          safeUser.email = latestMemberApp.email;
+        } else {
+          const latestBpApp = user.businessPartnerApps?.[0];
+          if (latestBpApp?.email) {
+            safeUser.email = latestBpApp.email;
+          }
+        }
+      }
 
       // Add a summary object for easy frontend consumption
       safeUser.summary = {
@@ -326,6 +339,7 @@ const userController = {
       if (country) updateData.country = country;
       if (language) updateData.language = language;
       if (phoneNumber) updateData.mobile = phoneNumber;
+      if (req.body.email) updateData.email = req.body.email;
 
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ success: false, message: "No fields to update" });
