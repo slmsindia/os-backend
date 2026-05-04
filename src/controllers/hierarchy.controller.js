@@ -21,7 +21,19 @@ const hierarchyController = {
         }
       }
 
-      const where = { parentId: targetParentId };
+      const where = {};
+      
+      // If a top-level admin is checking their own root level, show both their direct children AND 'orphaned' users (no parentId)
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
+      if (isTopAdmin && targetParentId === currentUserId) {
+        where.OR = [
+          { parentId: targetParentId },
+          { parentId: null }
+        ];
+      } else {
+        where.parentId = targetParentId;
+      }
+
       if (!isSuperAdmin) where.tenantId = tenantId;
       if (identity) where.identity = identity;
       if (startDate || endDate) {
@@ -164,13 +176,26 @@ const hierarchyController = {
       const where = {};
       if (!isSuperAdmin) where.tenantId = tenantId;
 
-      // 1. Hierarchy Filter: Only transactions from users in current user's downline
+      // 1. Hierarchy Filter: Include current user's downline, the user themselves, and their corporate wallet
       if (!isSuperAdmin) {
-        where.wallet = {
-          user: {
-            path: { contains: currentUserId }
+        const isTopAdmin = ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
+        const walletConditions = [
+          {
+            user: {
+              OR: [
+                { path: { contains: currentUserId } },
+                { id: currentUserId }
+              ]
+            }
           }
-        };
+        ];
+        
+        // Include corporate wallet transactions for tenant admins
+        if (isTopAdmin) {
+          walletConditions.push({ isCorporate: true, tenantId });
+        }
+        
+        where.wallet = { OR: walletConditions };
       }
 
       // 2. Additional Filters

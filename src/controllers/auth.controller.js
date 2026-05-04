@@ -174,8 +174,8 @@ const authController = {
   },
 
   register: async (req, res) => {
-    const { mobile, email, fullName, profilePhoto, gender, dateOfBirth, password, referredBy } = req.body;
-    const tenantId = req.tenant_id;
+    const { mobile, email, fullName, profilePhoto, gender, dateOfBirth, password, referredBy, tenantId: bodyTenantId } = req.body;
+    let tenantId = bodyTenantId || req.tenant_id;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ message: "fields missing" });
@@ -197,8 +197,30 @@ const authController = {
         return res.status(403).json({ success: false, message: "System is not configured yet. No tenant available." });
       }
 
-      // Condition 2: If user is registering without a tenant resolved by middleware, assign to first tenant
       let resolvedTenantId = tenantId;
+      let parentId = null;
+      let path = "";
+
+      // Condition 2.5: If referred by someone, inherit their tenant and hierarchy path!
+      if (referredBy) {
+        const referrer = await prisma.user.findFirst({
+          where: { 
+            OR: [
+              { referralCode: referredBy },
+              { id: referredBy }
+            ]
+          },
+          select: { id: true, tenantId: true, path: true }
+        });
+
+        if (referrer) {
+          resolvedTenantId = referrer.tenantId;
+          parentId = referrer.id;
+          path = referrer.path ? `${referrer.path}/${referrer.id}` : `/${referrer.id}`;
+        }
+      }
+
+      // Fallback: If STILL no tenant is resolved, assign to first tenant
       if (!resolvedTenantId) {
         resolvedTenantId = firstTenant.id;
       }
@@ -226,6 +248,8 @@ const authController = {
           dateOfBirth: new Date(dateOfBirth),
           password: hash,
           tenantId: resolvedTenantId,
+          parentId: parentId,
+          path: path || null,
           identity: "USER",
           referralCode: generateReferralCode(),
           referredBy: referredBy || null,
