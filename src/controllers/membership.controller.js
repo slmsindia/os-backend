@@ -323,9 +323,6 @@ const membershipController = {
 
         if (isPartner && !isPaidResubmission && body.paymentMode === 2 && !isFree) {
           partnerWallet = await walletService.resolveWallet(userId, tenantId, requesterIdentity);
-          if (!partnerWallet || partnerWallet.balance < config.membershipPrice) {
-            throw new Error("Insufficient partner wallet balance");
-          }
           adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
         let app;
@@ -375,7 +372,8 @@ const membershipController = {
             app.id,
             tenantId,
             'WALLET',
-            tx
+            tx,
+            false // creditAdminImmediately = false (Wait for approval)
           );
         }
 

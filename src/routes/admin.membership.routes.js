@@ -10,19 +10,19 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Delegation (Only for top admins)
-router.post("/membership/delegate-approval", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.delegateApproval);
+router.post("/membership/delegate-approval", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.delegateApproval);
 
 // Membership price management (Only for top admins)
-router.put("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembershipController.updateMembershipPrice);
-router.post("/membership/price", checkPermission("ADMIN_MANAGE"), adminMembershipController.updateMembershipPrice);
+router.put("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminMembershipController.updateMembershipPrice);
+router.post("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminMembershipController.updateMembershipPrice);
 
 // Membership applications (Accessible by admins and delegated users)
 router.post("/membership/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminMembershipController.createUser);
 router.post("/agent/create", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminMembershipController.createUser); // Alias for agent creation
-router.get("/membership/applications", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getMembershipApplications);
-router.get("/membership/applications/:applicationId", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getApplicationDetails);
-router.post("/membership/applications/:applicationId/approve", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.approveApplication);
-router.post("/membership/applications/:applicationId/reject", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.rejectApplication);
+router.get("/membership/applications", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getMembershipApplications);
+router.get("/membership/applications/:applicationId", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getApplicationDetails);
+router.post("/membership/applications/:applicationId/approve", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.approveApplication);
+router.post("/membership/applications/:applicationId/reject", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.rejectApplication);
 
 // Education management
 router.post("/education", adminMembershipController.createEducation);

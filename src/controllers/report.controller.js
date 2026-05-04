@@ -110,8 +110,9 @@ const reportController = {
           credit,
           debit,
           tds: "N/A",
-          serviceName: log?.subService?.service?.name || "N/A",
-          subServiceName: log?.subService?.name || "N/A",
+          serviceName: log?.subService?.service?.name || t.category || "N/A",
+          subServiceName: log?.subService?.name || t.category || "N/A",
+          description: t.description || "—",
           tnxDoneBy: doneBy?.fullName || "System",
           roleForDoneBy: doneBy?.identity || "ADMIN",
           tnxDoneFor: doneFor?.fullName || "N/A",
@@ -121,13 +122,23 @@ const reportController = {
       });
 
       if (exportCsv === "true") {
-        const headers = ["Date Time", "Amount", "Method", "Credit", "Debit", "TDS", "Service", "Sub Service", "Done By", "Role (By)", "Done For", "Role (For)", "Receiver"];
+        const headers = ["Date Time", "Amount", "Method", "Credit", "Debit", "Service", "Sub Service", "Description", "Done By", "Role (By)", "Done For", "Role (For)", "Receiver"];
         let csv = headers.join(",") + "\n";
         reportData.forEach(row => {
           const values = [
-            row.transactionDateTime.toISOString(), row.transactionAmount, row.transactionMethod,
-            row.credit, row.debit, row.tds, row.serviceName, row.subServiceName,
-            row.tnxDoneBy, row.roleForDoneBy, row.tnxDoneFor, row.roleForDoneFor, row.receiversName
+            row.transactionDateTime.toLocaleString('en-IN'), 
+            row.transactionAmount, 
+            row.transactionMethod,
+            row.credit, 
+            row.debit, 
+            row.serviceName, 
+            row.subServiceName,
+            row.description,
+            row.tnxDoneBy, 
+            row.roleForDoneBy, 
+            row.tnxDoneFor, 
+            row.roleForDoneFor, 
+            row.receiversName
           ];
           csv += values.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
         });

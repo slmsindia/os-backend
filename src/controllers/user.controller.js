@@ -39,7 +39,17 @@ const userController = {
         include: {
           tenant: true,
           wallet: true,
-          roles: { include: { role: true } },
+          roles: { 
+            include: { 
+              role: { 
+                include: { 
+                  permissions: { 
+                    include: { permission: true } 
+                  } 
+                } 
+              } 
+            } 
+          },
           membershipApplications: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -94,7 +104,10 @@ const userController = {
         isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED'),
         isBusinessPartner: user.identity === 'BUSINESS_PARTNER' || user.businessPartnerApps.some(a => a.status === 'APPROVED'),
         walletBalance: user.wallet?.balance || 0,
-        activeRole: user.identity
+        activeRole: user.identity,
+        permissions: user.roles.flatMap(ur => 
+          ur.role.permissions.map(p => p.permission.name)
+        )
       };
 
       res.json({

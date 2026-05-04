@@ -20,30 +20,32 @@ router.post("/top-up", authMiddleware, walletController.createTopUpRequest);
 router.get("/transactions", authMiddleware, walletController.getMyTopUpRequests);
 router.get("/top-up/requests", authMiddleware, walletController.getMyTopUpRequests);
 
+const { checkPermission } = require("../middleware/permission.middleware");
+
 // ==================== ADMIN ENDPOINTS ====================
 // Create bank details
-router.post("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.createBankDetails);
+router.post("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.createBankDetails);
 
 // Get all bank details
-router.get("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.getAllBankDetails);
+router.get("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getAllBankDetails);
 
 // Update bank details (including activate/deactivate)
-router.put("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.updateBankDetails);
+router.put("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.updateBankDetails);
 
 // Delete bank details
-router.delete("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.deleteBankDetails);
+router.delete("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.deleteBankDetails);
 
 // Get all top-up requests
-router.get("/admin/top-up/requests", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.getAllTopUpRequests);
+router.get("/admin/top-up/requests", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getAllTopUpRequests);
 
 // Approve top-up request
-router.post("/admin/top-up/:requestId/approve", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.approveTopUpRequest);
+router.post("/admin/top-up/:requestId/approve", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.approveTopUpRequest);
 
 // Reject top-up request
-router.post("/admin/top-up/:requestId/reject", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.rejectTopUpRequest);
+router.post("/admin/top-up/:requestId/reject", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.rejectTopUpRequest);
 
 // Admin Manual Deduction
-router.post("/admin/deduct", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.adminWalletDeduct);
+router.post("/admin/deduct", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.adminWalletDeduct);
 
 // QR Code Management
 router.post("/admin/qr-codes", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), walletController.addQRCode);
@@ -52,6 +54,6 @@ router.put("/admin/qr-codes/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", 
 
 // Wallet Transaction History (Comprehensive)
 router.get("/history", authMiddleware, walletController.getWalletTransactions);
-router.get("/admin/history", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), walletController.getAllWalletTransactions);
+router.get("/admin/history", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), checkPermission("PERM_VIEW_REPORTS"), walletController.getAllWalletTransactions);
 
 module.exports = router;

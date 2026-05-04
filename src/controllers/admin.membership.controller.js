@@ -127,166 +127,97 @@ const adminMembershipController = {
 
       // ─── CASE A: User Already Exists → Upgrade their identity directly ───
       if (existing) {
-        // Process fee/wallet deduction for the upgrade
-        if (fee > 0 && paymentMethod === 'WALLET') {
-          try {
-            const creator = await prisma.user.findUnique({ where: { id: creatorId } });
-            await walletService.deductBalanceIfSufficient(creatorId, fee, tenantId, creator.identity);
-          } catch (err) {
-            return res.status(400).json({ success: false, message: err.message || "Insufficient wallet balance" });
-          }
+        // ─── Flow 4: Free Conversion Path ───
+        if (paymentMethod === 'FREE_CONVERSION') {
+          const upgradedUser = await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              identity: targetIdentity,
+              userType: targetIdentity,
+              approvalStatus: 'APPROVED',
+              approvedAt: new Date()
+            }
+          });
+          return res.status(200).json({ success: true, message: `User converted to ${targetIdentity} for free.`, data: { userId: upgradedUser.id } });
         }
 
-        // Calculate updated hierarchy path so this user appears under the creator in hierarchy queries
-        const creatorRecord = await prisma.user.findUnique({
-          where: { id: creatorId },
-          select: { id: true, path: true }
-        });
-        const updatedPath = creatorRecord
-          ? (creatorRecord.path ? `${creatorRecord.path}/${creatorRecord.id}` : `/${creatorRecord.id}`)
-          : (existing.path || '');
-
-        console.log(`[UpgradeDebug] Upgrading user ${existing.id} from ${existing.identity} to ${targetIdentity}`);
-
-        // Upgrade the existing user's identity AND fix hierarchy (parentId + path)
-        const upgradedUser = await prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            identity: targetIdentity,
-            userType: targetIdentity, // Ensure userType is also updated
-            approvalStatus: 'APPROVED',
-            approvedAt: new Date(),
-            parentId: creatorId,    // Link to creator so hierarchy queries work
-            path: updatedPath       // Set correct path so descendant queries work
-          }
-        });
-
-        // Create wallet if needed (MEMBER, SAATHI, BUSINESS_PARTNER get personal wallets)
-        if (targetIdentity !== 'USER' && !SHARED_WALLET_ROLES.includes(targetIdentity)) {
-          try {
-            await walletService.createWallet(upgradedUser.id, tenantId, false);
-          } catch (walletErr) {
-            console.error("Failed to create wallet for upgraded user:", walletErr);
-          }
-        }
-
-        await logAction({
-          userId: creatorId,
-          action: `IDENTITY_UPGRADED_TO_${targetIdentity}`,
-          targetId: upgradedUser.id,
-          tenantId,
-          metadata: { previousIdentity: existing.identity, newIdentity: targetIdentity, fee, paymentMethod }
-        });
-
-        return res.status(200).json({
-          success: true,
-          message: `Existing user upgraded to ${targetIdentity} successfully. Fee of ${fee} processed via ${paymentMethod || 'NONE'}.`,
-          data: { userId: upgradedUser.id, mobile: upgradedUser.mobile, previousIdentity: existing.identity, newIdentity: targetIdentity, feeProcessed: fee }
+        // ─── Normal Assisted Flow: Must create application ───
+        return res.status(400).json({ 
+          success: false, 
+          message: "Assisted creation for existing users must go through the Membership Application flow. Use the Application form in the dashboard." 
         });
       }
 
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
 
-      // Handle Wallet Deduction/Credit for new user creation
-      if (fee > 0 && paymentMethod === 'WALLET') {
-        try {
-          const creator = await prisma.user.findUnique({ where: { id: creatorId } });
-          await walletService.deductBalanceIfSufficient(creatorId, fee, tenantId, creator.identity);
-        } catch (err) {
-          return res.status(400).json({ success: false, message: err.message || "Insufficient wallet balance" });
-        }
-      }
-
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // ─── Flow 3 Fix: Create Application for New Users ───
+      // Instead of direct creation, we create an APPLICATION record that must be approved.
       
-      // Calculate hierarchy path for scalability
-      let path = "";
-      if (creatorId) {
-        const selectFields = { id: true };
-        const availableFields = Object.keys(prisma.user.fields || {});
-        if (availableFields.includes('path') || prisma.user.findUnique.toString().includes('path')) {
-          selectFields.path = true;
-        }
-
-        const creator = await prisma.user.findUnique({
-          where: { id: creatorId },
-          select: selectFields
-        });
-        
-        if (creator) {
-          path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-        }
-      }
-
-      // Extract Location Data for Registration
+      const hashedPassword = await bcrypt.hash(password, 10);
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
 
-      const userData = {
-        id: generateUuid(),
-        mobile,
-        fullName,
-        gender,
-        dateOfBirth: new Date(dateOfBirth),
-        password: hashedPassword,
-        identity: targetIdentity,
-        userType: targetIdentity,
-        tenantId,
-        parentId: creatorId,
-        // Add Location Fields
-        registrationState: loc.state,
-        registrationCity: loc.city,
-        registrationPincode: loc.pincode,
-        registrationLat: loc.lat,
-        registrationLong: loc.long
-      };
-
-      // Only add path if the model supports it
-      const userModelFields = Object.keys(prisma.user.fields || {});
-      if (userModelFields.includes('path') || prisma.user.create.toString().includes('path')) {
-        userData.path = path;
-      }
-
-      const user = await prisma.user.create({ data: userData });
-
-      // Create wallet for the new user (unless they are USER or share a Corporate Wallet)
-      if (targetIdentity !== 'USER' && !SHARED_WALLET_ROLES.includes(targetIdentity)) {
-        try {
-          await walletService.createWallet(user.id, tenantId, false);
-        } catch (walletErr) {
-          console.error("Failed to create personal wallet for user:", walletErr);
+      // 1. Create the base User (as USER identity first)
+      const user = await prisma.user.create({
+        data: {
+          id: generateUuid(),
+          mobile,
+          fullName,
+          gender,
+          dateOfBirth: new Date(dateOfBirth),
+          password: hashedPassword,
+          identity: 'USER', // Always start as USER
+          userType: 'USER',
+          tenantId,
+          parentId: creatorId,
+          registrationState: loc.state,
+          registrationCity: loc.city,
+          registrationPincode: loc.pincode
         }
-      } else if (SHARED_WALLET_ROLES.includes(targetIdentity)) {
-        try {
-          await walletService.resolveWallet(user.id, tenantId, targetIdentity);
-        } catch (walletErr) {
-          console.error("Failed to ensure corporate wallet:", walletErr);
-        }
-      }
+      });
 
-      // If target is Admin/Sub-Admin/Agent and they paid via Cash/Razorpay, CREDIT the shared/corporate wallet
-      if (SHARED_WALLET_ROLES.includes(targetIdentity) && fee > 0 && ['CASH', 'RAZORPAY'].includes(paymentMethod)) {
-        try {
-          const sharedWallet = await walletService.resolveWallet(user.id, tenantId, targetIdentity);
-          await walletService.updateBalance(sharedWallet.id, fee);
-          
-          await logAction({
-            userId: creatorId,
-            action: "ADMIN_FEE_CREDITED_TO_WALLET",
-            targetId: sharedWallet.id,
-            tenantId,
-            metadata: { amount: fee, paymentMethod, newUserId: user.id }
-          });
-        } catch (walletErr) {
-          console.error("Failed to credit corporate wallet:", walletErr);
+      // 2. Create the Membership Application
+      const application = await prisma.membershipApplication.create({
+        data: {
+          id: generateUuid(),
+          userId: user.id,
+          firstName: fullName.split(' ')[0],
+          lastName: fullName.split(' ').slice(1).join(' ') || 'N/A',
+          email: `${mobile}@os.com`,
+          mobile: mobile,
+          gender: gender.toUpperCase(),
+          status: 'PENDING',
+          createdById: creatorId,
+          paymentType: paymentMethod === 'CASH' ? 'CASH' : (paymentMethod === 'WALLET' ? 'WALLET' : 'RAZORPAY'),
+          currentState: loc.state,
+          currentDistrict: loc.city,
+          currentPincode: loc.pincode
         }
+      });
+
+      // 3. If Wallet, handle deduction immediately (but credit deferred)
+      if (fee > 0 && paymentMethod === 'WALLET') {
+        const adminWallet = await walletService.resolveWallet(null, tenantId, 'WHITE_LABEL_ADMIN');
+        const creatorWallet = await walletService.resolveWallet(creatorId, tenantId, creatorIdentity);
+        
+        await walletService.payCreationFeeWithHistory(
+          creatorWallet.id,
+          adminWallet.id,
+          fee,
+          `Assisted Member Creation for ${fullName}`,
+          application.id,
+          tenantId,
+          'WALLET',
+          prisma,
+          false // creditAdminImmediately = false
+        );
       }
 
       res.status(201).json({
         success: true,
-        message: `User created successfully as ${targetIdentity}. Fee of ${fee} processed via ${paymentMethod || 'NONE'}.`,
-        data: { userId: user.id, mobile: user.mobile, feeProcessed: fee }
+        message: `Application for ${targetIdentity} created successfully. Awaiting approval. Fee of ${fee} processed via ${paymentMethod}.`,
+        data: { userId: user.id, applicationId: application.id }
       });
 
     } catch (err) {
@@ -711,31 +642,24 @@ const adminMembershipController = {
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. Credit Admin Corporate Wallet ONLY IF it wasn't a WALLET payment 
-          // (Because WALLET payments are credited to Admin immediately at application creation)
-          const isWalletPayment = application.paymentType === 'WALLET';
-          
-          if (!isWalletPayment) {
-            await prisma.wallet.update({
-              where: { id: adminWallet.id },
-              data: { balance: { increment: application.payment.amount } }
-            });
+          // 1. Credit Admin Corporate Wallet (Always credit now, as it was held/deferred at creation)
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.payment.amount } }
+          });
 
-            await prisma.walletTransaction.create({
-              data: {
-                id: generateUuid(),
-                walletId: adminWallet.id,
-                amount: application.payment.amount,
-                type: "CREDIT",
-                category: "SERVICE_CHARGE",
-                description: `Membership fee received from user ${application.userId} (via ${application.paymentType})`,
-                tenantId
-              }
-            });
-            console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.payment.amount}`);
-          } else {
-            console.log(`[Commission] Admin Wallet already credited via WALLET payment at application creation.`);
-          }
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.payment.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `Membership fee received from user ${application.userId} (via ${application.paymentType})`,
+              tenantId
+            }
+          });
+          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.payment.amount}`);
 
           // 2. Now distribute from Admin down to the hierarchy
           // Lookup by slug first, then fall back to name

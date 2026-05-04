@@ -9,14 +9,13 @@ const checkPermission = (requiredPermission) => {
     try {
       const { user_id: userId, identity } = req.user;
 
-      // 1. Bypass for Top Admins
-      if (['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(identity)) {
+      // 1. Bypass Logic
+      // - Top Admins always bypass.
+      // - Other identities (Country Head, State Partner, etc.) bypass because this 
+      //   granular permission system is currently specialized for Sub-Admin delegation only.
+      if (identity !== 'SUB_ADMIN') {
         return next();
       }
-
-      // 2. Roles that require explicit permission check in the database
-      // This includes SUB_ADMIN, COUNTRY_HEAD, STATE_PARTNER, DISTRICT_PARTNER, etc.
-      // (Basically anyone not in the Top Admin bypass list)
 
       console.log(`[PermissionDebug] Checking ${requiredPermission} for Sub-Admin ID: ${userId}`);
 

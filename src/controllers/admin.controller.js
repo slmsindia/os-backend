@@ -20,30 +20,19 @@ const adminController = {
 
     try {
       const myIdentity = String(req.user?.identity || '').toUpperCase();
+      const { permissionNames } = req.body; // Array of permission names, e.g., ["PERM_MANAGE_APPLICATIONS"]
 
       // Role Ranking Definition (Lower number = Higher Power)
       const roleRank = {
-        "SUPER_ADMIN": 0,
-        "WHITE_LABEL_ADMIN": 1,
-        "ADMIN": 2,
-        "SUB_ADMIN": 3,
-        "SUPPORT_TEAM": 4,
-        "COUNTRY_HEAD": 5,
-        "STATE_PARTNER": 6,
-        "DISTRICT_PARTNER": 7,
-        "BUSINESS_PARTNER": 8,
-        "SAATHI": 9,
-        "MEMBER": 10,
-        "AGENT": 11,
-        "USER": 12
+        "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
+        "SUPPORT_TEAM": 4, "COUNTRY_HEAD": 5, "STATE_PARTNER": 6,
+        "DISTRICT_PARTNER": 7, "BUSINESS_PARTNER": 8, "SAATHI": 9,
+        "MEMBER": 10, "AGENT": 11, "USER": 12
       };
 
       const myRank = roleRank[myIdentity] ?? 99;
       const targetRank = roleRank[targetIdentity] ?? 99;
 
-      // Permission Check: Can only create roles BELOW yourself
-      // Exception: Super Admin can create anything, and we allow same-level creation for some roles if needed, 
-      // but based on your request, it's a strict top-down hierarchy.
       if (myRank >= targetRank && myIdentity !== "SUPER_ADMIN") {
         return res.status(403).json({
           success: false,
@@ -52,15 +41,11 @@ const adminController = {
       }
 
       let finalParentId = myId;
-
-      // If explicit parentId provided, verify it belongs to same tenant
       if (parentId) {
         const parent = await prisma.user.findFirst({
           where: { id: parentId, tenantId: myTenantId }
         });
-        if (!parent) {
-          return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
-        }
+        if (!parent) return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
         finalParentId = parentId;
       }
 
@@ -82,12 +67,58 @@ const adminController = {
         }
       });
 
+      // --- Granular Permissions Logic ---
+      // If permissions are provided (specifically for Sub-Admin delegation), create a dedicated role
+      if (permissionNames && Array.isArray(permissionNames) && permissionNames.length > 0) {
+        const foundPerms = await prisma.permission.findMany({
+          where: { name: { in: permissionNames } }
+        });
+
+        if (foundPerms.length > 0) {
+          // Create a custom role for this specific user to hold their unique permissions
+          const customRoleName = `ROLE_${targetIdentity}_${user.id.split('-')[0]}_${Date.now()}`;
+          const customRole = await prisma.role.create({
+            data: {
+              id: generateUuid(),
+              name: customRoleName,
+              permissions: {
+                create: foundPerms.map(p => ({
+                  id: generateUuid(),
+                  permissionId: p.id
+                }))
+              }
+            }
+          });
+
+          // Link user to this custom role
+          await prisma.userRole.create({
+            data: {
+              id: generateUuid(),
+              userId: user.id,
+              roleId: customRole.id
+            }
+          });
+        }
+      } else {
+        // Fallback: Assign default role based on identity
+        const defaultRole = await prisma.role.findUnique({ where: { name: targetIdentity } });
+        if (defaultRole) {
+          await prisma.userRole.create({
+            data: {
+              id: generateUuid(),
+              userId: user.id,
+              roleId: defaultRole.id
+            }
+          });
+        }
+      }
+
       await logAction({
         userId: myId,
         action: `CREATE_${targetIdentity}`,
         targetId: user.id,
         tenantId: myTenantId,
-        metadata: { mobile: user.mobile }
+        metadata: { mobile: user.mobile, permissions: permissionNames }
       });
 
       res.status(201).json({ success: true, user: { id: user.id, mobile: user.mobile, identity: user.identity } });

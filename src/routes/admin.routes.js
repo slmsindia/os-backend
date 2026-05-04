@@ -13,28 +13,28 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Get dashboard statistics (Moved to top for priority)
-router.get("/stats", checkPermission("REPORT_VIEW"), adminController.getStats);
+router.get("/stats", checkPermission("PERM_VIEW_REPORTS"), adminController.getStats);
 
 router.post("/create-white-label-admin", checkIdentity(["SUPER_ADMIN"]), adminController.createWhiteLabelAdmin);
 router.post("/create-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminController.createAdmin);
 router.post("/create-sub-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.createSubAdmin);
-router.post("/create-country-head", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), adminController.createCountryHead);
-router.post("/create-state", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD"]), adminController.createState);
-router.post("/create-district", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER"]), adminController.createDistrict);
-router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminController.createAgent);
-router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
+router.post("/create-country-head", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.createCountryHead);
+router.post("/create-state", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.createState);
+router.post("/create-district", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.createDistrict);
+router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.createAgent);
+router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.createUser);
 
 // Get all users (with filtering and pagination)
-router.get("/users", checkPermission("HIERARCHY_VIEW"), adminController.getAllUsers);
+router.get("/users", checkPermission("PERM_MANAGE_HIERARCHY"), adminController.getAllUsers);
 
 // Get specific user details by ID
-router.get("/users/:id", checkPermission("HIERARCHY_VIEW"), adminController.getUserById);
+router.get("/users/:id", checkPermission("PERM_MANAGE_HIERARCHY"), adminController.getUserById);
 
 // Get membership applications for approve/reject flow
-router.get("/members", checkPermission("MEMBERSHIP_APPROVE"), adminMembershipController.getMembershipApplications);
+router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getMembershipApplications);
 
 // Toggle user status (Activate/Deactivate)
-router.post("/users/:userId/toggle-status", checkPermission("USER_TOGGLE_STATUS"), adminController.toggleUserStatus);
+router.post("/users/:userId/toggle-status", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.toggleUserStatus);
 
 // Razorpay Multi-tenant Settings (White Label Admin only)
 router.get("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.getRazorpaySettings);

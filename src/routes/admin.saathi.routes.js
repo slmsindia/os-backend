@@ -8,38 +8,40 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Fee Management (Top Admins only)
-router.put("/fee", 
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
+router.put("/fee",
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]),
   adminSaathiController.updateSaathiFee
 );
-router.post("/fee", 
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
+router.post("/fee",
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]),
   adminSaathiController.updateSaathiFee
 );
 router.get("/fee", adminSaathiController.getSaathiFee);
 
 // Only Admins/Partners can create Saathi directly
-router.post("/create-direct", 
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), 
+router.post("/create-direct",
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]),
   adminSaathiController.createSaathiDirectly
 );
 
 // Alias for convenience
-router.post("/create-directly", 
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), 
+router.post("/create-directly",
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]),
   adminSaathiController.createSaathiDirectly
 );
 
+const { checkPermission } = require("../middleware/permission.middleware");
+
 // Management routes
-router.get("/applications", adminSaathiController.getSaathiApplications);
-router.get("/applications/:applicationId", adminSaathiController.getSaathiApplicationById);
+router.get("/applications", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.getSaathiApplications);
+router.get("/applications/:applicationId", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.getSaathiApplicationById);
 router.post("/verify-payment", adminSaathiController.verifyPayment);
-router.post("/applications/:applicationId/approve", adminSaathiController.approveApplication);
-router.post("/applications/:applicationId/reject", adminSaathiController.rejectApplication);
+router.post("/applications/:applicationId/approve", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.approveApplication);
+router.post("/applications/:applicationId/reject", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.rejectApplication);
 
 // Delegation (Top Admins only)
-router.post("/delegate-approval", 
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), 
+router.post("/delegate-approval",
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]),
   adminSaathiController.delegateSaathiApproval
 );
 

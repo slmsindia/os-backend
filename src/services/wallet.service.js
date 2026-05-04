@@ -147,8 +147,9 @@ const walletService = {
    * @param {string} tenantId - Tenant ID
    * @param {string} paymentMethod - WALLET, RAZORPAY, CASH
    * @param {object} tx - Prisma transaction object
+   * @param {boolean} creditAdminImmediately - Whether to credit admin now or wait for approval
    */
-  payCreationFeeWithHistory: async (partnerWalletId, adminWalletId, amount, description, referenceId, tenantId, paymentMethod, tx) => {
+  payCreationFeeWithHistory: async (partnerWalletId, adminWalletId, amount, description, referenceId, tenantId, paymentMethod, tx, creditAdminImmediately = true) => {
     const db = tx || prisma;
     
     // 1. Partner Log (Deduct only if WALLET)
@@ -166,15 +167,17 @@ const walletService = {
           amount: amount,
           type: "DEBIT",
           category: "SERVICE_CHARGE",
-          description: `${description} (Fee Paid via ${paymentMethod})`,
+          description: creditAdminImmediately 
+            ? `${description} (Fee Paid via ${paymentMethod})`
+            : `${description} (Fee Paid via ${paymentMethod} - Pending Approval)`,
           referenceId: referenceId,
           tenantId: tenantId
         }
       });
     }
 
-    // 2. Credit to Admin (Always increment balance)
-    if (adminWalletId) {
+    // 2. Credit to Admin (Only if creditAdminImmediately is true)
+    if (adminWalletId && creditAdminImmediately) {
       await db.wallet.update({
         where: { id: adminWalletId },
         data: { balance: { increment: amount } }

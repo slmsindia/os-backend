@@ -276,14 +276,51 @@ const hierarchyController = {
         prisma.walletTransaction.count({ where })
       ]);
 
+      const mappedTxns = txns.map(t => ({
+        ...t,
+        transactionAmount: t.amount,
+        transactionDateTime: t.createdAt,
+        tnxDoneBy: t.wallet?.user?.fullName || "N/A",
+        roleForDoneBy: t.wallet?.user?.identity || "N/A",
+        userMobile: t.wallet?.user?.mobile || "N/A",
+        serviceName: t.category === 'COMMISSION' ? 'Commission' : (t.category === 'SERVICE_CHARGE' ? 'Service Fee' : 'Wallet'),
+        subServiceName: t.category,
+        transactionMethod: t.type === 'CREDIT' ? 'Credit' : 'Debit',
+        description: t.description || '—'
+      }));
+
+      // --- CSV Export Logic ---
+      if (req.query.exportCsv === "true") {
+        const headers = [
+          "Timestamp", "User Name", "Mobile", "Role", "Service", "Category", 
+          "Description", "Type", "Amount", "Method"
+        ];
+        
+        let csv = headers.join(",") + "\n";
+        mappedTxns.forEach(tx => {
+          const row = [
+            new Date(tx.transactionDateTime).toLocaleString('en-IN'),
+            tx.tnxDoneBy,
+            tx.userMobile,
+            tx.roleForDoneBy,
+            tx.serviceName,
+            tx.subServiceName,
+            tx.description,
+            tx.type,
+            tx.transactionAmount,
+            tx.transactionMethod
+          ];
+          csv += row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
+        });
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=user_ledger.csv');
+        return res.status(200).send(csv);
+      }
+
       res.json({
         success: true,
-        data: txns.map(t => ({
-          ...t,
-          userName: t.wallet?.user?.fullName || "N/A",
-          userMobile: t.wallet?.user?.mobile || "N/A",
-          userIdentity: t.wallet?.user?.identity || "N/A"
-        })),
+        data: mappedTxns,
         pagination: { 
           total, 
           page: parseInt(page), 

@@ -108,77 +108,82 @@ const commissionService = {
 
           console.log(`[Commission] STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName}`);
 
-          // --- SCHEME PRIORITY LOGIC ---
-          // 1. Priority: Location-based scheme (Override)
-          // 2. Fallback: Receiver's assigned scheme
-          // 3. Fallback: Global Default (General) scheme
+          // --- SCHEME RESOLUTION (UPSTREAM OVERRIDE CHAIN) ---
+          // Rule: Each partner's commission is decided by the closest upstream override.
+          // Fallback: Immediate Parent -> Next Parent -> ... -> WLA Default
           
-          let effectiveSchemeId = locationScheme ? locationScheme.id : receiver.commissionSchemeId;
+          let transferAmount = 0;
+          let resolvedBy = "";
 
-          if (!effectiveSchemeId) {
-              const defaultScheme = await tx.commissionScheme.findFirst({
-                  where: { tenantId: user.tenantId, isActive: true, isDefault: true },
-                  orderBy: { createdAt: 'desc' }
-              });
-              if (defaultScheme) effectiveSchemeId = defaultScheme.id;
-          }
-
-          if (!effectiveSchemeId) {
-            // Last resort: latest active scheme
-            const latestScheme = await tx.commissionScheme.findFirst({
-              where: { tenantId: user.tenantId, isActive: true },
-              orderBy: { createdAt: 'desc' }
-            });
-            if (latestScheme) effectiveSchemeId = latestScheme.id;
-          }
-
-          if (!effectiveSchemeId) {
-            console.log(`[Commission]   SKIP: No active scheme found for receiver ${receiver.fullName}`);
-            continue;
-          }
-
-          const shareConfig = await tx.commissionShare.findUnique({
-              where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } } }
-          );
-
-          if (!shareConfig) continue;
-
+          // Identity of the receiver for lookup
+          const recIdentity = receiver.identity.toUpperCase();
           let shareKey = "";
-          const identity = receiver.identity.toUpperCase();
-          if (identity.includes("COUNTRY")) shareKey = "countryPartner";
-          else if (identity.includes("STATE")) shareKey = "statePartner";
-          else if (identity.includes("DISTRICT")) shareKey = "districtPartner";
-          else if (identity.includes("SAATHI")) shareKey = "saathi";
-          else if (identity.includes("MEMBER")) shareKey = "member";
+          if (recIdentity.includes("COUNTRY")) shareKey = "countryPartner";
+          else if (recIdentity.includes("STATE")) shareKey = "statePartner";
+          else if (recIdentity.includes("DISTRICT")) shareKey = "districtPartner";
+          else if (recIdentity.includes("SAATHI")) shareKey = "saathi";
+          else if (recIdentity.includes("MEMBER")) shareKey = "member";
 
           if (!shareKey) continue;
 
-          const shareValue = parseFloat(shareConfig[shareKey]) || 0;
-          const transferAmount = shareConfig.commissionType === 1
-              ? (transactionAmount * shareValue) / 100
-              : shareValue;
+          // Search from the current sender upwards to find an override
+          for (let j = i; j >= 0; j--) {
+              const upstreamPartner = hierarchy[j];
+              const schemeId = upstreamPartner.commissionSchemeId;
+              
+              if (schemeId) {
+                  const share = await tx.commissionShare.findUnique({
+                      where: { schemeId_subServiceId: { schemeId, subServiceId } }
+                  });
+                  
+                  if (share && parseFloat(share[shareKey]) > 0) {
+                      const val = parseFloat(share[shareKey]);
+                      transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
+                      resolvedBy = upstreamPartner.fullName;
+                      break; // Found the closest override
+                  }
+              }
+          }
 
-          if (transferAmount <= 0) continue;
+          // Global Default Fallback if no override found in hierarchy
+          if (transferAmount <= 0) {
+              const defaultScheme = await tx.commissionScheme.findFirst({
+                  where: { tenantId: user.tenantId, isActive: true, isDefault: true }
+              });
+              if (defaultScheme) {
+                  const share = await tx.commissionShare.findUnique({
+                      where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId } }
+                  });
+                  if (share) {
+                      const val = parseFloat(share[shareKey]);
+                      transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
+                      resolvedBy = "System Default";
+                  }
+              }
+          }
 
-          // --- EXECUTE TRANSFER ---
+          if (transferAmount <= 0) {
+            console.log(`[Commission]   SKIP: No commission defined for ${receiver.fullName} (${recIdentity})`);
+            continue;
+          }
+
+          // --- EXECUTE TRANSFER (CREDIT-BASED: FULL DISTRIBUTION) ---
           const isSenderTopAdmin = ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(sender.identity.toUpperCase());
           
           try {
             let senderWallet;
             if (isSenderTopAdmin && adminCorporateWallet) {
                 senderWallet = adminCorporateWallet;
-                await tx.wallet.update({
-                    where: { id: adminCorporateWallet.id },
-                    data: { balance: { decrement: transferAmount } }
-                });
             } else {
                 await ensureWallet(sender.id, user.tenantId, tx);
                 senderWallet = await tx.wallet.findUnique({ where: { userId: sender.id } });
-                await tx.wallet.update({
-                    where: { id: senderWallet.id },
-                    data: { balance: { decrement: transferAmount } }
-                });
             }
+
+            // Deduct from Sender (Always executes, balance allowed to go negative)
+            await tx.wallet.update({
+                where: { id: senderWallet.id },
+                data: { balance: { decrement: transferAmount } }
+            });
 
             // Create DEBIT Transaction log for Sender
             await tx.walletTransaction.create({
@@ -190,8 +195,8 @@ const commissionService = {
                     category: "COMMISSION_PAYOUT",
                     referenceId: transactionLog.id,
                     description: customDescription || (isTransfer 
-                        ? `${serviceLabel} commission paid to ${receiver.fullName} (done by ${joinerName})`
-                        : `Commission paid to ${receiver.fullName} for joiner ${joinerName}`),
+                        ? `${serviceLabel} commission paid to ${receiver.fullName} (determined by ${resolvedBy})`
+                        : `Commission paid to ${receiver.fullName} for joiner ${joinerName} (determined by ${resolvedBy})`),
                     tenantId: user.tenantId
                 }
             });
@@ -214,8 +219,8 @@ const commissionService = {
                     category: "COMMISSION",
                     referenceId: transactionLog.id,
                     description: customDescription || (isTransfer
-                        ? `${serviceLabel} commission from ${sender.fullName} (done by ${joinerName})`
-                        : `Commission for ${joinerName} received from ${sender.fullName}`),
+                        ? `${serviceLabel} commission from ${sender.fullName} (determined by ${resolvedBy})`
+                        : `Commission for ${joinerName} received from ${sender.fullName} (determined by ${resolvedBy})`),
                     tenantId: user.tenantId
                 }
             });
@@ -230,7 +235,7 @@ const commissionService = {
                 }
             });
 
-            console.log(`[Commission]   SUCCESS: ${transferAmount} moved to ${receiver.fullName}`);
+            console.log(`[Commission]   SUCCESS: ${transferAmount} moved from ${sender.fullName} to ${receiver.fullName} (resolved by ${resolvedBy})`);
           } catch (txErr) {
             console.error(`[Commission]   FAILED Transfer:`, txErr.message);
           }
