@@ -681,7 +681,11 @@ const adminMembershipController = {
           identity: 'MEMBER',
           approvalStatus: 'APPROVED',
           approvedAt: new Date(),
-          roleId: null
+          roleId: null,
+          // Sync location for Commission Scheme targeting
+          registrationPincode: application.currentPincode,
+          registrationState: application.currentState,
+          registrationCity: application.currentDistrict
         }
       });
 

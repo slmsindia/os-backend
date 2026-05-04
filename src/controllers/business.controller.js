@@ -34,37 +34,56 @@ const businessController = {
         return res.status(400).json({ success: false, message: "Invalid Sector ID. Please provide a valid ID from the Sector list." });
       }
 
-      // 3. Handle Wallet Payment
       const payAmount = parseFloat(amount || 0);
       const payMode = parseInt(paymentMode || 1);
 
-      if (payMode === 2) { // Assuming 2 is WALLET for BP
-        const wallet = await walletService.resolveWallet(userId, tenantId, user.identity);
-        if (!wallet || wallet.balance < payAmount) {
-          return res.status(400).json({ success: false, message: "Insufficient wallet balance." });
-        }
-        // Deduct from user
-        await walletService.updateBalance(wallet.id, -payAmount);
-      }
+      // 3 & 4. Handle Application and Payment in Transaction
+      const application = await prisma.$transaction(async (tx) => {
+        // Create Application first
+        const app = await tx.businessApplication.create({
+          data: {
+            id: generateUuid(),
+            userId,
+            businessName,
+            brandName,
+            ownerName,
+            email,
+            contactNumber1,
+            contactNumber2,
+            sectorId,
+            amount: parseFloat(amount || 0),
+            paymentMode: parseInt(paymentMode || 1),
+            razorPayReferenceNo,
+            address,
+            documents,
+            status: "PENDING"
+          }
+        });
 
-      const application = await prisma.businessApplication.create({
-        data: {
-          id: generateUuid(),
-          userId,
-          businessName,
-          brandName,
-          ownerName,
-          email,
-          contactNumber1,
-          contactNumber2,
-          sectorId,
-          amount: parseFloat(amount || 0),
-          paymentMode: parseInt(paymentMode || 1),
-          razorPayReferenceNo,
-          address,
-          documents,
-          status: "PENDING"
+        // If Wallet, deduct now
+        if (payMode === 2) { // WALLET
+          const wallet = await walletService.resolveWallet(userId, tenantId, user.identity);
+          if (!wallet || wallet.balance < payAmount) {
+            throw new Error("Insufficient wallet balance.");
+          }
+
+          const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } });
+          if (!adminWallet) throw new Error("Admin wallet not found");
+
+          // Deduct from user and credit to admin
+          await walletService.payCreationFeeWithHistory(
+            wallet.id,
+            adminWallet.id,
+            payAmount,
+            `Business Partner Application Fee for ${businessName}`,
+            app.id,
+            tenantId,
+            'WALLET',
+            tx
+          );
         }
+
+        return app;
       });
 
       await logAction({

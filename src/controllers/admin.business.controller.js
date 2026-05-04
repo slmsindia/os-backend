@@ -12,11 +12,23 @@ const businessPartnerController = {
    */
   addFacility: async (req, res) => {
     const { name, icon } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: "Name is required" });
+
     try {
-      // For now we just return success as a placeholder if no model exists yet
-      // In future, you can create a BusinessFacility model
-      res.json({ success: true, message: "Facility added successfully (Placeholder)", data: { name, icon } });
+      const facility = await prisma.jobFacility.create({
+        data: {
+          id: generateUuid(),
+          name,
+          icon: icon || null,
+          isActive: true
+        }
+      });
+      res.json({ success: true, message: "Facility added successfully", data: facility });
     } catch (err) {
+      console.error(err);
+      if (err.code === 'P2002') {
+        return res.status(400).json({ success: false, message: "Facility with this name already exists" });
+      }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
@@ -151,7 +163,11 @@ const businessPartnerController = {
           // Create a new User account first
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-          const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
+          // Use provided password or fallback to mobile last 4 digits
+          const mobileForPass = body.contactNumber1 || "0000";
+          const defaultPassword = (mobileForPass.length >= 4) ? mobileForPass.slice(-4) : "1234";
+          const passwordToHash = body.password || defaultPassword;
+          const hashedPassword = await bcrypt.hash(passwordToHash, 10);
 
           targetUser = await prisma.user.create({
             data: {
@@ -197,11 +213,17 @@ const businessPartnerController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      // We update if it's REJECTED or currently PENDING
-      const shouldUpdateExisting = existingApplication && (
-        existingApplication.status === 'REJECTED' || 
-        existingApplication.status === 'PENDING'
-      );
+      // BLOCK if already PENDING or APPROVED
+      if (existingApplication && (existingApplication.status === 'PENDING' || existingApplication.status === 'APPROVED')) {
+        return res.status(400).json({
+          success: false,
+          message: `Business Partner application already exists. Status: ${existingApplication.status}. You cannot re-apply unless rejected.`,
+          status: existingApplication.status
+        });
+      }
+
+      // We update ONLY if it's REJECTED (to reuse/overwrite)
+      const shouldUpdateExisting = existingApplication && existingApplication.status === 'REJECTED';
 
       const isPaidResubmission = existingApplication && existingApplication.status === 'REJECTED';
 
@@ -217,6 +239,17 @@ const businessPartnerController = {
       }
       
       const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
+
+      // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
+      let razorpayOrder = null;
+      if (paymentMethod === 'RAZORPAY') {
+        try {
+          razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `biz_direct_${targetUserId.slice(0, 8)}`);
+        } catch (err) {
+          console.error("Razorpay Order Error:", err);
+          return res.status(500).json({ success: false, message: "Failed to create Razorpay order. Please check configuration." });
+        }
+      }
 
       const application = await prisma.$transaction(async (tx) => {
         let partnerWallet = null;
@@ -257,16 +290,6 @@ const businessPartnerController = {
           createdById: adminId
         };
 
-        // Pre-create Razorpay Order if needed
-        let razorpayOrder = null;
-        if (paymentMethod === 'RAZORPAY') {
-          try {
-            razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `biz_direct_${targetUserId.slice(0, 8)}`);
-          } catch (err) {
-            console.error("Razorpay Order Error:", err);
-            throw new Error("Failed to create Razorpay order. Please check configuration.");
-          }
-        }
 
         let appResult;
         if (shouldUpdateExisting) {
@@ -304,6 +327,8 @@ const businessPartnerController = {
         }
 
         return appResult;
+      }, {
+        timeout: 10000 // 10 seconds
       });
 
       res.status(201).json({
@@ -395,7 +420,13 @@ const businessPartnerController = {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: application.userId },
-          data: { identity: 'BUSINESS_PARTNER' }
+          data: { 
+            identity: 'BUSINESS_PARTNER',
+            // Sync location for Commission Scheme targeting
+            registrationPincode: application.addressJson?.pincode || application.addressJson?.currentPincode,
+            registrationState: application.addressJson?.state || application.addressJson?.currentState,
+            registrationCity: application.addressJson?.district || application.addressJson?.currentDistrict
+          }
         }),
         prisma.businessPartnerApplication.update({
           where: { id: applicationId },
@@ -418,25 +449,30 @@ const businessPartnerController = {
         });
 
         if (adminWallet && (application.amount > 0)) {
-          // 1. First, credit the full payment amount to the Admin Corporate Wallet
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.amount } }
-          });
+          // 1. Credit the Admin Corporate Wallet ONLY IF RAZORPAY
+          // (Wallet/Cash payments are credited to Admin at application creation)
+          const isRazorpay = application.paymentMode === 1;
+          if (isRazorpay) {
+            await prisma.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: application.amount } }
+            });
 
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Business Partner fee received from user ${application.userId}`,
-              tenantId
-            }
-          });
-
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.amount}`);
+            await prisma.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: application.amount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                description: `Business Partner fee received from user ${application.userId} (via RAZORPAY)`,
+                tenantId
+              }
+            });
+            console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.amount}`);
+          } else {
+            console.log(`[Commission] Skipping Admin credit for Business Partner application as it was already credited via Wallet/Cash.`);
+          }
 
           // 2. Distribute
           const subService = await prisma.commissionSubService.findFirst({
@@ -589,28 +625,8 @@ const businessPartnerController = {
             }
           });
         }
-
-        if (adminWallet) {
-          // Actually credit the Admin corporate wallet
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.amount } }
-          });
-
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.amount,
-              type: "CREDIT",
-              category: "COMMISSION",
-              description: `Business Partner Application Fee received via RAZORPAY (User: ${application.userId})`,
-              referenceId: application.id,
-              tenantId: tenantId
-            }
-          });
-          console.log(`[Wallet] Credited Admin Wallet (${adminWallet.id}) with ${application.amount} from Business Partner Razorpay.`);
-        }
+        
+        console.log(`[Wallet] Razorpay verified for Business Partner ${application.id}. Admin credit will happen upon approval.`);
       } catch (logErr) {
         console.error("Failed to log Business Razorpay log/credit:", logErr);
       }

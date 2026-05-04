@@ -1,8 +1,7 @@
 const bcrypt = require("bcrypt");
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 const { logAction } = require("../utils/audit");
-const { generateUuid } = require("../utils/id");
+const { generateUuid, generateReferralCode } = require("../utils/id");
 
 const hasGlobalAdminScope = (user = {}) => {
   const identity = String(user?.identity || '').toUpperCase();
@@ -77,6 +76,7 @@ const adminController = {
           identity: targetIdentity,
           tenantId: myTenantId,
           parentId: finalParentId,
+          referralCode: generateReferralCode(),
           createdBy: myId
         }
       });

@@ -32,6 +32,7 @@ const reportRoutes = require("./routes/report.routes");
 const adminPermissionRoutes = require("./routes/admin.permission.routes");
 const supportRoutes = require("./routes/support.routes");
 const marketingRoutes = require("./routes/marketing.routes");
+const dashboardRoutes = require("./routes/dashboard.routes");
 
 const app = express();
 
@@ -129,6 +130,7 @@ app.use("/api/admin/reports", reportRoutes);
 app.use("/api/admin/permissions", adminPermissionRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/marketing", marketingRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 

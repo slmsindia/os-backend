@@ -57,8 +57,8 @@ const supportController = {
 
       res.status(201).json({ success: true, message: "Ticket created successfully", data: ticket });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] createTicket Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -93,8 +93,8 @@ const supportController = {
 
       res.status(201).json({ success: true, data: chatMessage });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] sendMessage Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -122,8 +122,8 @@ const supportController = {
 
       res.json({ success: true, message: "Ticket closed successfully", data: updated });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] closeTicket Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -131,8 +131,12 @@ const supportController = {
    * Get My Tickets (Tickets I created)
    */
   getMyCreatedTickets: async (req, res) => {
-    const { user_id: userId } = req.user;
     try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "User identity not found in token" });
+      }
+
       const tickets = await prisma.supportTicket.findMany({
         where: { creatorId: userId },
         orderBy: { createdAt: 'desc' },
@@ -140,8 +144,8 @@ const supportController = {
       });
       res.json({ success: true, data: tickets });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] getMyCreatedTickets Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -149,8 +153,12 @@ const supportController = {
    * Get Assigned Tickets (Tickets sent to me)
    */
   getAssignedTickets: async (req, res) => {
-    const { user_id: userId } = req.user;
     try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "User identity not found in token" });
+      }
+
       const tickets = await prisma.supportTicket.findMany({
         where: { assignedToId: userId },
         orderBy: { createdAt: 'desc' },
@@ -158,8 +166,8 @@ const supportController = {
       });
       res.json({ success: true, data: tickets });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] getAssignedTickets Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -167,17 +175,18 @@ const supportController = {
    * Get Ticket Messages (Chat History)
    */
   getTicketMessages: async (req, res) => {
-    const { user_id: userId, identity } = req.user;
-    const { ticketId } = req.params;
-
     try {
+      const { user_id: userId, identity } = req.user;
+      const { ticketId } = req.params;
+
+      if (!ticketId || ticketId === 'undefined') {
+        return res.status(400).json({ success: false, message: "Valid Ticket ID is required" });
+      }
+
       const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
 
       if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
 
-      // Permission Check: 
-      // 1. Creator or Assignee
-      // 2. Admin/SuperAdmin can see all tickets in their scope (Optional, based on your requirement)
       const isPart = ticket.creatorId === userId || ticket.assignedToId === userId;
       const isAdminBypass = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(identity);
 
@@ -193,8 +202,8 @@ const supportController = {
 
       res.json({ success: true, data: messages });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[SupportController] getTicketMessages Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   }
 };

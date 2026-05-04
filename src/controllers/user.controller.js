@@ -1,7 +1,6 @@
 const { logAction } = require("../utils/audit");
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
-const prisma = new PrismaClient();
 
 const VALID_USER_TYPES = [
   "USER",
@@ -35,18 +34,29 @@ const userController = {
 
       if (!myId) return res.status(401).json({ success: false, message: "Unauthorized: User ID missing" });
 
-      const user = await prisma.user.findFirst({
-        where: { 
-          id: myId,
-          ...(myTenantId ? { tenantId: myTenantId } : {})
-        },
+      const user = await prisma.user.findUnique({
+        where: { id: myId },
         include: {
+          tenant: true,
+          wallet: true,
           roles: { include: { role: true } },
           membershipApplications: {
-            where: { status: 'APPROVED' },
             orderBy: { createdAt: 'desc' },
             take: 1,
-            include: { documents: { take: 1 } }
+            include: { 
+              education: true, 
+              sector: true, 
+              jobRole: true,
+              documents: true 
+            }
+          },
+          saathiApplications: {
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
+          businessPartnerApps: {
+            orderBy: { createdAt: 'desc' },
+            take: 1
           }
         }
       });
@@ -55,23 +65,37 @@ const userController = {
 
       const { password, ...safeUser } = user;
 
-      // Fallback logic for missing fields from approved application
-      const latestApp = user.membershipApplications?.[0];
-      if (latestApp) {
-        if (!safeUser.email) safeUser.email = latestApp.email;
-        if (!safeUser.profilePhoto) {
-          // Fallback to the first document's front image if no profile photo is set
-          safeUser.profilePhoto = latestApp.documents?.[0]?.frontImageUrl || null;
+      // Logic to pick profile photo from application if not in user record
+      if (!safeUser.profilePhoto) {
+        const latestMemberApp = user.membershipApplications?.[0];
+        if (latestMemberApp?.profilePhoto) {
+          safeUser.profilePhoto = latestMemberApp.profilePhoto;
+        } else if (latestMemberApp?.documents?.[0]?.frontImageUrl) {
+          safeUser.profilePhoto = latestMemberApp.documents[0].frontImageUrl;
         }
       }
-      
-      // Always cleanup internal fields
-      delete safeUser.membershipApplications;
 
-      res.json(safeUser);
+      // Add a summary object for easy frontend consumption
+      safeUser.summary = {
+        isMember: user.identity === 'MEMBER' || user.membershipApplications.some(a => a.status === 'APPROVED'),
+        isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED'),
+        isBusinessPartner: user.identity === 'BUSINESS_PARTNER' || user.businessPartnerApps.some(a => a.status === 'APPROVED'),
+        walletBalance: user.wallet?.balance || 0,
+        activeRole: user.identity
+      };
+
+      res.json({
+        success: true,
+        data: safeUser
+      });
     } catch (err) {
       console.error("error in getProfile:", err);
-      res.status(500).json({ success: false, message: "Internal server error during profile load" });
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error during profile load",
+        error: err.message,
+        stack: err.stack
+      });
     }
   },
 

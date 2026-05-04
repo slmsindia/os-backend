@@ -14,6 +14,12 @@ router.use(authMiddleware);
 router.get("/members", hierarchyController.getDescendants);
 
 /**
+ * @route GET /api/admin/hierarchy/all-transactions
+ * @desc Get transaction feed for the entire downline
+ */
+router.get("/all-transactions", hierarchyController.getHierarchyTransactionFeed);
+
+/**
  * @route GET /api/admin/hierarchy/children
  * @desc Get direct children (Tree Navigation)
  */

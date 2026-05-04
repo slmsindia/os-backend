@@ -18,6 +18,41 @@ const commissionService = {
       if (!user) return { success: false, message: "User not found" };
       const joinerName = user.fullName || "New Member";
 
+      // --- LOCATION BASED SCHEME LOOKUP ---
+      let locationScheme = null;
+      try {
+        const joiner = await tx.user.findUnique({
+          where: { id: userId },
+          select: { registrationPincode: true, registrationCity: true, registrationState: true, tenantId: true }
+        });
+
+        if (joiner) {
+          // Priority: Pincode > City > State
+          locationScheme = await tx.commissionScheme.findFirst({
+            where: {
+              tenantId: joiner.tenantId,
+              isActive: true,
+              OR: [
+                { targetPincode: joiner.registrationPincode },
+                { targetCity: joiner.registrationCity },
+                { targetState: joiner.registrationState }
+              ]
+            },
+            orderBy: [
+              { targetPincode: 'desc' }, // Nulls last usually, but we want the most specific
+              { targetCity: 'desc' },
+              { targetState: 'desc' }
+            ]
+          });
+          
+          if (locationScheme) {
+            console.log(`[Commission] LOCATION OVERRIDE FOUND: ${locationScheme.name} for Joiner Location`);
+          }
+        }
+      } catch (locErr) {
+        console.error("[Commission] Location lookup failed:", locErr);
+      }
+
       const rawPathIds = user.path ? user.path.split('/').filter(id => id && id.length > 5) : [];
       
       const adminUser = await tx.user.findFirst({
@@ -65,16 +100,34 @@ const commissionService = {
 
           console.log(`[Commission] STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName}`);
 
-          let effectiveSchemeId = receiver.commissionSchemeId;
+          // --- SCHEME PRIORITY LOGIC ---
+          // 1. Priority: Location-based scheme (Override)
+          // 2. Fallback: Receiver's assigned scheme
+          // 3. Fallback: Global Default (General) scheme
+          
+          let effectiveSchemeId = locationScheme ? locationScheme.id : receiver.commissionSchemeId;
+
           if (!effectiveSchemeId) {
               const defaultScheme = await tx.commissionScheme.findFirst({
-                  where: { tenantId: user.tenantId, isActive: true },
+                  where: { tenantId: user.tenantId, isActive: true, isDefault: true },
                   orderBy: { createdAt: 'desc' }
               });
               if (defaultScheme) effectiveSchemeId = defaultScheme.id;
           }
 
-          if (!effectiveSchemeId) continue;
+          if (!effectiveSchemeId) {
+            // Last resort: latest active scheme
+            const latestScheme = await tx.commissionScheme.findFirst({
+              where: { tenantId: user.tenantId, isActive: true },
+              orderBy: { createdAt: 'desc' }
+            });
+            if (latestScheme) effectiveSchemeId = latestScheme.id;
+          }
+
+          if (!effectiveSchemeId) {
+            console.log(`[Commission]   SKIP: No active scheme found for receiver ${receiver.fullName}`);
+            continue;
+          }
 
           const shareConfig = await tx.commissionShare.findUnique({
               where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } } }

@@ -73,23 +73,43 @@ const hierarchyController = {
    */
   getUserWalletHistory: async (req, res) => {
     const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
-    const { targetUserId } = req.params;
+    const { targetUserId } = req.params; // This can be ID or Mobile number
     const { page = 1, limit = 20, startDate, endDate, type, category } = req.query;
 
     try {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
-      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { path: true } });
-      
-      if (!isSuperAdmin && targetUserId !== currentUserId) {
-        if (!targetUser || !targetUser.path || !targetUser.path.includes(currentUserId)) {
-          return res.status(403).json({ success: false, message: "Permission denied." });
+      const identifier = targetUserId.trim();
+      console.log(`[DEBUG] Searching for user: ${identifier} (Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
+      const targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: identifier.includes('-') ? identifier : undefined }, // Likely UUID
+            { mobile: identifier }
+          ],
+          tenantId: isSuperAdmin ? undefined : tenantId
+        },
+        select: { id: true, path: true, tenantId: true }
+      });
+
+      if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+      // 2. Hierarchy Check
+      if (!isSuperAdmin && targetUser.id !== currentUserId) {
+        if (!targetUser.path || !targetUser.path.includes(currentUserId)) {
+          return res.status(403).json({ success: false, message: "Permission denied. User not in your hierarchy." });
         }
       }
 
-      let targetWallet = await prisma.wallet.findUnique({ where: { userId: targetUserId } });
+      let targetWallet = await prisma.wallet.findUnique({ where: { userId: targetUser.id } });
       if (!targetWallet) {
         targetWallet = await prisma.wallet.create({
-          data: { id: generateUuid(), userId: targetUserId, tenantId: targetUser?.tenantId || tenantId, balance: 0, isCorporate: false }
+          data: { 
+            id: generateUuid(), 
+            userId: targetUser.id, 
+            tenantId: targetUser.tenantId || tenantId, 
+            balance: 0, 
+            isCorporate: false 
+          }
         });
       }
 
@@ -130,17 +150,115 @@ const hierarchyController = {
   },
 
   /**
+   * GET /api/admin/hierarchy/all-transactions
+   * Combined feed of all transactions from all users in the downline
+   */
+  getHierarchyTransactionFeed: async (req, res) => {
+    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { page = 1, limit = 20, startDate, endDate, type, category, search } = req.query;
+
+    try {
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const where = {};
+      if (!isSuperAdmin) where.tenantId = tenantId;
+
+      // 1. Hierarchy Filter: Only transactions from users in current user's downline
+      if (!isSuperAdmin) {
+        where.wallet = {
+          user: {
+            path: { contains: currentUserId }
+          }
+        };
+      }
+
+      // 2. Additional Filters
+      if (type) where.type = type;
+      if (category) where.category = category;
+      
+      if (search) {
+        // Search in user's name or mobile within the hierarchy
+        where.wallet = {
+          ...where.wallet,
+          user: {
+            ...where.wallet?.user,
+            OR: [
+              { fullName: { contains: search, mode: 'insensitive' } },
+              { mobile: { contains: search } }
+            ]
+          }
+        };
+      }
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+           const end = new Date(endDate);
+           end.setHours(23, 59, 59, 999);
+           where.createdAt.lte = end;
+        }
+      }
+
+      const [txns, total] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          include: {
+            wallet: {
+              include: {
+                user: {
+                  select: { id: true, fullName: true, mobile: true, identity: true }
+                }
+              }
+            }
+          },
+          skip,
+          take: parseInt(limit),
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.walletTransaction.count({ where })
+      ]);
+
+      res.json({
+        success: true,
+        data: txns.map(t => ({
+          ...t,
+          userName: t.wallet?.user?.fullName || "N/A",
+          userMobile: t.wallet?.user?.mobile || "N/A",
+          userIdentity: t.wallet?.user?.identity || "N/A"
+        })),
+        pagination: { 
+          total, 
+          page: parseInt(page), 
+          totalPages: Math.ceil(total / parseInt(limit)) 
+        }
+      });
+    } catch (err) {
+      console.error("Hierarchy Transaction Feed Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
    * GET /api/admin/hierarchy/user-details/:targetUserId
    * Complete User Info for Hierarchy Explorer (360-degree view)
    */
   getCompleteUserInfo: async (req, res) => {
     const { user_id: currentUserId, identity: adminIdentity, tenant_id: tenantId } = req.user;
-    const { targetUserId } = req.params;
+    const { targetUserId } = req.params; // This can be ID or Mobile number
 
     try {
-      // 1. Security Check: Is the target user in the admin's hierarchy?
-      const targetUser = await prisma.user.findUnique({
-        where: { id: targetUserId },
+      const identifier = targetUserId.trim();
+      console.log(`[DEBUG] Searching for user details: ${identifier} (Tenant: ${tenantId}, Admin: ${adminIdentity})`);
+      const targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: identifier.includes('-') ? identifier : undefined }, // Likely UUID
+            { mobile: identifier }
+          ],
+          tenantId: adminIdentity === 'SUPER_ADMIN' ? undefined : tenantId
+        },
         include: {
           wallet: true,
           parent: { select: { fullName: true } },
@@ -161,7 +279,7 @@ const hierarchyController = {
       if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
 
       const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity);
-      const isOwner = targetUserId === currentUserId;
+      const isOwner = targetUser.id === currentUserId;
       const isInHierarchy = targetUser.path && targetUser.path.includes(currentUserId);
       const isSameTenant = targetUser.tenantId === tenantId;
 
@@ -178,19 +296,19 @@ const hierarchyController = {
       const [txnStats, commissionStats, topUpStats, docCount] = await Promise.all([
         // Transaction Stats
         prisma.walletTransaction.aggregate({
-          where: { wallet: { userId: targetUserId } },
+          where: { wallet: { userId: targetUser.id } },
           _count: { _all: true },
           _sum: { amount: true }
         }),
         // Commission Stats
         prisma.commissionHistory.aggregate({
-          where: { userId: targetUserId },
+          where: { userId: targetUser.id },
           _sum: { amount: true }
         }),
         // Remittance/Money Deposit Stats (via category filter)
         prisma.walletTransaction.aggregate({
           where: { 
-            wallet: { userId: targetUserId }, 
+            wallet: { userId: targetUser.id }, 
             category: { in: ['REMITTANCE', 'MONEY_TRANSFER', 'CASH_PICKUP'] } 
           },
           _count: { _all: true },
@@ -198,7 +316,7 @@ const hierarchyController = {
         }),
         // Document Counts (Membership docs)
         prisma.membershipDocument.count({
-           where: { application: { userId: targetUserId } }
+           where: { application: { userId: targetUser.id } }
         })
       ]);
 
@@ -424,9 +542,38 @@ const hierarchyController = {
         include: { newParent: { select: { fullName: true, identity: true } } }
       });
 
+      // 3. Notifications to Parents
+      const notifications = [];
+      
+      // Notify Current Parent (if exists)
+      if (user.parentId) {
+        notifications.push({
+          id: generateUuid(),
+          userId: user.parentId,
+          tenantId,
+          title: "Hierarchy Transfer Request",
+          message: `${user.fullName} (${user.identity}) has requested to move under ${newParent.fullName}. This will be processed in 24 hours.`,
+          type: "TRANSFER_REQUEST",
+          metadata: { requestId: request.id, userId: user.id }
+        });
+      }
+
+      // Notify New Parent
+      notifications.push({
+        id: generateUuid(),
+        userId: newParent.id,
+        tenantId,
+        title: "New Downline Request",
+        message: `${user.fullName} (${user.identity}) has requested to join your hierarchy. This will be processed in 24 hours.`,
+        type: "TRANSFER_REQUEST",
+        metadata: { requestId: request.id, userId: user.id }
+      });
+
+      await prisma.notification.createMany({ data: notifications });
+
       res.json({
         success: true,
-        message: `Transfer request submitted. It will be automatically processed on ${scheduledAt.toLocaleString()} (after 24 hours).`,
+        message: `Transfer request submitted. It will be automatically processed on ${scheduledAt.toLocaleString()} (after 24 hours). Notifications sent to parents.`,
         data: request
       });
 
@@ -441,10 +588,11 @@ const hierarchyController = {
    * POST /api/admin/hierarchy/withdraw-transfer
    */
   withdrawTransfer: async (req, res) => {
-    const { user_id: userId } = req.user;
+    const { user_id: userId, tenant_id: tenantId } = req.user;
     try {
       const request = await prisma.hierarchyTransferRequest.findFirst({
-        where: { userId, status: "PENDING" }
+        where: { userId, status: "PENDING" },
+        include: { user: { select: { fullName: true } } }
       });
 
       if (!request) return res.status(404).json({ success: false, message: "No pending transfer request found." });
@@ -454,7 +602,32 @@ const hierarchyController = {
         data: { status: "WITHDRAWN" }
       });
 
-      res.json({ success: true, message: "Transfer request withdrawn successfully." });
+      // Notify Parents about withdrawal
+      const notifications = [];
+      if (request.oldParentId) {
+        notifications.push({
+          id: generateUuid(),
+          userId: request.oldParentId,
+          tenantId,
+          title: "Transfer Request Withdrawn",
+          message: `${request.user.fullName} has withdrawn their transfer request and will stay in your hierarchy.`,
+          type: "WITHDRAWN",
+          metadata: { requestId: request.id }
+        });
+      }
+      notifications.push({
+        id: generateUuid(),
+        userId: request.newParentId,
+        tenantId,
+        title: "Transfer Request Withdrawn",
+        message: `${request.user.fullName} has withdrawn their request to join your hierarchy.`,
+        type: "WITHDRAWN",
+        metadata: { requestId: request.id }
+      });
+
+      await prisma.notification.createMany({ data: notifications });
+
+      res.json({ success: true, message: "Transfer request withdrawn successfully. Parents notified." });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -519,6 +692,46 @@ const hierarchyController = {
             where: { id: req.id },
             data: { status: "COMPLETED" }
           });
+
+          // 4. Completion Notifications
+          const notifications = [];
+          
+          // Notify User
+          notifications.push({
+            id: generateUuid(),
+            userId: targetUserId,
+            tenantId,
+            title: "Hierarchy Transfer Successful",
+            message: `Your hierarchy has been successfully moved under ${newParent.fullName}.`,
+            type: "COMPLETED",
+            metadata: { requestId: req.id }
+          });
+
+          // Notify New Parent
+          notifications.push({
+            id: generateUuid(),
+            userId: newParent.id,
+            tenantId,
+            title: "New Downline Added",
+            message: `${req.user.fullName} and their downline have been added to your hierarchy.`,
+            type: "COMPLETED",
+            metadata: { requestId: req.id, userId: targetUserId }
+          });
+
+          // Notify Old Parent (if exists)
+          if (req.oldParentId) {
+            notifications.push({
+              id: generateUuid(),
+              userId: req.oldParentId,
+              tenantId,
+              title: "Downline Left",
+              message: `${req.user.fullName} has been moved to another hierarchy.`,
+              type: "COMPLETED",
+              metadata: { requestId: req.id, userId: targetUserId }
+            });
+          }
+
+          await tx.notification.createMany({ data: notifications });
         });
 
         processedCount++;

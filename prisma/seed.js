@@ -60,18 +60,23 @@ async function main() {
   // --- Custom user seed ---
   const tenant = await prisma.tenant.findFirst();
   const superAdminRole = await prisma.role.findUnique({ where: { name: "SUPER_ADMIN" } });
+  const bcrypt = require("bcrypt");
+  const hashedPassword = await bcrypt.hash("Test@123", 10);
 
   await prisma.user.upsert({
     where: { mobile: "9099005251" },
-    update: {},
+    update: {
+      password: hashedPassword,
+      identity: "SUPER_ADMIN"
+    },
     create: {
       id: generateUuid(),
       mobile: "9099005251",
-      password: "Test@123", // Change as needed
+      password: hashedPassword,
       fullName: "Online Saathi",
       gender: "OTHER",
       dateOfBirth: new Date("1990-01-01"),
-      identity: "ADMIN",
+      identity: "SUPER_ADMIN",
       tenantId: tenant.id,
       roles: {
         create: {

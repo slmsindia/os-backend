@@ -66,41 +66,58 @@ const saathiController = {
         }
       }
 
-      // 4. Handle Wallet Payment
-      if (paymentMethod === 'WALLET') {
-        const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
-        if (!wallet || wallet.balance < amount) {
-          return res.status(400).json({ success: false, message: "Insufficient wallet balance. Use Razorpay instead." });
+      // 4 & 5. Create Application and Handle Payment in Transaction
+      const application = await prisma.$transaction(async (tx) => {
+        // Create Application first to get ID
+        const app = await tx.saathiApplication.create({
+          data: {
+            id: generateUuid(),
+            userId,
+            fullName,
+            mobile,
+            gender,
+            dateOfBirth: new Date(dateOfBirth),
+            address,
+            createdById: userId, // Self application
+            paymentType: paymentMethod,
+            status: 'PENDING',
+            payment: {
+              create: {
+                id: generateUuid(),
+                amount,
+                method: paymentMethod,
+                status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
+                paidAt: paymentMethod === 'WALLET' ? new Date() : null
+              }
+            }
+          },
+          include: { payment: true }
+        });
+
+        // If Wallet, deduct now
+        if (paymentMethod === 'WALLET') {
+          const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
+          if (!wallet || wallet.balance < amount) {
+            throw new Error("Insufficient wallet balance. Use Razorpay instead.");
+          }
+
+          const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } });
+          if (!adminWallet) throw new Error("Admin wallet not found");
+
+          // Deduct from user and credit to admin
+          await walletService.payCreationFeeWithHistory(
+            wallet.id,
+            adminWallet.id,
+            amount,
+            `Saathi Application Fee for ${fullName}`,
+            app.id,
+            tenantId,
+            'WALLET',
+            tx
+          );
         }
 
-        // Deduct from resolved wallet
-        await walletService.updateBalance(wallet.id, -amount);
-      }
-
-      // 5. Create Application
-      const application = await prisma.saathiApplication.create({
-        data: {
-          id: generateUuid(),
-          userId,
-          fullName,
-          mobile,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          address,
-          createdById: userId, // Self application
-          paymentType: paymentMethod,
-          status: 'PENDING',
-          payment: {
-            create: {
-              id: generateUuid(),
-              amount,
-              method: paymentMethod,
-              status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-              paidAt: paymentMethod === 'WALLET' ? new Date() : null
-            }
-          }
-        },
-        include: { payment: true }
+        return app;
       });
 
       await logAction({

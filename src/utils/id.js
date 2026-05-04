@@ -5,6 +5,12 @@ const generateUuid = () => {
   return crypto.randomUUID();
 };
 
+const generateReferralCode = () => {
+  // Generates a short, user-friendly code like OS-X7B2K1
+  return 'OS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+};
+
 module.exports = {
-  generateUuid
+  generateUuid,
+  generateReferralCode
 };
