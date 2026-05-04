@@ -268,14 +268,15 @@ const authController = {
         });
       }
 
-      // 3. DEV ONLY: If still not found, try global search in development
+      // 3. Fallback: Search globally if not found in tenant or as Super Admin
       if (!user) {
-        const isLocalhost = req.get('host')?.includes('localhost');
-        if (process.env.NODE_ENV !== 'production' || isLocalhost) {
-          user = await prisma.user.findFirst({
-            where: { mobile },
-            include: { roles: { include: { role: true } } }
-          });
+        user = await prisma.user.findFirst({
+          where: { mobile },
+          include: { roles: { include: { role: true } } }
+        });
+        
+        if (user) {
+          console.log(`[Auth] Global fallback found user ${mobile} for tenant ${user.tenantId}`);
         }
       }
 
