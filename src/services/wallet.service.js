@@ -387,7 +387,7 @@ const walletService = {
       console.error("Error getting wallet by ID:", err);
       throw err;
     }
-  }
+  },
   /**
    * Automatically process commission for services like IME/Prabhu
    */
