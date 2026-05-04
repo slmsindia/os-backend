@@ -8,7 +8,7 @@ const adminConfigController = {
    */
   setServiceFee: async (req, res) => {
     const { serviceType, amount, effectiveFrom } = req.body;
-    const { tenant_id: tenantId } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId;
 
     if (!serviceType || amount === undefined) {
       return res.status(400).json({ success: false, message: "serviceType and amount are required" });
@@ -41,7 +41,7 @@ const adminConfigController = {
    * GET /api/admin/config/service-fees
    */
   getServiceFees: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId;
     const { serviceType } = req.query;
 
     try {
