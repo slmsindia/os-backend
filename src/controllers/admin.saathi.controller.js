@@ -113,7 +113,10 @@ const adminSaathiController = {
         } else {
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-          const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
+          // Use provided password or fallback to mobile last 4 digits
+          const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
+          const passwordToHash = req.body.password || defaultPassword;
+          const hashedPassword = await bcrypt.hash(passwordToHash, 10);
 
           targetUser = await prisma.user.create({
             data: {
@@ -154,17 +157,21 @@ const adminSaathiController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      // We update the existing record if it is either:
-      // 1. REJECTED but already paid (Resubmission)
-      // 2. Currently PENDING (Updating payment method or details)
-      const shouldUpdateExisting = existingApplication && (
-        (existingApplication.status === 'REJECTED' && (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID')) ||
-        (existingApplication.status === 'PENDING')
-      );
+      // BLOCK if already PENDING or APPROVED
+      if (existingApplication && (existingApplication.status === 'PENDING' || existingApplication.status === 'APPROVED')) {
+        return res.status(400).json({
+          success: false,
+          message: `Saathi application already exists. Status: ${existingApplication.status}. You cannot re-apply unless rejected.`,
+          status: existingApplication.status
+        });
+      }
 
       const isPaidResubmission = existingApplication && 
                                 existingApplication.status === 'REJECTED' && 
                                 (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID');
+
+      // We update the existing record ONLY if it is REJECTED but already paid (Resubmission)
+      const shouldUpdateExisting = isPaidResubmission;
 
       // 4. Payment Validation & Transaction
       const feeSetting = prisma.globalSetting ? await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } }) : null;
@@ -175,6 +182,17 @@ const adminSaathiController = {
           amount = parsed.amount || 1000;
         } catch (e) {
           amount = parseFloat(feeSetting.value);
+        }
+      }
+
+      // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
+      let razorpayOrder = null;
+      if (paymentMethod === 'RAZORPAY') {
+        try {
+          razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
+        } catch (err) {
+          console.error("Razorpay Order Error:", err);
+          return res.status(500).json({ success: false, message: "Failed to create Razorpay order. Please check configuration." });
         }
       }
 
@@ -223,17 +241,6 @@ const adminSaathiController = {
           paymentType: paymentMethod,
           status: 'PENDING'   // Send to Admin for approval
         };
-
-        // Pre-create Razorpay Order if needed
-        let razorpayOrder = null;
-        if (paymentMethod === 'RAZORPAY') {
-          try {
-            razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
-          } catch (err) {
-            console.error("Razorpay Order Error:", err);
-            throw new Error("Failed to create Razorpay order. Please check configuration.");
-          }
-        }
 
         let appResult;
         if (shouldUpdateExisting) {
@@ -300,6 +307,8 @@ const adminSaathiController = {
         }
 
         return appResult;
+      }, {
+        timeout: 10000 // 10 seconds
       });
 
       res.status(201).json({
@@ -418,7 +427,13 @@ const adminSaathiController = {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: application.userId },
-          data: { identity: 'SAATHI' }
+          data: { 
+            identity: 'SAATHI',
+            // Sync location for Commission Scheme targeting
+            registrationPincode: application.addressesJson?.[0]?.pincode || application.addressesJson?.[0]?.currentPincode,
+            registrationState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState,
+            registrationCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict
+          }
         }),
         prisma.saathiApplication.update({
           where: { id: applicationId },
@@ -441,26 +456,29 @@ const adminSaathiController = {
         });
 
         if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. First, credit the full payment amount to the Admin Corporate Wallet
-          // Only if it hasn't been credited already
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.payment.amount } }
-          });
+          // 1. Credit the Admin Corporate Wallet ONLY IF RAZORPAY
+          // (Wallet/Cash payments are credited to Admin at application creation)
+          if (application.payment.method === 'RAZORPAY') {
+            await prisma.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: application.payment.amount } }
+            });
 
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.payment.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Saathi fee received from user ${application.userId}`,
-              tenantId
-            }
-          });
-
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
+            await prisma.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: application.payment.amount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                description: `Saathi fee received from user ${application.userId} (via RAZORPAY)`,
+                tenantId
+              }
+            });
+            console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.payment.amount}`);
+          } else {
+            console.log(`[Commission] Skipping Admin credit for ${application.payment.method} application as it was credited at creation.`);
+          }
 
           // 2. Distribute
           const subService = await prisma.commissionSubService.findFirst({
@@ -639,27 +657,7 @@ const adminSaathiController = {
           });
         }
 
-        if (adminWallet) {
-          // Actually credit the Admin corporate wallet
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.payment.amount } }
-          });
-
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.payment.amount,
-              type: "CREDIT",
-              category: "COMMISSION",
-              description: `Saathi Application Fee received via RAZORPAY (User: ${application.userId})`,
-              referenceId: application.id,
-              tenantId: tenantId
-            }
-          });
-          console.log(`[Wallet] Credited Admin Wallet (${adminWallet.id}) with ${application.payment.amount} from Saathi Razorpay.`);
-        }
+        console.log(`[Wallet] Razorpay verified for Saathi ${application.id}. Admin credit will happen upon approval.`);
       } catch (logErr) {
         console.error("Failed to log Saathi Razorpay log/credit:", logErr);
       }

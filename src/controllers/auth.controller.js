@@ -1,11 +1,10 @@
 const bcrypt = require("bcrypt");
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../lib/prisma");
 const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
 const { generateToken } = require("../utils/jwt");
 const { logAction } = require("../utils/audit");
-const { generateUuid } = require("../utils/id");
+const { generateUuid, generateReferralCode } = require("../utils/id");
 
-const prisma = new PrismaClient();
 
 const isStrongPassword = (password) => {
   if (typeof password !== "string") return false;
@@ -212,6 +211,7 @@ const authController = {
           password: hash,
           tenantId,
           identity: "USER",
+          referralCode: generateReferralCode(),
           referredBy: referredBy || null,
           roles: {
             create: {

@@ -123,6 +123,7 @@ model User {
   sentSupportMessages SupportMessage[] @relation("SentSupportMessages")
   createdMarketing    MarketingContent[] @relation("CreatedMarketing")
   loginLogs           UserLoginLog[]
+  notifications       Notification[] @relation("UserNotifications")
 
   @@index([tenantId])
   @@index([parentId])
@@ -282,6 +283,7 @@ model JobPost {
 model JobFacility {
   id        String   @id @default(uuid())
   name      String   @unique
+  icon      String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 }
@@ -1669,5 +1671,22 @@ model UserLoginLog {
 
   @@index([userId])
   @@index([pincode])
+  @@index([createdAt])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation("UserNotifications", fields: [userId], references: [id])
+  title       String
+  message     String
+  type        String   @default("GENERAL") // TRANSFER_REQUEST, WITHDRAWN, COMPLETED
+  isRead      Boolean  @default(false)
+  metadata    Json?    // Related object IDs
+  tenantId    String
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
   @@index([createdAt])
 }

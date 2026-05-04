@@ -68,6 +68,7 @@ const commissionController = {
           targetCity,
           targetPincode,
           isDefault: isDefault === true || isDefault === 'true',
+          isActive: false, // Always inactive on creation
           tenantId
         }
       });
@@ -93,7 +94,37 @@ const commissionController = {
   updateCommissionSchemes: async (req, res) => {
     const { id, name, targetState, targetCity, targetPincode, isDefault, isActive } = req.body || {};
     if (!id) return res.status(400).json({ success: false, message: "ID is required" });
+    
     try {
+      const activeStatus = isActive !== undefined ? (isActive === true || isActive === 'true') : undefined;
+
+      if (activeStatus === true) {
+        const existing = await prisma.commissionScheme.findUnique({ where: { id } });
+        const finalIsGeneral = (targetState === undefined ? existing.targetState : targetState) === null &&
+                              (targetCity === undefined ? existing.targetCity : targetCity) === null &&
+                              (targetPincode === undefined ? existing.targetPincode : targetPincode) === null;
+
+        if (finalIsGeneral) {
+          const activeGeneral = await prisma.commissionScheme.findFirst({
+            where: {
+              tenantId: existing.tenantId,
+              isActive: true,
+              targetState: null,
+              targetCity: null,
+              targetPincode: null,
+              id: { not: id }
+            }
+          });
+
+          if (activeGeneral) {
+            return res.status(400).json({
+              success: false,
+              message: "Only one General (global) scheme can be active at a time. Please deactivate '" + activeGeneral.name + "' first."
+            });
+          }
+        }
+      }
+
       const scheme = await prisma.commissionScheme.update({
         where: { id },
         data: { 
@@ -102,7 +133,7 @@ const commissionController = {
           targetCity,
           targetPincode,
           isDefault: isDefault !== undefined ? (isDefault === true || isDefault === 'true') : undefined,
-          isActive: isActive !== undefined ? (isActive === true || isActive === 'true') : undefined
+          isActive: activeStatus
         }
       });
       res.json({ success: true, data: scheme });
@@ -117,12 +148,46 @@ const commissionController = {
    */
   updateCommissionSchemeStatus: async (req, res) => {
     const { schemeId, isActive } = req.query;
+    const { tenant_id: tenantId } = req.user || {};
+
     try {
+      const activeStatus = isActive === 'true';
+
+      if (activeStatus) {
+        // Find the scheme we are trying to activate
+        const schemeToActivate = await prisma.commissionScheme.findUnique({ where: { id: schemeId } });
+        if (!schemeToActivate) return res.status(404).json({ success: false, message: "Scheme not found" });
+
+        const isGeneral = !schemeToActivate.targetState && !schemeToActivate.targetCity && !schemeToActivate.targetPincode;
+
+        if (isGeneral) {
+          // Check if another General scheme is already active in this tenant
+          const activeGeneral = await prisma.commissionScheme.findFirst({
+            where: {
+              tenantId: schemeToActivate.tenantId,
+              isActive: true,
+              targetState: null,
+              targetCity: null,
+              targetPincode: null,
+              id: { not: schemeId }
+            }
+          });
+
+          if (activeGeneral) {
+            return res.status(400).json({
+              success: false,
+              message: "Only one General (global) scheme can be active at a time. Please deactivate '" + activeGeneral.name + "' first."
+            });
+          }
+        }
+      }
+
       await prisma.commissionScheme.update({
         where: { id: schemeId },
-        data: { isActive: isActive === 'true' }
+        data: { isActive: activeStatus }
       });
-      res.json({ success: true, message: "Status updated" });
+
+      res.json({ success: true, message: "Status updated successfully" });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

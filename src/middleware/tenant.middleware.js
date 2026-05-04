@@ -1,9 +1,20 @@
 const prisma = require("../lib/prisma");
 
+// Simple in-memory cache to avoid DB hits on every request
+const tenantCache = new Map();
+const CACHE_TTL = 60000; // 1 minute
+
 module.exports = async (req, res, next) => {
   try {
     const host = req.get("host");
     if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
+
+    // Check cache first
+    const cached = tenantCache.get(host);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      req.tenant_id = cached.id;
+      return next();
+    }
 
     // Try both 'localhost' and 'localhost:port' for dev
     let domain = host;
@@ -22,6 +33,7 @@ module.exports = async (req, res, next) => {
       }) || await prisma.tenant.findFirst();
 
       if (process.env.NODE_ENV !== "production" && fallbackTenant) {
+        tenantCache.set(host, { id: fallbackTenant.id, timestamp: Date.now() });
         req.tenant_id = fallbackTenant.id;
         return next();
       }
@@ -33,8 +45,11 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    req.tenant_id = tenant.id;
-    next();
+    if (tenant) {
+      tenantCache.set(host, { id: tenant.id, timestamp: Date.now() });
+      req.tenant_id = tenant.id;
+      return next();
+    }
   } catch (err) {
     console.error("CRITICAL: Tenant Middleware Database Error:", err.message);
     

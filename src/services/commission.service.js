@@ -100,7 +100,11 @@ const commissionService = {
 
           console.log(`[Commission] STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName}`);
 
-          // USE LOCATION OVERRIDE IF FOUND, ELSE USE RECEIVER'S SCHEME
+          // --- SCHEME PRIORITY LOGIC ---
+          // 1. Priority: Location-based scheme (Override)
+          // 2. Fallback: Receiver's assigned scheme
+          // 3. Fallback: Global Default (General) scheme
+          
           let effectiveSchemeId = locationScheme ? locationScheme.id : receiver.commissionSchemeId;
 
           if (!effectiveSchemeId) {
@@ -112,7 +116,7 @@ const commissionService = {
           }
 
           if (!effectiveSchemeId) {
-            // Fallback to the latest active scheme if no default is marked
+            // Last resort: latest active scheme
             const latestScheme = await tx.commissionScheme.findFirst({
               where: { tenantId: user.tenantId, isActive: true },
               orderBy: { createdAt: 'desc' }
@@ -120,7 +124,10 @@ const commissionService = {
             if (latestScheme) effectiveSchemeId = latestScheme.id;
           }
 
-          if (!effectiveSchemeId) continue;
+          if (!effectiveSchemeId) {
+            console.log(`[Commission]   SKIP: No active scheme found for receiver ${receiver.fullName}`);
+            continue;
+          }
 
           const shareConfig = await tx.commissionShare.findUnique({
               where: { schemeId_subServiceId: { schemeId: effectiveSchemeId, subServiceId } } }

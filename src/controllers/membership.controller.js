@@ -195,7 +195,10 @@ const membershipController = {
             // Auto-create the user as MEMBER since an Admin is creating them
             const creator = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, path: true } });
             const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-            const hashedPassword = await bcrypt.hash("DefaultPassword123", 10);
+            // Use provided password or fallback to mobile last 4 digits
+            const defaultPassword = (lookupMobile && lookupMobile.length >= 4) ? lookupMobile.slice(-4) : "1234";
+            const passwordToHash = body.password || defaultPassword;
+            const hashedPassword = await bcrypt.hash(passwordToHash, 10);
 
             const newUser = await prisma.user.create({
               data: {
@@ -225,6 +228,20 @@ const membershipController = {
         include: { payment: true },
         orderBy: { createdAt: 'desc' }
       });
+
+      // BLOCK if already PENDING or APPROVED
+      if (existingApplication && (existingApplication.status === 'PENDING' || existingApplication.status === 'APPROVED')) {
+        return res.status(400).json({
+          success: false,
+          message: `Application already exists. Status: ${existingApplication.status}. You cannot apply again unless rejected.`,
+          status: existingApplication.status
+        });
+      }
+
+      // Check if user is already a MEMBER
+      if (user && user.identity === 'MEMBER') {
+        return res.status(400).json({ success: false, message: "User is already a MEMBER." });
+      }
 
       const isPaidResubmission = existingApplication &&
                                existingApplication.status === 'REJECTED' &&
