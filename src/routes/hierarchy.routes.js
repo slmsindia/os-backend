@@ -13,11 +13,13 @@ router.use(authMiddleware);
  */
 router.get("/members", hierarchyController.getDescendants);
 
-/**
- * @route GET /api/admin/hierarchy/all-transactions
- * @desc Get transaction feed for the entire downline
- */
 router.get("/all-transactions", hierarchyController.getHierarchyTransactionFeed);
+
+/**
+ * @route GET /api/admin/hierarchy/summary
+ * @desc Get high-level metrics for the hierarchy (Outstanding Credits, Counts)
+ */
+router.get("/summary", hierarchyController.getHierarchySummary);
 
 /**
  * @route GET /api/admin/hierarchy/children
@@ -32,10 +34,16 @@ router.get("/children", hierarchyController.getDirectChildren);
 router.get("/user-history/:targetUserId", hierarchyController.getUserWalletHistory);
 
 /**
- * @route GET /api/admin/hierarchy/user-details/:targetUserId
+ * @route GET /api/admin/hierarchy/user-details/:identifier
+ * @desc Search for a user by ID or Mobile and return profile details
+ */
+router.get("/user-details/:identifier", hierarchyController.getUserDetails);
+
+/**
+ * @route GET /api/admin/hierarchy/complete-user-info/:targetUserId
  * @desc Get 360-degree user info (stats, personal info, etc.)
  */
-router.get("/user-details/:targetUserId", hierarchyController.getCompleteUserInfo);
+router.get("/complete-user-info/:targetUserId", hierarchyController.getCompleteUserInfo);
 
 // --- Hierarchy Transfer Self-Service ---
 router.post("/request-transfer", hierarchyController.requestTransfer);

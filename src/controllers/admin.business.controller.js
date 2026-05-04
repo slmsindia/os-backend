@@ -154,15 +154,14 @@ const businessPartnerController = {
           if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
           // Existing user → no immediate upgrade, wait for approval
         } else {
-          // Double check to ensure no race condition or existing mobile
-          const mobileExists = await prisma.user.findFirst({ where: { mobile: body.contactNumber1, tenantId } });
-          if (mobileExists) {
-            return res.status(409).json({ success: false, message: "User with this mobile number already exists." });
+          // BRAND NEW USER CREATION
+          if (body.flowType === "ADMIN_CREATE_NEW_USER" && !body.password) {
+            return res.status(400).json({ success: false, message: "Password is required for new accounts" });
           }
 
-          // Create a new User account first
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+          
           // Use provided password or fallback to mobile last 4 digits
           const mobileForPass = body.contactNumber1 || "0000";
           const defaultPassword = (mobileForPass.length >= 4) ? mobileForPass.slice(-4) : "1234";

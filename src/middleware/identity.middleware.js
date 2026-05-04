@@ -34,4 +34,19 @@ const checkIdentity = (allowedIdentities) => {
   };
 };
 
-module.exports = { checkIdentity };
+const isWhiteLabelAdmin = (req, res, next) => {
+  const identity = String(req.user?.identity || "").toUpperCase();
+  if (identity !== 'WHITE_LABEL_ADMIN' && identity !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, message: "Forbidden: White Label Admin access required" });
+  }
+  next();
+};
+
+const isSuperAdmin = (req, res, next) => {
+  if (String(req.user?.identity || "").toUpperCase() !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, message: "Forbidden: Super Admin access required" });
+  }
+  next();
+};
+
+module.exports = { checkIdentity, isWhiteLabelAdmin, isSuperAdmin };

@@ -1698,9 +1698,32 @@ model ServiceFeeConfig {
   id            String   @id @default(uuid())
   serviceType   String   // IME, PRABHU
   amount        Float
-  effectiveFrom DateTime @default(now())
   tenantId      String
-  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
 
-  @@index([serviceType, tenantId, effectiveFrom])
+// Access Control & Feature Restriction
+model IdentityControl {
+  id        String   @id @default(uuid())
+  tenantId  String
+  identity  Identity
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, identity])
+  @@index([tenantId])
+}
+
+model FeatureRestriction {
+  id          String   @id @default(uuid())
+  tenantId    String
+  identity    Identity
+  serviceId   String   // e.g., "PAYOUT", "IME", "MEMBERSHIP_PROVISIONING"
+  state       String?  // Optional: restrict to specific state
+  district    String?  // Optional: restrict to specific district
+  isRestricted Boolean @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, identity, serviceId, state, district])
+  @@index([tenantId, identity])
 }

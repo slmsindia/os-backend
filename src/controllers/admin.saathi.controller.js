@@ -118,8 +118,14 @@ const adminSaathiController = {
             });
           }
         } else {
+          // BRAND NEW USER CREATION
+          if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password) {
+             return res.status(400).json({ success: false, message: "Password is required for new accounts" });
+          }
+
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+          
           // Use provided password or fallback to mobile last 4 digits
           const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
           const passwordToHash = req.body.password || defaultPassword;
@@ -141,7 +147,7 @@ const adminSaathiController = {
             }
           });
         }
-        targetUserId = targetUser.id;
+        targetUserId = targetUser?.id;
       }
 
       if (!targetUserId) {

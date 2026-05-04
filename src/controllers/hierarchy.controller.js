@@ -193,6 +193,109 @@ const hierarchyController = {
   },
 
   /**
+   * GET /api/admin/hierarchy/summary
+   * Returns high-level metrics for the user's hierarchy
+   */
+  getHierarchySummary: async (req, res) => {
+    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+
+    try {
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const isWhiteLabel = creatorIdentity === 'WHITE_LABEL_ADMIN';
+
+      // Base filter: for partners, they only see their own path
+      // for admins, they see the whole tenant
+      let where = {};
+      if (!isSuperAdmin) {
+        where.tenantId = tenantId;
+        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity)) {
+          where.OR = [
+            { id: currentUserId },
+            { path: { contains: currentUserId } }
+          ];
+        }
+      }
+
+      // Calculate Outstanding Credit (Total Negative Balance)
+      const walletSummary = await prisma.wallet.aggregate({
+        where: {
+          ...where,
+          balance: { lt: 0 }
+        },
+        _sum: { balance: true },
+        _count: { id: true }
+      });
+
+      // Calculate User Counts by Identity
+      const identityCounts = await prisma.user.groupBy({
+        by: ['identity'],
+        where,
+        _count: { id: true }
+      });
+
+      const counts = Object.fromEntries(identityCounts.map(i => [i.identity, i._count.id]));
+
+      res.json({
+        success: true,
+        data: {
+          outstandingCredit: Math.abs(walletSummary._sum.balance || 0),
+          negativeWalletCount: walletSummary._count.id,
+          counts: {
+            total: Object.values(counts).reduce((a, b) => a + b, 0),
+            saathi: counts['SAATHI'] || 0,
+            member: counts['MEMBER'] || 0,
+            partner: (counts['STATE_PARTNER'] || 0) + (counts['DISTRICT_PARTNER'] || 0) + (counts['COUNTRY_HEAD'] || 0),
+            agent: counts['AGENT'] || 0,
+            user: counts['USER'] || 0
+          }
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * GET /api/admin/hierarchy/user-details/:identifier
+   * Search for a specific user by ID or Mobile
+   */
+  getUserDetails: async (req, res) => {
+    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { identifier } = req.params;
+
+    try {
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: identifier.includes('-') ? identifier : undefined },
+            { mobile: identifier }
+          ],
+          tenantId: isSuperAdmin ? undefined : tenantId
+        },
+        select: { id: true, fullName: true, mobile: true, identity: true, path: true }
+      });
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found in this system" });
+      }
+
+      // Hierarchy Check
+      if (!isSuperAdmin && user.id !== currentUserId) {
+        if (!user.path || !user.path.includes(currentUserId)) {
+          return res.status(403).json({ success: false, message: "User found but is outside your hierarchy" });
+        }
+      }
+
+      res.json({ success: true, data: user });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Search failed" });
+    }
+  },
+
+  /**
    * GET /api/admin/hierarchy/all-transactions
    * Combined feed of all transactions from all users in the downline
    */

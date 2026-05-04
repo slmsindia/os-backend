@@ -10,11 +10,16 @@ const adminMembershipController = {
    * Create a user directly (Admin/Partner led)
    */
   createUser: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, identity, paymentMethod } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, identity, paymentMethod, flowType } = req.body;
     const { user_id: creatorId, tenant_id: tenantId } = req.user;
 
-    if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+    if (!mobile || !fullName || !gender || !dateOfBirth) {
+      return res.status(400).json({ success: false, message: "Missing required profile fields" });
+    }
+
+    const isNewUserFlow = flowType === 'ADMIN_CREATE_NEW_USER';
+    if (isNewUserFlow && !password) {
+      return res.status(400).json({ success: false, message: "Password is required for new user creation" });
     }
 
     // Sanitize identity input (convert camelCase or spaces to UPPER_SNAKE_CASE)
@@ -150,11 +155,14 @@ const adminMembershipController = {
 
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
+      if (isNewUserFlow && !password) {
+        return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+      }
 
       // ─── Flow 3 Fix: Create Application for New Users ───
       // Instead of direct creation, we create an APPLICATION record that must be approved.
       
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password || mobile.slice(-4), 10);
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
 
@@ -164,7 +172,7 @@ const adminMembershipController = {
           id: generateUuid(),
           mobile,
           fullName,
-          gender,
+          gender: gender ? gender.toUpperCase() : 'OTHER',
           dateOfBirth: new Date(dateOfBirth),
           password: hashedPassword,
           identity: 'USER', // Always start as USER

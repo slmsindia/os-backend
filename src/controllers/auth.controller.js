@@ -378,13 +378,25 @@ const authController = {
       } catch (logErr) {
         console.error("Login location tracking failed:", logErr);
       }
-
       if (user.approvalStatus === "DEACTIVATED") {
         return res.status(403).json({ 
           success: false, 
           message: "Your account has been deactivated by Admin. Please contact support." 
         });
       }
+
+      // Master Identity Switch check
+      const identityControl = await prisma.identityControl.findUnique({
+        where: { tenantId_identity: { tenantId: user.tenantId, identity: user.identity } }
+      });
+
+      if (identityControl && !identityControl.isActive) {
+        return res.status(403).json({
+          success: false,
+          message: `${user.identity.replace(/_/g, ' ')} login is currently disabled for this organization.`
+        });
+      }
+
 
       const accessToken = generateToken(user);
 
