@@ -1,6 +1,8 @@
 const imeService = require('./ime.service');
 const imeDataService = require('./ime-data.service');
 const imeStorageService = require('./ime.storage.service');
+const walletService = require('../../services/wallet.service');
+const prisma = require('../../lib/prisma');
 
 
 const ok = (res, message, data = {}) => {
@@ -596,6 +598,9 @@ const sendMoney = async (req, res) => {
       };
 
       await imeStorageService.saveTransaction(transactionData, result);
+      
+      // Process Admin Commission
+      await walletService.processServiceCommission('IME', req.user.tenant_id, result?.data?.TransactionId || transactionData.agentTxnRefId, req.user.user_id || req.user.id);
     }
     
     return ok(res, 'Money sent successfully', result);
@@ -1666,6 +1671,11 @@ const sendTransactionLegacy = async (req, res) => {
       }
     }
 
+    // Process Admin Commission if successful
+    if (imeMeta.code === '0') {
+      await walletService.processServiceCommission('IME', req.user.tenant_id, params.AgentTxnRefId, req.user.user_id || req.user.id);
+    }
+    
     // Log API response
     await logAndSaveImeResponse(
       'SendTransaction',

@@ -1,6 +1,7 @@
 const express = require("express");
 const adminController = require("../controllers/admin.controller");
 const adminMembershipController = require("../controllers/admin.membership.controller");
+const adminConfigController = require("../controllers/admin.config.controller");
 const authMiddleware = require("../middleware/auth.middleware");
 const { checkRole } = require("../middleware/role.middleware");
 // Assuming we'll use identity check instead of role check for these
@@ -41,5 +42,9 @@ router.post("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminCon
 
 // Internal Hierarchy Transfer (White Label Admin only)
 router.post("/transfer-hierarchy", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.transferHierarchyInternal);
+
+// Service Fee Config (White Label Admin only)
+router.get("/config/service-fees", checkIdentity(["WHITE_LABEL_ADMIN"]), adminConfigController.getServiceFees);
+router.post("/config/service-fees", checkIdentity(["WHITE_LABEL_ADMIN"]), adminConfigController.setServiceFee);
 
 module.exports = router;

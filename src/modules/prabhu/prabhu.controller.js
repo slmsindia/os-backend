@@ -679,6 +679,9 @@ module.exports = {
         });
       }
 
+      // Process Admin Commission
+      await walletService.processServiceCommission('PRABHU', tenantId, result?.data?.pinNo || result?.data?.partnerUniqueRefNo, appUserId);
+
       return ok(res, 'Send transaction success', {
         data: result.data,
         wallet: {

@@ -6,7 +6,7 @@ const commissionService = {
    * Cascading Commission Logic with Full Transaction History (Debit & Credit)
    * Includes Joiner Name in descriptions for better transparency.
    */
-  processCommission: async (transactionAmount, subServiceId, userId, tx = prisma) => {
+  processCommission: async (transactionAmount, subServiceId, userId, customDescription = null, tx = prisma) => {
     console.log(`[Commission] >>> STARTING CASCADING: User=${userId}, SubService=${subServiceId}`);
     
     try {
@@ -16,7 +16,15 @@ const commissionService = {
       });
 
       if (!user) return { success: false, message: "User not found" };
-      const joinerName = user.fullName || "New Member";
+      const joinerName = user.fullName || "User";
+
+      // Fetch subservice info for better descriptions
+      const subService = await tx.commissionSubService.findUnique({
+        where: { id: subServiceId },
+        select: { name: true, slug: true }
+      });
+      const serviceLabel = subService?.name || "Service";
+      const isTransfer = subService?.slug?.includes('transfer');
 
       // --- LOCATION BASED SCHEME LOOKUP ---
       let locationScheme = null;
@@ -181,7 +189,9 @@ const commissionService = {
                     type: "DEBIT",
                     category: "COMMISSION_PAYOUT",
                     referenceId: transactionLog.id,
-                    description: `Commission paid to ${receiver.fullName} for joiner ${joinerName}`,
+                    description: customDescription || (isTransfer 
+                        ? `${serviceLabel} commission paid to ${receiver.fullName} (done by ${joinerName})`
+                        : `Commission paid to ${receiver.fullName} for joiner ${joinerName}`),
                     tenantId: user.tenantId
                 }
             });
@@ -203,7 +213,9 @@ const commissionService = {
                     type: "CREDIT",
                     category: "COMMISSION",
                     referenceId: transactionLog.id,
-                    description: `Commission for ${joinerName} received from ${sender.fullName}`,
+                    description: customDescription || (isTransfer
+                        ? `${serviceLabel} commission from ${sender.fullName} (done by ${joinerName})`
+                        : `Commission for ${joinerName} received from ${sender.fullName}`),
                     tenantId: user.tenantId
                 }
             });

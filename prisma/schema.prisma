@@ -1693,3 +1693,14 @@ model Notification {
   @@index([tenantId])
   @@index([createdAt])
 }
+
+model ServiceFeeConfig {
+  id            String   @id @default(uuid())
+  serviceType   String   // IME, PRABHU
+  amount        Float
+  effectiveFrom DateTime @default(now())
+  tenantId      String
+  createdAt     DateTime @default(now())
+
+  @@index([serviceType, tenantId, effectiveFrom])
+}

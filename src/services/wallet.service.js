@@ -388,6 +388,84 @@ const walletService = {
       throw err;
     }
   }
+  /**
+   * Automatically process commission for services like IME/Prabhu
+   */
+  processServiceCommission: async (serviceType, tenantId, referenceId, userId, tx) => {
+    const db = tx || prisma;
+    const commissionService = require("./commission.service");
+
+    try {
+      // 1. Get Active Fee Config (most recent effective one)
+      const config = await db.serviceFeeConfig.findFirst({
+        where: {
+          serviceType,
+          tenantId,
+          effectiveFrom: { lte: new Date() }
+        },
+        orderBy: { effectiveFrom: 'desc' }
+      });
+
+      if (!config || config.amount <= 0) return null;
+
+      // 2. Find Admin Wallet for this tenant
+      let adminWallet = await db.wallet.findFirst({
+        where: { tenantId, isCorporate: true }
+      });
+
+      if (!adminWallet) {
+        const adminUser = await db.user.findFirst({
+          where: { tenantId, identity: { in: ['WHITE_LABEL_ADMIN', 'ADMIN'] } },
+          orderBy: { createdAt: 'asc' }
+        });
+        if (adminUser) {
+          adminWallet = await db.wallet.findUnique({ where: { userId: adminUser.id } });
+        }
+      }
+
+      if (!adminWallet) {
+        console.error(`[WalletService] No Admin wallet found for tenant ${tenantId}`);
+        return null;
+      }
+
+      // 3. Credit Admin Wallet & Log
+      await db.wallet.update({
+        where: { id: adminWallet.id },
+        data: { balance: { increment: config.amount } }
+      });
+
+      await db.walletTransaction.create({
+        data: {
+          walletId: adminWallet.id,
+          amount: config.amount,
+          type: "CREDIT",
+          category: "COMMISSION",
+          description: `${serviceType} Transaction Commission Received`,
+          referenceId: referenceId,
+          tenantId: tenantId
+        }
+      });
+
+      // 4. Trigger Cascading Commission (CH -> SP -> DP)
+      // Slug format: ime-transfer, prabhu-transfer
+      const slug = `${serviceType.toLowerCase()}-transfer`;
+      const subService = await db.commissionSubService.findUnique({
+        where: { slug }
+      });
+
+      if (subService && userId) {
+        console.log(`[WalletService] Triggering cascading commission for ${serviceType} (slug: ${slug})`);
+        await commissionService.processCommission(config.amount, subService.id, userId, db);
+      } else {
+        console.log(`[WalletService] Cascading commission skipped: subService not found for slug ${slug} or userId missing`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`[WalletService] Error processing ${serviceType} commission:`, error);
+      return null;
+    }
+  }
 };
 
 module.exports = walletService;
