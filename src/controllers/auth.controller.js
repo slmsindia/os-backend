@@ -187,12 +187,28 @@ const authController = {
     }
 
     try {
+      // System check: Find the oldest (first) tenant in the system
+      const firstTenant = await prisma.tenant.findFirst({
+        orderBy: { createdAt: 'asc' }
+      });
+
+      // Condition 1: If no tenant exists in the DB at all, block registration
+      if (!firstTenant) {
+        return res.status(403).json({ success: false, message: "System is not configured yet. No tenant available." });
+      }
+
+      // Condition 2: If user is registering without a tenant resolved by middleware, assign to first tenant
+      let resolvedTenantId = tenantId;
+      if (!resolvedTenantId) {
+        resolvedTenantId = firstTenant.id;
+      }
+
       if (!(await isMobileVerified(mobile))) {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
       const existing = await prisma.user.findFirst({ 
-        where: { mobile, tenantId } 
+        where: { mobile, tenantId: resolvedTenantId } 
       });
       if (existing) return res.status(409).json({ message: "already registered in this white label" });
 
@@ -209,7 +225,7 @@ const authController = {
           gender,
           dateOfBirth: new Date(dateOfBirth),
           password: hash,
-          tenantId,
+          tenantId: resolvedTenantId,
           identity: "USER",
           referralCode: generateReferralCode(),
           referredBy: referredBy || null,
@@ -228,7 +244,7 @@ const authController = {
       await logAction({
         userId: user.id,
         action: "USER_REGISTER",
-        tenantId,
+        tenantId: resolvedTenantId,
         metadata: { mobile: user.mobile }
       });
 
