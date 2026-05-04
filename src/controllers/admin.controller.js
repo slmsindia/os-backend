@@ -665,40 +665,49 @@ const adminController = {
    * Allowed for White Label Admin
    */
   transferHierarchyInternal: async (req, res) => {
-    const { targetUserId, newParentId } = req.body;
+    const targetUserId = req.body.targetUserId || req.body.TargetUserId;
+    const { newParentId, newParentReferralCode } = req.body;
     const { tenant_id: tenantId, identity, user_id: adminId } = req.user;
 
-    if (identity !== "WHITE_LABEL_ADMIN") {
+    if (identity !== "WHITE_LABEL_ADMIN" && identity !== "SUPER_ADMIN") {
       return res.status(403).json({ success: false, message: "Only White Label Admin can perform internal transfers." });
     }
 
-    if (!targetUserId || !newParentId) {
-      return res.status(400).json({ success: false, message: "targetUserId and newParentId are required" });
+    if (!targetUserId || (!newParentId && !newParentReferralCode)) {
+      return res.status(400).json({ success: false, message: "targetUserId and either newParentId or newParentReferralCode are required" });
     }
 
     try {
-      const [targetUser, newParent] = await Promise.all([
-        prisma.user.findUnique({ where: { id: targetUserId } }),
-        prisma.user.findUnique({ where: { id: newParentId } })
-      ]);
+      // 1. Identify Target User
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found" });
 
-      if (!targetUser || !newParent) {
-        return res.status(404).json({ success: false, message: "User or new parent not found" });
+      // 2. Identify New Parent
+      const newParent = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: newParentId || undefined },
+            { referralCode: newParentReferralCode || undefined }
+          ],
+          tenantId: identity === "SUPER_ADMIN" ? undefined : tenantId
+        }
+      });
+
+      if (!newParent) return res.status(404).json({ success: false, message: "New parent not found in your tenant." });
+
+      if (targetUser.tenantId !== newParent.tenantId && identity !== "SUPER_ADMIN") {
+        return res.status(403).json({ success: false, message: "Both users must belong to the same tenant." });
       }
 
-      if (targetUser.tenantId !== tenantId || newParent.tenantId !== tenantId) {
-        return res.status(403).json({ success: false, message: "Both users must belong to your tenant." });
-      }
-
-      // Avoid circular dependency: New parent cannot be the target user or a descendant of the target user
-      if (newParentId === targetUserId || (newParent.path && newParent.path.includes(targetUserId))) {
-        return res.status(400).json({ success: false, message: "Circular transfer detected. New parent cannot be the user itself or one of its descendants." });
+      // Avoid circular dependency
+      if (newParent.id === targetUserId || (newParent.path && newParent.path.includes(targetUserId))) {
+        return res.status(400).json({ success: false, message: "Circular transfer detected. New parent cannot be the user itself or its descendant." });
       }
 
       // Fetch all descendants to update their paths
       const descendants = await prisma.user.findMany({
         where: { 
-          tenantId,
+          tenantId: targetUser.tenantId, // Use the target user's tenant, not the admin's
           OR: [
             { id: targetUserId },
             { path: { contains: targetUserId } }
@@ -757,6 +766,80 @@ const adminController = {
 
     } catch (err) {
       console.error("Internal Transfer Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Search for potential parents within same tenant
+   * Excludes target user and their descendants to avoid circular hierarchy
+   */
+  getPotentialParents: async (req, res) => {
+    const { search, targetUserId } = req.query;
+    const { tenant_id: tenantId, identity: myIdentity } = req.user;
+
+    try {
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found" });
+
+      const roleRank = {
+        "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
+        "COUNTRY_HEAD": 4, "STATE_PARTNER": 5, "DISTRICT_PARTNER": 6,
+        "BUSINESS_PARTNER": 7, "SAATHI": 8, "MEMBER": 9, "AGENT": 10, "USER": 11
+      };
+
+      const targetRank = roleRank[targetUser.identity] ?? 99;
+      const validIdentities = Object.keys(roleRank).filter(r => (roleRank[r] < targetRank) || ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN'].includes(r));
+
+      console.log('[DEBUG] Potential Parents Search:', {
+        targetUser: targetUser.fullName,
+        targetIdentity: targetUser.identity,
+        targetRank,
+        validIdentities,
+        search
+      });
+
+      const where = {
+        tenantId: targetUser.tenantId, // Always search in the target user's tenant
+        // Rule: New parent must be a higher level (lower rank number) than target user
+        // OR a Top-level Admin
+        identity: {
+          in: validIdentities
+        },
+        NOT: {
+          OR: [
+            { id: targetUserId },
+            { path: { contains: targetUserId } }
+          ]
+        }
+      };
+
+      if (search) {
+        where.OR = [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { mobile: { contains: search } },
+          { referralCode: { contains: search, mode: 'insensitive' } }
+        ];
+      }
+
+      const users = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          fullName: true,
+          mobile: true,
+          identity: true,
+          referralCode: true,
+          profilePhoto: true
+        },
+        take: 20
+      });
+
+      console.log(`[DEBUG] Found ${users.length} potential parents`);
+
+      res.json({ success: true, data: users });
+    } catch (err) {
+      console.error("Search Potential Parents Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }

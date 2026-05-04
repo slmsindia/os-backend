@@ -24,18 +24,35 @@ const hierarchyController = {
       const where = {};
       
       // If a top-level admin is checking their own root level, show both their direct children AND 'orphaned' users (no parentId)
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase());
+      const isWhiteLabel = String(creatorIdentity).toUpperCase() === 'WHITE_LABEL_ADMIN';
+
       if (isTopAdmin && targetParentId === currentUserId) {
-        where.OR = [
-          { parentId: targetParentId },
-          { parentId: null }
-        ];
+        if (isSuperAdmin && identity) {
+            // Super Admin searching by identity should see global results if no parentId specified
+        } else if (isWhiteLabel) {
+            // White Label Admin should see everyone in their tenant by default if no parentId specified
+        } else {
+            where.OR = [
+              { parentId: targetParentId },
+              { parentId: null }
+            ];
+        }
       } else {
         where.parentId = targetParentId;
       }
 
       if (!isSuperAdmin) where.tenantId = tenantId;
-      if (identity) where.identity = identity;
+      if (identity) where.identity = identity.toUpperCase();
+      
+      console.log('[DEBUG] Hierarchy Children Query:', {
+        currentUser: currentUserId,
+        creatorIdentity,
+        targetParentId,
+        isTopAdmin,
+        whereClause: JSON.stringify(where, null, 2)
+      });
+
       if (startDate || endDate) {
         where.createdAt = {};
         if (startDate) where.createdAt.gte = new Date(startDate);
@@ -66,12 +83,26 @@ const hierarchyController = {
         prisma.user.count({ where })
       ]);
 
+      // Resolve Location IDs
+      const stateIds = [...new Set(children.map(c => c.registrationState).filter(id => id && id.length > 5))];
+      const cityIds = [...new Set(children.map(c => c.registrationCity).filter(id => id && id.length > 5))];
+
+      const [states, cities] = await Promise.all([
+        prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+      ]);
+
+      const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
+      const cityMap = Object.fromEntries(cities.map(c => [c.id, c.name]));
+
       res.json({
         success: true,
         data: children.map(c => ({
           ...c,
           hasChildren: c._count.children > 0,
-          balance: c.wallet?.balance || 0
+          balance: c.wallet?.balance || 0,
+          state: stateMap[c.registrationState] || c.registrationState || '—',
+          city: cityMap[c.registrationCity] || c.registrationCity || '—'
         })),
         pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) }
       });
@@ -369,10 +400,11 @@ const hierarchyController = {
         referralCode: targetUser.referralCode || "N/A",
         
         // Address Info (if available from applications or registration)
+        // Resolve Location IDs to names
         address: targetUser.membershipApplications[0]?.currentAddress || "N/A",
-        city: targetUser.registrationCity || targetUser.membershipApplications[0]?.currentAddress?.split(',').slice(-4, -3)[0]?.trim() || "N/A",
+        city: (await prisma.district.findUnique({ where: { id: targetUser.registrationCity || "" }, select: { name: true } }))?.name || targetUser.registrationCity || targetUser.membershipApplications[0]?.currentAddress?.split(',').slice(-4, -3)[0]?.trim() || "N/A",
         district: targetUser.membershipApplications[0]?.currentDistrict || "N/A",
-        state: targetUser.registrationState || targetUser.membershipApplications[0]?.currentState || "N/A",
+        state: (await prisma.state.findUnique({ where: { id: targetUser.registrationState || "" }, select: { name: true } }))?.name || targetUser.registrationState || targetUser.membershipApplications[0]?.currentState || "N/A",
         country: "India",
         pincode: targetUser.registrationPincode || targetUser.membershipApplications[0]?.currentPincode || "N/A",
         
@@ -389,7 +421,12 @@ const hierarchyController = {
         haveJobProfile: targetUser._count.jobPosts > 0,
         haveBusinessProfile: targetUser._count.businessApplications > 0,
         imeAgentRegistration: false,
-        prabhuAgentRegistration: false
+        prabhuAgentRegistration: false,
+        lastLogin: (await prisma.auditLog.findFirst({
+          where: { userId: targetUser.id, action: 'USER_LOGIN' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true }
+        }))?.createdAt || null
       };
 
       res.json({
@@ -486,11 +523,45 @@ const hierarchyController = {
         };
       });
 
+      // Fetch last login for each user from AuditLog
+      const auditLogins = await prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: {
+          userId: { in: users.map(u => u.id) },
+          action: 'USER_LOGIN'
+        },
+        _max: { createdAt: true }
+      });
+      const loginMap = Object.fromEntries(auditLogins.map(l => [l.userId, l._max.createdAt]));
+
+      const finalUsers = enrichedUsers.map(u => ({
+        ...u,
+        lastLogin: loginMap[u.id] || null
+      }));
+
+      // Resolve Location IDs to Names
+      const stateIds = [...new Set(finalUsers.map(u => u.registrationState).filter(id => id && id.length > 5))];
+      const cityIds = [...new Set(finalUsers.map(u => u.registrationCity).filter(id => id && id.length > 5))];
+
+      const [states, cities] = await Promise.all([
+        prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+      ]);
+
+      const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
+      const cityMap = Object.fromEntries(cities.map(c => [c.id, c.name]));
+
+      const resolvedUsers = finalUsers.map(u => ({
+        ...u,
+        state: stateMap[u.registrationState] || u.registrationState || '—',
+        city: cityMap[u.registrationCity] || u.registrationCity || '—'
+      }));
+
       if (exportCsv === "true") {
-        const headers = ["ID", "Name", "Mobile", "Email", "Role", "Status", "Balance", "White Label", "Country Head", "State Partner", "District Partner", "Created At"];
+        const headers = ["ID", "Name", "Mobile", "Email", "Role", "Status", "Balance", "White Label", "Country Head", "State Partner", "District Partner", "Last Login", "Created At"];
         let csv = headers.join(",") + "\n";
-        enrichedUsers.forEach(u => {
-          const values = [u.id, u.fullName, u.mobile, u.email || "N/A", u.identity, u.approvalStatus, u.balance, u.hierarchyInfo.whiteLabel?.fullName || "N/A", u.hierarchyInfo.countryHead?.fullName || "N/A", u.hierarchyInfo.statePartner?.fullName || "N/A", u.hierarchyInfo.districtPartner?.fullName || "N/A", u.createdAt.toISOString()];
+        resolvedUsers.forEach(u => {
+          const values = [u.id, u.fullName, u.mobile, u.email || "N/A", u.identity, u.approvalStatus, u.balance, u.hierarchyInfo.whiteLabel?.fullName || "N/A", u.hierarchyInfo.countryHead?.fullName || "N/A", u.hierarchyInfo.statePartner?.fullName || "N/A", u.hierarchyInfo.districtPartner?.fullName || "N/A", u.lastLogin ? u.lastLogin.toISOString() : "N/A", u.createdAt.toISOString()];
           csv += values.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
         });
         res.setHeader('Content-Type', 'text/csv');
@@ -501,7 +572,7 @@ const hierarchyController = {
       const summary = {};
       identityStats.forEach(s => { summary[s.identity] = s._count._all; });
 
-      res.json({ success: true, data: { users: enrichedUsers, summary, pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) } } });
+      res.json({ success: true, data: { users: resolvedUsers, summary, pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) } } });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

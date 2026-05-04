@@ -41,7 +41,8 @@ router.get("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminCont
 router.post("/razorpay-settings", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.updateRazorpaySettings);
 
 // Internal Hierarchy Transfer (White Label Admin only)
-router.post("/transfer-hierarchy", checkIdentity(["WHITE_LABEL_ADMIN"]), adminController.transferHierarchyInternal);
+router.get("/potential-parents", checkIdentity(["WHITE_LABEL_ADMIN", "SUPER_ADMIN"]), adminController.getPotentialParents);
+router.post("/transfer-hierarchy", checkIdentity(["WHITE_LABEL_ADMIN", "SUPER_ADMIN"]), adminController.transferHierarchyInternal);
 
 // Service Fee Config (White Label Admin only)
 router.get("/config/service-fees", checkIdentity(["WHITE_LABEL_ADMIN"]), adminConfigController.getServiceFees);

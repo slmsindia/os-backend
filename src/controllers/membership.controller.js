@@ -335,12 +335,13 @@ const membershipController = {
             data: { ...mappedData, status: 'PENDING', createdById: userId }
           });
         } else {
+          const initialStatus = (isFree || (isMethod2 && body.paymentMode !== 1)) ? 'PENDING' : 'PAYMENT_PENDING';
           app = await tx.membershipApplication.create({
             data: {
               id: generateUuid(),
               userId: targetUserId,
               ...mappedData,
-              status: 'PENDING',
+              status: initialStatus,
               createdById: userId,
               paymentType: isFree ? 'ADMIN_BYPASS' : (body.paymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
               tnxStatus: isFree ? 1 : 0
@@ -578,6 +579,12 @@ const membershipController = {
         }
       });
 
+      // Update application status to PENDING (submitted for review)
+      await prisma.membershipApplication.update({
+        where: { id: application.id },
+        data: { status: 'PENDING' }
+      });
+
       // NEW: Log Razorpay payment in Wallet History (Log only, DO NOT credit Admin here)
       try {
         const partnerId = application.createdById || application.userId;
@@ -646,9 +653,36 @@ const membershipController = {
         });
       }
 
+      // Enrich application with location names
+      const enrichedApplication = { ...application };
+      
+      const [currCountry, currState, currDistrict, currMun] = await Promise.all([
+        application.currentCountry ? prisma.country.findUnique({ where: { id: application.currentCountry } }) : null,
+        application.currentState ? prisma.state.findUnique({ where: { id: application.currentState } }) : null,
+        application.currentDistrict ? prisma.district.findUnique({ where: { id: application.currentDistrict } }) : null,
+        application.currentMunicipality ? prisma.municipality.findUnique({ where: { id: application.currentMunicipality } }) : null
+      ]);
+
+      const [permCountry, permState, permDistrict, permMun] = await Promise.all([
+        application.permanentCountry ? prisma.country.findUnique({ where: { id: application.permanentCountry } }) : null,
+        application.permanentState ? prisma.state.findUnique({ where: { id: application.permanentState } }) : null,
+        application.permanentDistrict ? prisma.district.findUnique({ where: { id: application.permanentDistrict } }) : null,
+        application.permanentMunicipality ? prisma.municipality.findUnique({ where: { id: application.permanentMunicipality } }) : null
+      ]);
+
+      enrichedApplication.currentCountryName = currCountry?.name || application.currentCountry;
+      enrichedApplication.currentStateName = currState?.name || application.currentState;
+      enrichedApplication.currentDistrictName = currDistrict?.name || application.currentDistrict;
+      enrichedApplication.currentMunicipalityName = currMun?.name || application.currentMunicipality;
+
+      enrichedApplication.permanentCountryName = permCountry?.name || application.permanentCountry;
+      enrichedApplication.permanentStateName = permState?.name || application.permanentState;
+      enrichedApplication.permanentDistrictName = permDistrict?.name || application.permanentDistrict;
+      enrichedApplication.permanentMunicipalityName = permMun?.name || application.permanentMunicipality;
+
       res.json({
         success: true,
-        data: application
+        data: enrichedApplication
       });
     } catch (err) {
       console.error(err);
