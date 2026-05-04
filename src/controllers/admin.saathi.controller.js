@@ -92,7 +92,7 @@ const adminSaathiController = {
    */
   createSaathiDirectly: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
-    const { userId: providedUserId, fullName, mobile, gender, dateOfBirth, address, paymentMethod } = req.body;
+    const { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod } = req.body;
 
     try {
       // 1. Get Target User (or create if new)
@@ -109,7 +109,14 @@ const adminSaathiController = {
         targetUser = await prisma.user.findFirst({ where: { mobile, tenantId } });
         if (targetUser) {
           if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
-          // Existing user → no immediate upgrade, wait for approval
+          
+          // Update email if it's null and provided
+          if (!targetUser.email && email) {
+            targetUser = await prisma.user.update({
+              where: { id: targetUser.id },
+              data: { email }
+            });
+          }
         } else {
           const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
           const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
@@ -123,6 +130,7 @@ const adminSaathiController = {
               id: generateUuid(),
               mobile,
               fullName,
+              email: email || null,
               gender: (gender || 'OTHER').toUpperCase(),
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
               password: hashedPassword,

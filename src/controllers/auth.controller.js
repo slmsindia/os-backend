@@ -57,6 +57,16 @@ const authController = {
         return res.status(409).json({ success: false, message: "already registered in this white label" });
       }
 
+      const systemDomains = ['localhost', '127.0.0.1', 'os.dpinfoserver.co.in'];
+      const targetTenant = await prisma.tenant.findUnique({ where: { id: req.tenant_id } });
+
+      if (targetTenant && systemDomains.includes(targetTenant.domain)) {
+         return res.status(403).json({ 
+           success: false, 
+           message: "Registration is not allowed on this system domain. Please use a specific partner domain." 
+         });
+      }
+
       const success = await sendOtp(mobile);
       if (!success) return res.status(500).json({ success: false, message: "failed to send" });
 
@@ -220,9 +230,28 @@ const authController = {
         }
       }
 
-      // Fallback: If STILL no tenant is resolved, assign to first tenant
+      // Final check: If no tenant resolved via referral OR domain middleware, OR if it's a system domain
+      // We block registration to prevent users from leaking into 'localhost' or root system tenant.
       if (!resolvedTenantId) {
-        resolvedTenantId = firstTenant.id;
+        return res.status(403).json({ 
+          success: false, 
+          message: "Unable to identify a valid tenant for registration. Please use a tenant-specific link or domain." 
+        });
+      }
+
+      const targetTenant = await prisma.tenant.findUnique({
+        where: { id: resolvedTenantId }
+      });
+
+      const systemDomains = ['localhost', '127.0.0.1', 'os.dpinfoserver.co.in'];
+      
+      // Block registration if it's a system domain AND no referral is used
+      // This forces users to either use a White Label domain (abc.com) or a Referral Code.
+      if (targetTenant && systemDomains.includes(targetTenant.domain) && !parentId) {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Registration is not allowed on this system domain. Please use your partner's specific domain." 
+        });
       }
 
       if (!(await isMobileVerified(mobile))) {

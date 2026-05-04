@@ -11,7 +11,7 @@ const hasGlobalAdminScope = (user = {}) => {
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
-    const { mobile, fullName, password, gender, dateOfBirth, parentId } = req.body;
+    const { mobile, fullName, email, password, gender, dateOfBirth, parentId } = req.body;
     const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!mobile || !fullName || !password) {
@@ -70,6 +70,7 @@ const adminController = {
           id: generateUuid(),
           mobile,
           fullName,
+          email: email || null,
           password: hash,
           gender,
           dateOfBirth: new Date(dateOfBirth),
