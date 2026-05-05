@@ -7,15 +7,13 @@ const permissionController = {
    */
   syncPermissions: async (req, res) => {
     const standardPermissions = [
-      "HIERARCHY_VIEW",
-      "REPORT_VIEW",
-      "REPORT_EXPORT",
-      "MEMBERSHIP_APPROVE",
-      "SAATHI_APPROVE",
-      "BUSINESS_APPROVE",
-      "WALLET_MANAGE",
-      "USER_TOGGLE_STATUS",
-      "COMMISSION_VIEW"
+      "PERM_VIEW_HIERARCHY",
+      "PERM_MANAGE_HIERARCHY",
+      "PERM_VIEW_REPORTS",
+      "PERM_EXPORT_REPORTS",
+      "PERM_MANAGE_APPLICATIONS",
+      "PERM_MANAGE_WALLETS",
+      "PERM_VIEW_COMMISSIONS"
     ];
 
     try {

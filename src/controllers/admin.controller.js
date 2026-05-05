@@ -20,7 +20,7 @@ const adminController = {
 
     try {
       const myIdentity = String(req.user?.identity || '').toUpperCase();
-      const { permissionNames } = req.body; // Array of permission names, e.g., ["PERM_MANAGE_APPLICATIONS"]
+      const { permissionNames } = req.body;
 
       // Role Ranking Definition (Lower number = Higher Power)
       const roleRank = {
@@ -49,25 +49,68 @@ const adminController = {
         finalParentId = parentId;
       }
 
-      const hash = await bcrypt.hash(password, 10);
-      const user = await prisma.user.create({
-        data: {
-          id: generateUuid(),
-          mobile,
-          fullName,
-          email: email || null,
-          password: hash,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          identity: targetIdentity,
-          tenantId: myTenantId,
-          parentId: finalParentId,
-          referralCode: generateReferralCode(),
-          createdBy: myId
-        }
+      // Check if user already exists in this tenant
+      const existingUser = await prisma.user.findFirst({
+        where: { mobile, tenantId: myTenantId }
       });
 
+      if (existingUser && existingUser.identity === targetIdentity) {
+          return res.status(400).json({ success: false, message: `User is already a ${targetIdentity}. Duplicate creation blocked.` });
+      }
+
+      // Hierarchy Path Calculation
+      const parent = await prisma.user.findUnique({ 
+        where: { id: finalParentId }, 
+        select: { path: true } 
+      });
+      const newPath = parent?.path ? `${parent.path}/${finalParentId}` : `/${finalParentId}`;
+
+      let user;
+      if (existingUser) {
+        // Upgrade existing user and move into this admin's hierarchy
+        user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            identity: targetIdentity,
+            fullName,
+            email: email || existingUser.email,
+            gender: gender || existingUser.gender,
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : existingUser.dateOfBirth,
+            parentId: finalParentId,
+            path: newPath,
+            // Only update password if provided
+            ...(password ? { password: await bcrypt.hash(password, 10) } : {})
+          }
+        });
+        console.log(`[AdminProvision] Upgraded existing user ${user.id} to ${targetIdentity} and moved to path ${newPath}`);
+      } else {
+        // Create brand new user
+        const hash = await bcrypt.hash(password, 10);
+        user = await prisma.user.create({
+          data: {
+            id: generateUuid(),
+            mobile,
+            fullName,
+            email: email || null,
+            password: hash,
+            gender,
+            dateOfBirth: new Date(dateOfBirth),
+            identity: targetIdentity,
+            tenantId: myTenantId,
+            parentId: finalParentId,
+            path: newPath,
+            referralCode: generateReferralCode(),
+            createdBy: myId
+          }
+        });
+      }
+
       // --- Granular Permissions Logic ---
+      // For existing users, we should clear old custom roles to avoid permission bloat
+      if (existingUser) {
+        await prisma.userRole.deleteMany({ where: { userId: user.id } });
+      }
+
       // If permissions are provided (specifically for Sub-Admin delegation), create a dedicated role
       if (permissionNames && Array.isArray(permissionNames) && permissionNames.length > 0) {
         const foundPerms = await prisma.permission.findMany({
@@ -115,17 +158,21 @@ const adminController = {
 
       await logAction({
         userId: myId,
-        action: `CREATE_${targetIdentity}`,
+        action: existingUser ? `UPGRADE_TO_${targetIdentity}` : `CREATE_${targetIdentity}`,
         targetId: user.id,
         tenantId: myTenantId,
         metadata: { mobile: user.mobile, permissions: permissionNames }
       });
 
-      res.status(201).json({ success: true, user: { id: user.id, mobile: user.mobile, identity: user.identity } });
+      res.status(existingUser ? 200 : 201).json({ 
+        success: true, 
+        message: existingUser ? `User upgraded to ${targetIdentity}` : `${targetIdentity} created successfully`,
+        user: { id: user.id, mobile: user.mobile, identity: user.identity } 
+      });
     } catch (err) {
       console.error(err);
       if (err.code === "P2002") {
-        return res.status(400).json({ success: false, message: "Mobile already exists" });
+        return res.status(400).json({ success: false, message: "Mobile already exists in another context" });
       }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
