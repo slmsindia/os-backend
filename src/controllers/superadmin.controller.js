@@ -179,10 +179,31 @@ const superAdminController = {
       }
 
       const descendants = await prisma.user.findMany({
-        where: { OR: [{ id: targetUserId }, { path: { contains: targetUserId } }] }
+        where: { OR: [{ id: targetUserId }, { path: { contains: targetUserId } }] },
+        include: { wallet: true }
       });
 
       const allIds = descendants.map(u => u.id);
+      const allWalletIds = descendants.map(u => u.wallet?.id).filter(Boolean);
+      const descendantMobiles = descendants.map(u => u.mobile);
+
+      // 3. Check for mobile conflicts in the target tenant
+      const collisions = await prisma.user.findMany({
+        where: {
+          tenantId: newTenantId,
+          mobile: { in: descendantMobiles },
+          id: { notIn: allIds }
+        },
+        select: { mobile: true, fullName: true }
+      });
+
+      if (collisions.length > 0) {
+        const conflictList = collisions.map(c => `${c.fullName} (${c.mobile})`).join(", ");
+        return res.status(400).json({
+          success: false,
+          message: `Transfer failed: The following users already exist in the target organization: ${conflictList}. Please resolve these duplicates before transferring.`
+        });
+      }
 
       await prisma.$transaction(async (tx) => {
         const newRootPrefix = newParent.path ? `${newParent.path}/${newParent.id}` : `/${newParent.id}`;
@@ -216,10 +237,12 @@ const superAdminController = {
 
         // Update Wallets, Transactions, etc.
         await tx.wallet.updateMany({ where: { userId: { in: allIds } }, data: { tenantId: newTenantId } });
-        await tx.walletTransaction.updateMany({
-           where: { wallet: { userId: { in: allIds } } },
-           data: { tenantId: newTenantId }
-        });
+        if (allWalletIds.length > 0) {
+          await tx.walletTransaction.updateMany({
+            where: { walletId: { in: allWalletIds } },
+            data: { tenantId: newTenantId }
+          });
+        }
       });
 
       res.json({ success: true, message: `Transferred ${allIds.length} users to ${newTenant.name}` });
