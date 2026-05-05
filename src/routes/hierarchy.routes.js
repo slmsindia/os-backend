@@ -48,6 +48,7 @@ router.get("/complete-user-info/:targetUserId", hierarchyController.getCompleteU
 // --- Hierarchy Transfer Self-Service ---
 router.post("/request-transfer", hierarchyController.requestTransfer);
 router.post("/withdraw-transfer", hierarchyController.withdrawTransfer);
+router.get("/my-request", hierarchyController.getMyHierarchyRequest);
 router.get("/execute-transfers", hierarchyController.executeScheduledTransfers);
 
 module.exports = router;

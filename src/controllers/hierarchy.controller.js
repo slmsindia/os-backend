@@ -713,14 +713,23 @@ const hierarchyController = {
    */
   requestTransfer: async (req, res) => {
     const { user_id: userId, tenant_id: tenantId } = req.user;
-    const { referralCode } = req.body;
+    const { referralCode, ReferralCode, newParentId, mobile } = req.body;
+    const identifier = referralCode || ReferralCode || newParentId || mobile;
 
-    if (!referralCode) return res.status(400).json({ success: false, message: "Referral code required" });
+    if (!identifier) return res.status(400).json({ success: false, message: "New parent identifier (referral code, ID, or mobile) required" });
 
     try {
       const [user, newParent] = await Promise.all([
         prisma.user.findUnique({ where: { id: userId } }),
-        prisma.user.findUnique({ where: { referralCode } })
+        prisma.user.findFirst({
+          where: {
+            OR: [
+              { referralCode: { equals: identifier, mode: 'insensitive' } },
+              { id: { equals: identifier, mode: 'insensitive' } },
+              { mobile: identifier }
+            ]
+          }
+        })
       ]);
 
       if (!user) return res.status(404).json({ success: false, message: "User not found" });
@@ -772,34 +781,20 @@ const hierarchyController = {
         include: { newParent: { select: { fullName: true, identity: true } } }
       });
 
-      // 3. Notifications to Parents
-      const notifications = [];
-      
-      // Notify Current Parent (if exists)
+      // 3. Notification to Current Parent (if exists)
       if (user.parentId) {
-        notifications.push({
-          id: generateUuid(),
-          userId: user.parentId,
-          tenantId,
-          title: "Hierarchy Transfer Request",
-          message: `${user.fullName} (${user.identity}) has requested to move under ${newParent.fullName}. This will be processed in 24 hours.`,
-          type: "TRANSFER_REQUEST",
-          metadata: { requestId: request.id, userId: user.id }
+        await prisma.notification.create({
+          data: {
+            id: generateUuid(),
+            userId: user.parentId,
+            tenantId,
+            title: "Hierarchy Transfer Alert",
+            message: `Hierarchy Alert: Your downline ${user.fullName} (${user.identity}) has requested to move to another parent. Unless withdrawn, this user will be automatically shifted to the new hierarchy in 24 hours.`,
+            type: "TRANSFER_REQUEST",
+            metadata: { requestId: request.id, userId: user.id }
+          }
         });
       }
-
-      // Notify New Parent
-      notifications.push({
-        id: generateUuid(),
-        userId: newParent.id,
-        tenantId,
-        title: "New Downline Request",
-        message: `${user.fullName} (${user.identity}) has requested to join your hierarchy. This will be processed in 24 hours.`,
-        type: "TRANSFER_REQUEST",
-        metadata: { requestId: request.id, userId: user.id }
-      });
-
-      await prisma.notification.createMany({ data: notifications });
 
       res.json({
         success: true,
@@ -972,6 +967,38 @@ const hierarchyController = {
     } catch (err) {
       console.error("Scheduled Transfer Execution Error:", err);
       res.status(500).json({ success: false, message: "Execution failed" });
+    }
+  },
+
+  /**
+   * Get Current User's Active Transfer Request
+   * GET /api/admin/hierarchy/my-request
+   */
+  getMyHierarchyRequest: async (req, res) => {
+    const { user_id: userId } = req.user;
+    try {
+      const request = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" },
+        include: { 
+          newParent: { select: { fullName: true } },
+          oldParent: { select: { fullName: true } }
+        }
+      });
+
+      if (!request) return res.status(200).json({ success: false, message: "No active request" });
+
+      res.json({
+        success: true,
+        data: {
+          id: request.id,
+          requestedAt: request.createdAt,
+          currentParentName: request.oldParent?.fullName || "System Administrator",
+          newParentName: request.newParent?.fullName || "N/A"
+        }
+      });
+    } catch (err) {
+      console.error("Get My Request Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
 };
