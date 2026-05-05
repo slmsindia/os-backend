@@ -24,24 +24,6 @@ const getOrCreateRole = async (roleName) => {
 };
 
 const authController = {
-  checkMobile: async (req, res) => {
-    const { mobile } = req.body;
-    const tenantId = req.tenant_id;
-    if (!mobile) return res.status(400).json({ success: false, message: "Mobile required" });
-    try {
-      const user = await prisma.user.findFirst({ 
-        where: { mobile, tenantId } 
-      });
-      if (user) {
-        return res.json({ success: true, exists: true });
-      } else {
-        return res.json({ success: true, exists: false });
-      }
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
-    }
-  },
   sendOtp: async (req, res) => {
     const { mobile, type } = req.body;
 
@@ -172,9 +154,12 @@ const authController = {
         return res.status(404).json({ success: false, message: "user not found" });
       }
 
-      const otpResult = await verifyOtp(mobile, otp);
-      if (!otpResult.success) {
-        return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
+      const verified = await isMobileVerified(mobile);
+      if (!verified) {
+        const otpResult = await verifyOtp(mobile, otp);
+        if (!otpResult.success) {
+          return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
+        }
       }
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);

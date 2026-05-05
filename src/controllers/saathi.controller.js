@@ -68,31 +68,65 @@ const saathiController = {
 
       // 4 & 5. Create Application and Handle Payment in Transaction
       const application = await prisma.$transaction(async (tx) => {
-        // Create Application first to get ID
-        const app = await tx.saathiApplication.create({
-          data: {
-            id: generateUuid(),
-            userId,
-            fullName,
-            mobile,
-            gender,
-            dateOfBirth: new Date(dateOfBirth),
-            address,
-            createdById: userId, // Self application
-            paymentType: paymentMethod,
-            status: 'PENDING',
-            payment: {
-              create: {
-                id: generateUuid(),
-                amount,
-                method: paymentMethod,
-                status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                paidAt: paymentMethod === 'WALLET' ? new Date() : null
-              }
-            }
-          },
+        // Check for existing pending application
+        const existing = await tx.saathiApplication.findFirst({
+          where: { userId, status: 'PENDING' },
           include: { payment: true }
         });
+
+        let app;
+        if (existing && existing.payment?.status === 'PENDING') {
+          // Update existing
+          app = await tx.saathiApplication.update({
+            where: { id: existing.id },
+            data: {
+              fullName,
+              mobile,
+              gender,
+              dateOfBirth: new Date(dateOfBirth),
+              address,
+              paymentType: paymentMethod
+            },
+            include: { payment: true }
+          });
+
+          // Update or recreate payment
+          await tx.saathiPayment.update({
+            where: { id: existing.payment.id },
+            data: {
+              amount,
+              method: paymentMethod,
+              status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
+              paidAt: paymentMethod === 'WALLET' ? new Date() : null
+            }
+          });
+        } else {
+          // Create Application first to get ID
+          app = await tx.saathiApplication.create({
+            data: {
+              id: generateUuid(),
+              userId,
+              fullName,
+              mobile,
+              gender,
+              dateOfBirth: new Date(dateOfBirth),
+              address,
+              createdById: userId, // Self application
+              paymentType: paymentMethod,
+              status: 'PENDING',
+              payment: {
+                create: {
+                  id: generateUuid(),
+                  amount,
+                  method: paymentMethod,
+                  status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
+                  paidAt: paymentMethod === 'WALLET' ? new Date() : null
+                }
+              }
+            },
+            include: { payment: true }
+          });
+        }
 
         // If Wallet, deduct now
         if (paymentMethod === 'WALLET') {

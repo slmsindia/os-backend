@@ -941,6 +941,78 @@ const walletController = {
       console.error("Get All Wallet Transactions Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * Get Transaction Detail with linked service data
+   */
+  getTransactionDetail: async (req, res) => {
+    const { id } = req.params;
+    const { tenant_id: tenantId } = req.user;
+
+    try {
+      const txn = await prisma.walletTransaction.findFirst({
+        where: { id, tenantId },
+        include: {
+          wallet: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  mobile: true,
+                  identity: true,
+                  email: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!txn) {
+        return res.status(404).json({ success: false, message: "Transaction not found" });
+      }
+
+      let serviceData = null;
+      if (txn.referenceId) {
+        try {
+          if (txn.description?.toLowerCase().includes("prabhu")) {
+            serviceData = await prisma.prabhuData.findUnique({ where: { id: txn.referenceId } });
+          } else if (txn.description?.toLowerCase().includes("ime")) {
+            serviceData = await prisma.imeTransaction.findUnique({ where: { id: txn.referenceId } });
+          } else if (txn.category === 'MEMBERSHIP_FEE') {
+            serviceData = await prisma.membershipApplication.findUnique({ where: { id: txn.referenceId } });
+          } else if (txn.category === 'SAATHI_FEE') {
+            serviceData = await prisma.saathiApplication.findUnique({ where: { id: txn.referenceId } });
+          } else if (txn.category === 'BUSINESS_PARTNER_FEE') {
+            serviceData = await prisma.businessApplication.findUnique({ where: { id: txn.referenceId } });
+          } else if (txn.category === 'WALLET_TOPUP') {
+             serviceData = await prisma.walletTopUpRequest.findUnique({ 
+               where: { id: txn.referenceId },
+               include: {
+                 bankDetails: true
+               }
+             });
+          }
+        } catch (err) {
+          console.warn("Error fetching linked service data:", err.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          ...txn,
+          serviceData,
+          walletOwner: txn.wallet?.user?.fullName || (txn.wallet?.isCorporate ? "System Corporate" : "Unknown"),
+          ownerIdentity: txn.wallet?.user?.identity || (txn.wallet?.isCorporate ? "ADMIN" : "N/A")
+        }
+      });
+    } catch (err) {
+      console.error("Get Transaction Detail Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
   }
 };
 

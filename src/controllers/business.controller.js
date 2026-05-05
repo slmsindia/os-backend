@@ -39,26 +39,53 @@ const businessController = {
 
       // 3 & 4. Handle Application and Payment in Transaction
       const application = await prisma.$transaction(async (tx) => {
-        // Create Application first
-        const app = await tx.businessApplication.create({
-          data: {
-            id: generateUuid(),
-            userId,
-            businessName,
-            brandName,
-            ownerName,
-            email,
-            contactNumber1,
-            contactNumber2,
-            sectorId,
-            amount: parseFloat(amount || 0),
-            paymentMode: parseInt(paymentMode || 1),
-            razorPayReferenceNo,
-            address,
-            documents,
-            status: "PENDING"
-          }
+        // Check for existing pending application
+        const existing = await tx.businessApplication.findFirst({
+          where: { userId, status: "PENDING" }
         });
+
+        let app;
+        if (existing) {
+          // Update existing
+          app = await tx.businessApplication.update({
+            where: { id: existing.id },
+            data: {
+              businessName,
+              brandName,
+              ownerName,
+              email,
+              contactNumber1,
+              contactNumber2,
+              sectorId,
+              amount: parseFloat(amount || 0),
+              paymentMode: parseInt(paymentMode || 1),
+              razorPayReferenceNo,
+              address,
+              documents
+            }
+          });
+        } else {
+          // Create Application first
+          app = await tx.businessApplication.create({
+            data: {
+              id: generateUuid(),
+              userId,
+              businessName,
+              brandName,
+              ownerName,
+              email,
+              contactNumber1,
+              contactNumber2,
+              sectorId,
+              amount: parseFloat(amount || 0),
+              paymentMode: parseInt(paymentMode || 1),
+              razorPayReferenceNo,
+              address,
+              documents,
+              status: "PENDING"
+            }
+          });
+        }
 
         // If Wallet, deduct now
         if (payMode === 2) { // WALLET

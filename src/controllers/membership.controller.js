@@ -331,6 +331,29 @@ const membershipController = {
             where: { id: existingApplication.id },
             data: { ...mappedData, status: 'PENDING', createdById: userId }
           });
+        } else if (existingApplication && existingApplication.status === 'PAYMENT_PENDING') {
+          // Update the existing application instead of creating a new one
+          app = await tx.membershipApplication.update({
+            where: { id: existingApplication.id },
+            data: { 
+              ...mappedData, 
+              createdById: userId,
+              paymentType: isFree ? 'ADMIN_BYPASS' : (body.paymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
+              tnxStatus: isFree ? 1 : 0
+            }
+          });
+
+          // Delete old documents as they will be recreated
+          await tx.membershipDocument.deleteMany({
+            where: { applicationId: app.id }
+          });
+          
+          // Delete old payment if it exists and is pending (to be replaced by new Razorpay order if needed)
+          if (existingApplication.payment && existingApplication.payment.status === 'PENDING') {
+            await tx.membershipPayment.delete({
+              where: { id: existingApplication.payment.id }
+            });
+          }
         } else {
           const initialStatus = (isFree || (isMethod2 && body.paymentMode !== 1)) ? 'PENDING' : 'PAYMENT_PENDING';
           app = await tx.membershipApplication.create({

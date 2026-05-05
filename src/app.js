@@ -33,6 +33,7 @@ const supportRoutes = require("./routes/support.routes");
 const marketingRoutes = require("./routes/marketing.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const adminAccessRoutes = require("./routes/admin.access.routes");
+const draftRoutes = require("./routes/draft.routes");
 
 const app = express();
 
@@ -131,6 +132,7 @@ app.use("/api/support", supportRoutes);
 app.use("/api/marketing", marketingRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/admin/access-control", adminAccessRoutes);
+app.use("/api/drafts", draftRoutes);
 
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 

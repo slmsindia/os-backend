@@ -1306,6 +1306,22 @@ model CommissionService {
   updatedAt   DateTime @updatedAt
 }
 
+model FormDraft {
+  id           String   @id @default(uuid())
+  userId       String   // Who is filling the form
+  targetMobile String   // Mobile of the person being registered
+  formType     String   // 'member', 'saathi', 'business'
+  data         Json
+  step         Int      @default(1)
+  tenantId     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, formType, targetMobile, tenantId])
+  @@index([userId])
+  @@index([targetMobile])
+}
+
 model CommissionSubService {
   id          String   @id @default(uuid())
   name        String
