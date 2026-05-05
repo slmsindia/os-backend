@@ -192,6 +192,55 @@ const businessController = {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+  },
+
+  /**
+   * Get all jobs (for browsing)
+   */
+  getJobs: async (req, res) => {
+    try {
+      const jobs = await prisma.jobPost.findMany({
+        where: { isActive: true },
+        include: {
+          business: { select: { businessName: true, brandName: true, address: true } },
+          sector: true,
+          jobRole: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.json({ success: true, data: jobs });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Get jobs posted by the current user
+   */
+  getMyJobs: async (req, res) => {
+    const { user_id: userId } = req.user;
+    try {
+      const profile = await prisma.businessProfile.findUnique({ where: { userId } });
+      if (!profile) {
+        return res.status(403).json({ success: false, message: "No business profile found" });
+      }
+
+      const jobs = await prisma.jobPost.findMany({
+        where: { businessId: profile.id },
+        include: {
+          sector: true,
+          jobRole: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.json({ success: true, data: jobs });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
   }
 };
 

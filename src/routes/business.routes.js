@@ -11,6 +11,8 @@ router.post("/apply", checkIdentity(["USER", "SAATHI", "MEMBER"]), businessContr
 router.get("/status", businessController.getBusinessStatus);
 
 // Job Postings
+router.get("/list", businessController.getJobs);
+router.get("/my-jobs", checkIdentity(["BUSINESS_PARTNER"]), businessController.getMyJobs);
 router.post("/jobs", checkIdentity(["BUSINESS_PARTNER", "SUPER_ADMIN"]), businessController.postJob);
 
 module.exports = router;
