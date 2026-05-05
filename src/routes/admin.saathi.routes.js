@@ -18,15 +18,15 @@ router.post("/fee",
 );
 router.get("/fee", adminSaathiController.getSaathiFee);
 
-// Only Admins/Partners can create Saathi directly
+// Only Admins/Partners/Members can create Saathi
 router.post("/create-direct",
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]),
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "BUSINESS_PARTNER", "SAATHI", "MEMBER", "AGENT", "USER"]),
   adminSaathiController.createSaathiDirectly
 );
 
 // Alias for convenience
 router.post("/create-directly",
-  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]),
+  checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "BUSINESS_PARTNER", "SAATHI", "MEMBER", "AGENT", "USER"]),
   adminSaathiController.createSaathiDirectly
 );
 

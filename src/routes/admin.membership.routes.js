@@ -17,8 +17,8 @@ router.put("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN
 router.post("/membership/price", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminMembershipController.updateMembershipPrice);
 
 // Membership applications (Accessible by admins and delegated users)
-router.post("/membership/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminMembershipController.createUser);
-router.post("/agent/create", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminMembershipController.createUser); // Alias for agent creation
+router.post("/membership/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "BUSINESS_PARTNER", "SAATHI", "MEMBER", "AGENT", "USER"]), adminMembershipController.createUser);
+router.post("/agent/create", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN", "COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER", "BUSINESS_PARTNER", "SAATHI", "MEMBER", "AGENT", "USER"]), adminMembershipController.createUser); // Alias for agent creation
 router.get("/membership/applications", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getMembershipApplications);
 router.get("/membership/applications/:applicationId", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getApplicationDetails);
 router.post("/membership/applications/:applicationId/approve", checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.approveApplication);
