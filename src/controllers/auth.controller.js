@@ -43,7 +43,7 @@ const authController = {
     }
   },
   sendOtp: async (req, res) => {
-    const { mobile } = req.body;
+    const { mobile, type } = req.body;
 
     if (!/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ success: false, message: "invalid mobile" });
@@ -53,8 +53,15 @@ const authController = {
       const existing = await prisma.user.findFirst({ 
         where: { mobile, tenantId: req.tenant_id } 
       });
-      if (existing) {
-        return res.status(409).json({ success: false, message: "already registered in this white label" });
+
+      if (type === 'FORGOT_PASSWORD') {
+        if (!existing) {
+          return res.status(404).json({ success: false, message: "user not found" });
+        }
+      } else {
+        if (existing) {
+          return res.status(409).json({ success: false, message: "already registered in this white label" });
+        }
       }
 
       const systemDomains = ['localhost', '127.0.0.1', 'os.dpinfoserver.co.in'];
