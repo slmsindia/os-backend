@@ -35,26 +35,30 @@ const commissionService = {
         });
 
         if (joiner) {
+          console.log(`[Commission] Joiner Location Data: Pincode=${joiner.registrationPincode}, City=${joiner.registrationCity}, State=${joiner.registrationState}`);
+          
           // Priority: Pincode > City > State
           locationScheme = await tx.commissionScheme.findFirst({
             where: {
               tenantId: joiner.tenantId,
               isActive: true,
               OR: [
-                { targetPincode: joiner.registrationPincode },
-                { targetCity: joiner.registrationCity },
-                { targetState: joiner.registrationState }
+                { targetPincode: { equals: joiner.registrationPincode, not: null } },
+                { targetCity: { equals: joiner.registrationCity, not: null } },
+                { targetState: { equals: joiner.registrationState, not: null } }
               ]
             },
             orderBy: [
-              { targetPincode: 'desc' }, // Nulls last usually, but we want the most specific
+              { targetPincode: 'desc' }, 
               { targetCity: 'desc' },
               { targetState: 'desc' }
             ]
           });
           
           if (locationScheme) {
-            console.log(`[Commission] LOCATION OVERRIDE FOUND: ${locationScheme.name} for Joiner Location`);
+            console.log(`[Commission] LOCATION OVERRIDE FOUND: ${locationScheme.name} (ID: ${locationScheme.id})`);
+          } else {
+            console.log(`[Commission] No location-specific scheme found for this joiner.`);
           }
         }
       } catch (locErr) {
@@ -87,6 +91,7 @@ const commissionService = {
       });
 
       const hierarchy = pathIds.map(id => pathUsers.find(u => u.id === id)).filter(Boolean);
+      console.log(`[Commission] Hierarchy resolved: ${hierarchy.map(u => `${u.fullName} (${u.identity})`).join(' -> ')}`);
 
       const transactionLog = await tx.transactionLog.create({
         data: {
@@ -97,25 +102,22 @@ const commissionService = {
           status: "SUCCESS"
         }
       });
+      console.log(`[Commission] Created TransactionLog ID: ${transactionLog.id}`);
 
       const adminCorporateWallet = await tx.wallet.findFirst({
         where: { tenantId: user.tenantId, isCorporate: true }
       });
+      console.log(`[Commission] Admin Corporate Wallet ID: ${adminCorporateWallet?.id || "NOT FOUND"}`);
 
       for (let i = 0; i < hierarchy.length - 1; i++) {
           const sender = hierarchy[i];
           const receiver = hierarchy[i + 1];
 
-          console.log(`[Commission] STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName}`);
+          console.log(`[Commission] --- STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName} ---`);
 
-          // --- SCHEME RESOLUTION (UPSTREAM OVERRIDE CHAIN) ---
-          // Rule: Each partner's commission is decided by the closest upstream override.
-          // Fallback: Immediate Parent -> Next Parent -> ... -> WLA Default
-          
           let transferAmount = 0;
           let resolvedBy = "";
 
-          // Identity of the receiver for lookup
           const recIdentity = receiver.identity.toUpperCase();
           let shareKey = "";
           if (recIdentity.includes("COUNTRY")) shareKey = "countryPartner";
@@ -124,12 +126,17 @@ const commissionService = {
           else if (recIdentity.includes("SAATHI")) shareKey = "saathi";
           else if (recIdentity.includes("MEMBER")) shareKey = "member";
 
-          if (!shareKey) continue;
+          console.log(`[Commission]   Receiver Identity: ${recIdentity}, ShareKey: ${shareKey}`);
+          if (!shareKey) {
+            console.log(`[Commission]   SKIP: Identity ${recIdentity} not mapped to any share key.`);
+            continue;
+          }
 
-          // Search from the current sender upwards to find an override
+          // 1. Closest Upstream Partner Override
           for (let j = i; j >= 0; j--) {
               const upstreamPartner = hierarchy[j];
               const schemeId = upstreamPartner.commissionSchemeId;
+              console.log(`[Commission]   Checking Upstream: ${upstreamPartner.fullName}, SchemeID: ${schemeId || "None"}`);
               
               if (schemeId) {
                   const share = await tx.commissionShare.findUnique({
@@ -140,34 +147,76 @@ const commissionService = {
                       const val = parseFloat(share[shareKey]);
                       transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
                       resolvedBy = upstreamPartner.fullName;
-                      break; // Found the closest override
+                      console.log(`[Commission]   MATCH Upstream Scheme! Amount: ${transferAmount}`);
+                      break; 
                   }
               }
           }
 
-          // Global Default Fallback if no override found in hierarchy
+          // 2. Location-Based Scheme Fallback
+          if (transferAmount <= 0 && locationScheme) {
+              console.log(`[Commission]   Trying Location Scheme: ${locationScheme.name}`);
+              const share = await tx.commissionShare.findUnique({
+                  where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId } }
+              });
+              if (share && parseFloat(share[shareKey]) > 0) {
+                  const val = parseFloat(share[shareKey]);
+                  transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
+                  resolvedBy = `Location Override (${locationScheme.name})`;
+                  console.log(`[Commission]   MATCH Location Scheme! Amount: ${transferAmount}`);
+              }
+          }
+
+          // 3. Global Default Fallback
           if (transferAmount <= 0) {
-              const defaultScheme = await tx.commissionScheme.findFirst({
+              console.log(`[Commission]   Trying System Default Scheme...`);
+              let defaultScheme = await tx.commissionScheme.findFirst({
                   where: { tenantId: user.tenantId, isActive: true, isDefault: true }
               });
+
+              // Fallback 1: Look for scheme named "General"
+              if (!defaultScheme) {
+                  defaultScheme = await tx.commissionScheme.findFirst({
+                      where: { 
+                          tenantId: user.tenantId, 
+                          isActive: true, 
+                          name: { contains: 'General', mode: 'insensitive' } 
+                      }
+                  });
+              }
+
+              // Fallback 2: Pick the first active scheme
+              if (!defaultScheme) {
+                  defaultScheme = await tx.commissionScheme.findFirst({
+                      where: { tenantId: user.tenantId, isActive: true },
+                      orderBy: { createdAt: 'asc' }
+                  });
+              }
+
               if (defaultScheme) {
+                  console.log(`[Commission]   Default/Fallback Scheme Found: ${defaultScheme.name} (ID: ${defaultScheme.id})`);
                   const share = await tx.commissionShare.findUnique({
                       where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId } }
                   });
-                  if (share) {
+                  if (share && parseFloat(share[shareKey]) > 0) {
                       const val = parseFloat(share[shareKey]);
                       transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
-                      resolvedBy = "System Default";
+                      resolvedBy = `Fallback (${defaultScheme.name})`;
+                      console.log(`[Commission]   MATCH Default Scheme! Amount: ${transferAmount}`);
+                  } else {
+                    console.log(`[Commission]   Scheme ${defaultScheme.name} has 0 or no share for ${shareKey} / SubService ${subServiceId}`);
                   }
+              } else {
+                console.log(`[Commission]   CRITICAL: No schemes whatsoever found for tenant ${user.tenantId}`);
               }
           }
 
           if (transferAmount <= 0) {
-            console.log(`[Commission]   SKIP: No commission defined for ${receiver.fullName} (${recIdentity})`);
+            console.log(`[Commission]   SKIP: Final transfer amount is 0.`);
             continue;
           }
 
-          // --- EXECUTE TRANSFER (CREDIT-BASED: FULL DISTRIBUTION) ---
+          // --- EXECUTE TRANSFER ---
           const isSenderTopAdmin = ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(sender.identity.toUpperCase());
           
           try {
@@ -179,7 +228,14 @@ const commissionService = {
                 senderWallet = await tx.wallet.findUnique({ where: { userId: sender.id } });
             }
 
-            // Deduct from Sender (Always executes, balance allowed to go negative)
+            if (!senderWallet) {
+                console.log(`[Commission]   ERROR: Could not find wallet for sender ${sender.fullName}`);
+                continue;
+            }
+
+            console.log(`[Commission]   Executing: Wallet ${senderWallet.id} (-${transferAmount}) -> Partner ${receiver.fullName}`);
+
+            // Deduct from Sender
             await tx.wallet.update({
                 where: { id: senderWallet.id },
                 data: { balance: { decrement: transferAmount } }
@@ -235,9 +291,9 @@ const commissionService = {
                 }
             });
 
-            console.log(`[Commission]   SUCCESS: ${transferAmount} moved from ${sender.fullName} to ${receiver.fullName} (resolved by ${resolvedBy})`);
+            console.log(`[Commission]   SUCCESS: ${transferAmount} moved.`);
           } catch (txErr) {
-            console.error(`[Commission]   FAILED Transfer:`, txErr.message);
+            console.error(`[Commission]   CRITICAL TX ERROR:`, txErr);
           }
       }
 
@@ -245,7 +301,7 @@ const commissionService = {
       return { success: true };
 
     } catch (err) {
-      console.error("[Commission] CRITICAL ERROR:", err);
+      console.error("[Commission] CRITICAL GLOBAL ERROR:", err);
       return { success: false, error: err.message };
     }
   }

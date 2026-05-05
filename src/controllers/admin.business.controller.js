@@ -481,6 +481,7 @@ const businessPartnerController = {
               OR: [
                 { slug: "business_partner_fee" },
                 { name: { contains: "business", mode: "insensitive" } },
+                { name: { contains: "buisness", mode: "insensitive" } },
                 { name: { contains: "partner", mode: "insensitive" } }
               ]
             }
@@ -492,6 +493,7 @@ const businessPartnerController = {
                 application.amount,
                 subService.id,
                 application.userId,
+                null,
                 prisma
              );
           } else {
