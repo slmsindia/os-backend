@@ -24,7 +24,6 @@ const adminConfigController = {
           id: generateUuid(),
           serviceType: serviceType.toUpperCase(),
           amount: parseFloat(amount),
-          effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : new Date(),
           tenantId
         }
       });
@@ -50,7 +49,7 @@ const adminConfigController = {
           tenantId,
           serviceType: serviceType ? serviceType.toUpperCase() : undefined
         },
-        orderBy: { effectiveFrom: 'desc' }
+        orderBy: { updatedAt: 'desc' }
       });
 
       res.json({ success: true, data: configs });
