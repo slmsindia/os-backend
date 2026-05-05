@@ -1320,6 +1320,7 @@ model FormDraft {
   @@unique([userId, formType, targetMobile, tenantId])
   @@index([userId])
   @@index([targetMobile])
+  @@index([tenantId])
 }
 
 model CommissionSubService {

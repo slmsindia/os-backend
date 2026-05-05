@@ -839,69 +839,78 @@ const walletController = {
    */
   getAllWalletTransactions: async (req, res) => {
     const { user_id: currentUserId, identity: adminIdentity, tenant_id: tenantId } = req.user;
-    const { page = 1, limit = 20, type, category, userId, identity } = req.query;
+    const { page = 1, limit = 20, type, category, userId, identity, search } = req.query;
 
     try {
-      const where = { tenantId };
-      
-      // Hierarchy Visibility:
+      const andConditions = [{ tenantId }];
+
+      // Search Logic
+      if (search && search.trim() !== "") {
+        const searchTerms = [
+          { description: { contains: search, mode: 'insensitive' } },
+          { referenceId: { contains: search, mode: 'insensitive' } },
+          { 
+            wallet: {
+              user: {
+                OR: [
+                  { fullName: { contains: search, mode: 'insensitive' } },
+                  { mobile: { contains: search, mode: 'insensitive' } }
+                ]
+              }
+            }
+          }
+        ];
+
+        const searchNum = parseFloat(search);
+        if (!isNaN(searchNum)) {
+          searchTerms.push({ amount: searchNum });
+        }
+
+        andConditions.push({ OR: searchTerms });
+      }
+
+      // Hierarchy Visibility
       const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
       if (!topRoles.includes(adminIdentity)) {
-        // Partners can only see: 
-        // 1. Their own wallet transactions (including corporate if they use it)
-        // 2. Their descendants' wallet transactions
-        
-        // Note: Corporate wallet doesn't have a userId, so it might be tricky.
-        // We'll allow them to see corporate transactions if they are the "creator" (linked via referenceId or similar? No)
-        // Actually, we'll just let them see all corporate transactions for now if they are a partner, 
-        // or we filter corporate transactions strictly.
-        
-        // For now, let's filter by descendant IDs + self
-        const creator = await prisma.user.findUnique({ where: { id: currentUserId }, select: { path: true } });
-        const path = creator?.path ? `${creator.path}/${currentUserId}` : `/${currentUserId}`;
-
-        where.wallet = {
-          OR: [
-            { userId: currentUserId },
-            { user: { path: { contains: currentUserId } } },
-            { isCorporate: true } // Partners need to see corporate credits they triggered
-          ]
-        };
-      }
-      
-      if (type) where.type = type;
-      if (category) where.category = category;
-      if (userId) {
-        // If specific userId requested, combine with hierarchy (if restricted)
-        if (where.wallet && where.wallet.OR) {
-           where.wallet = {
-             AND: [
-               { userId: userId },
-               { OR: where.wallet.OR }
-             ]
-           };
-        } else {
-          where.wallet = { userId: userId };
-        }
-      }
-      
-      // Filter by user identity or corporate status
-      if (identity) {
-        if (topRoles.includes(identity)) {
-          where.wallet = {
-            ...where.wallet,
+        andConditions.push({
+          wallet: {
             OR: [
-              { user: { identity: identity } },
+              { userId: currentUserId },
+              { user: { path: { contains: currentUserId } } },
               { isCorporate: true }
             ]
-          };
+          }
+        });
+      }
+
+      // Other Filters
+      if (type && type !== 'ALL') andConditions.push({ type });
+      if (category && category !== 'ALL') andConditions.push({ category });
+      
+      if (userId) {
+        andConditions.push({ wallet: { userId } });
+      }
+
+      if (identity && identity !== 'ALL') {
+        if (topRoles.includes(identity)) {
+          andConditions.push({
+            wallet: {
+              OR: [
+                { user: { identity: identity } },
+                { isCorporate: true }
+              ]
+            }
+          });
         } else {
-          where.wallet = {
-            ...where.wallet,
-            user: { identity: identity }
-          };
+          andConditions.push({
+            wallet: {
+              user: { identity: identity }
+            }
+          });
         }
       }
+
+      const where = { AND: andConditions };
 
       const [txns, total] = await Promise.all([
         prisma.walletTransaction.findMany({
