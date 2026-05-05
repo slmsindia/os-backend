@@ -29,7 +29,11 @@ const supportController = {
       else {
         if (targetType === 'ADMIN') {
           const tenantAdmin = await prisma.user.findFirst({
-            where: { tenantId, identity: 'ADMIN' }
+            where: { 
+              tenantId, 
+              identity: { in: ['WHITE_LABEL_ADMIN', 'ADMIN'] }
+            },
+            orderBy: { identity: 'asc' } // Prioritize WHITE_LABEL_ADMIN if both exist
           });
           if (!tenantAdmin) return res.status(404).json({ success: false, message: "Tenant Admin not found" });
           assignedToId = tenantAdmin.id;
