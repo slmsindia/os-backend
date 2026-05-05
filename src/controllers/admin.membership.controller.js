@@ -171,7 +171,11 @@ const adminMembershipController = {
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
 
-      const isTargetUserOnly = targetIdentity === 'USER';
+      const ADMIN_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      const isDirectRole = ADMIN_ROLES.includes(targetIdentity) || targetIdentity === 'USER';
+
+      const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { path: true } });
+      const path = creator?.path ? `${creator.path}/${creatorId}` : `/${creatorId}`;
 
       // 1. Create the base User (as USER identity first)
       const user = await prisma.user.create({
@@ -182,20 +186,21 @@ const adminMembershipController = {
           gender: gender ? gender.toUpperCase() : 'OTHER',
           dateOfBirth: new Date(dateOfBirth),
           password: hashedPassword,
-          identity: 'USER', // Always start as USER
-          userType: 'USER',
-          approvalStatus: isTargetUserOnly ? 'APPROVED' : 'PENDING',
-          approvedAt: isTargetUserOnly ? new Date() : null,
+          identity: isDirectRole ? targetIdentity : 'USER', 
+          userType: isDirectRole ? targetIdentity : 'USER',
+          approvalStatus: isDirectRole ? 'APPROVED' : 'PENDING',
+          approvedAt: isDirectRole ? new Date() : null,
           tenantId,
           parentId: creatorId,
+          path,
           registrationState: loc.state,
           registrationCity: loc.city,
           registrationPincode: loc.pincode
         }
       });
 
-      if (isTargetUserOnly) {
-         // Create wallet for the new standard user immediately
+      if (isDirectRole) {
+         // Create wallet for the new user immediately
          try {
            await walletService.createWallet(user.id, tenantId, false);
          } catch (walletErr) {
@@ -204,7 +209,7 @@ const adminMembershipController = {
          
          return res.status(201).json({
            success: true,
-           message: `Standard User created successfully. No membership application required.`,
+           message: `${targetIdentity} created successfully. No membership application required.`,
            data: { userId: user.id }
          });
       }
@@ -213,7 +218,7 @@ const adminMembershipController = {
       const application = await prisma.membershipApplication.create({
         data: {
           id: generateUuid(),
-          userId: user.id,
+          user: { connect: { id: user.id } },
           firstName: fullName.split(' ')[0],
           lastName: fullName.split(' ').slice(1).join(' ') || 'N/A',
           email: `${mobile}@os.com`,
@@ -231,12 +236,11 @@ const adminMembershipController = {
           citizenship: req.body.citizenship || 'Indian',
           isMigrantWorker: req.body.isMigrantWorker || false,
           monthlyIncome: req.body.monthlyIncome || '0-10000',
-          // Use hardcoded UUIDs for required relations if not provided. In real world, frontend should send these.
-          // Using dummy UUIDs will fail FK constraints if they don't exist.
-          // Let's use connect or default logic. Wait, Prisma doesn't allow dummy UUIDs for FK.
-          // If the admin creates a Member from the basic form, they shouldn't bypass the required fields!
-          // BUT since the UI might not send them, let's fetch the first available ones or throw error.
-          // Actually, we must fetch them. Let's do it above this block.
+          permanentCountry: 'India',
+          permanentState: loc.state || 'N/A',
+          permanentDistrict: loc.city || 'N/A',
+          permanentAddress: loc.state || 'N/A',
+          permanentPincode: loc.pincode || '000000',
         }
       });
 

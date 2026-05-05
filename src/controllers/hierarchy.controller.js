@@ -571,24 +571,34 @@ const hierarchyController = {
       let baseId = parentId || userId;
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       
-      const where = {};
-      if (!isSuperAdmin) where.tenantId = tenantId;
+      const conditions = [];
+      if (!isSuperAdmin) conditions.push({ tenantId });
 
       if (baseId !== userId || !['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
-          where.path = { contains: baseId };
-          where.id = { not: baseId };
+          conditions.push({
+            OR: [
+              { path: { contains: baseId } },
+              { parentId: baseId }
+            ]
+          });
+          conditions.push({ id: { not: baseId } });
       } else {
-          where.id = { not: userId };
+          conditions.push({ id: { not: userId } });
       }
 
-      if (identity) where.identity = identity;
-      if (status) where.approvalStatus = status;
+      if (identity) conditions.push({ identity });
+      if (status) conditions.push({ approvalStatus: status });
+      
       if (search) {
-        where.OR = [
-          { fullName: { contains: search, mode: 'insensitive' } },
-          { mobile: { contains: search } }
-        ];
+        conditions.push({
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { mobile: { contains: search } }
+          ]
+        });
       }
+      
+      const where = { AND: conditions };
       if (startDate || endDate) {
         where.createdAt = {};
         if (startDate) where.createdAt.gte = new Date(startDate);

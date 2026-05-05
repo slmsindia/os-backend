@@ -857,6 +857,7 @@ model GlobalSetting {
 model Education {
   id        String   @id @default(uuid())
   name      String   @unique
+  tenantId  String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -870,6 +871,7 @@ model Sector {
   name        String   @unique
   description String?
   imageUrl    String?
+  tenantId    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -889,6 +891,7 @@ model JobRole {
   name        String   @unique
   description String?
   imageUrl    String?
+  tenantId    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -907,6 +910,7 @@ model Skill {
   jobRoleId   String?
   jobRole     JobRole? @relation(fields: [jobRoleId], references: [id])
   name        String
+  tenantId    String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -937,16 +941,16 @@ model MembershipApplication {
   email             String
   mobile            String?
   gender            String
-  educationId       String
-  education         Education @relation(fields: [educationId], references: [id])
-  sectorId          String
-  sector            Sector    @relation(fields: [sectorId], references: [id])
-  jobRoleId         String
-  jobRole           JobRole   @relation(fields: [jobRoleId], references: [id])
-  maritalStatus     String
-  citizenship       String
-  isMigrantWorker   Boolean
-  monthlyIncome     String
+  educationId       String?
+  education         Education? @relation(fields: [educationId], references: [id])
+  sectorId          String?
+  sector            Sector?    @relation(fields: [sectorId], references: [id])
+  jobRoleId         String?
+  jobRole           JobRole?   @relation(fields: [jobRoleId], references: [id])
+  maritalStatus     String?
+  citizenship       String?
+  isMigrantWorker   Boolean?
+  monthlyIncome     String?
   birthDate         DateTime?
   occupation        String?
   

@@ -237,7 +237,7 @@ const businessPartnerController = {
         }
       }
       
-      const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : 'WALLET';
+      const paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : (body.paymentMode === 2 ? 'WALLET' : 'CASH');
 
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
       let razorpayOrder = null;
@@ -250,20 +250,22 @@ const businessPartnerController = {
         }
       }
 
-      const application = await prisma.$transaction(async (tx) => {
-        let partnerWallet = null;
-        let adminWallet = null;
+      // 4. Resolve wallets outside transaction to avoid potential deadlocks
+      let partnerWallet = null;
+      let adminWallet = null;
 
-        if (!isPaidResubmission && partnerRoles.includes(adminIdentity)) {
-          partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
-          if (paymentMethod === 'WALLET') {
-            if (!partnerWallet || partnerWallet.balance < amount) {
-              throw new Error("Insufficient partner wallet balance");
-            }
+      if (!isPaidResubmission && (paymentMethod === 'WALLET' || paymentMethod === 'CASH')) {
+        partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
+        adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
+
+        if (paymentMethod === 'WALLET') {
+          if (!partnerWallet || partnerWallet.balance < amount) {
+            return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
           }
-          adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
+      }
 
+      const application = await prisma.$transaction(async (tx) => {
         const appData = {
           businessName: body.businessName || "N/A",
           brandName: body.brandName || "N/A",
@@ -321,7 +323,8 @@ const businessPartnerController = {
             appResult.id,
             tenantId,
             paymentMethod,
-            tx
+            tx,
+            false // creditAdminImmediately = false
           );
         }
 
@@ -352,7 +355,7 @@ const businessPartnerController = {
         metadata: { userId: targetUserId, businessName: application.businessName }
       });
     } catch (err) {
-      console.error(err);
+      console.error("[BPDirect] Error:", err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
@@ -448,30 +451,29 @@ const businessPartnerController = {
         });
 
         if (adminWallet && (application.amount > 0)) {
-          // 1. Credit the Admin Corporate Wallet ONLY IF RAZORPAY
-          // (Wallet/Cash payments are credited to Admin at application creation)
-          const isRazorpay = application.paymentMode === 1;
-          if (isRazorpay) {
-            await prisma.wallet.update({
-              where: { id: adminWallet.id },
-              data: { balance: { increment: application.amount } }
-            });
+          // 1. Credit the Admin Corporate Wallet for all methods
+          // (Wallet/Cash/Razorpay payments now all credit Admin only upon approval)
+          const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
+          const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
 
-            await prisma.walletTransaction.create({
-              data: {
-                id: generateUuid(),
-                walletId: adminWallet.id,
-                amount: application.amount,
-                type: "CREDIT",
-                category: "SERVICE_CHARGE",
-                description: `Business Partner fee received from user ${application.userId} (via RAZORPAY)`,
-                tenantId
-              }
-            });
-            console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with full amount: ${application.amount}`);
-          } else {
-            console.log(`[Commission] Skipping Admin credit for Business Partner application as it was already credited via Wallet/Cash.`);
-          }
+          await prisma.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: application.amount } }
+          });
+
+          await prisma.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: application.amount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              description: `Business Partner fee received from user ${application.userId} (via ${modeLabel})`,
+              referenceId: application.id,
+              tenantId
+            }
+          });
+          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.amount} (via ${modeLabel})`);
 
           // 2. Distribute
           const subService = await prisma.commissionSubService.findFirst({
