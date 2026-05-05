@@ -200,7 +200,7 @@ const businessController = {
   getJobs: async (req, res) => {
     try {
       const jobs = await prisma.jobPost.findMany({
-        where: { isActive: true },
+        where: { status: 'ACTIVE' },
         include: {
           business: { select: { businessName: true, brandName: true, address: true } },
           sector: true,
