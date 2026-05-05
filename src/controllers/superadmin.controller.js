@@ -77,7 +77,7 @@ const superAdminController = {
             _count: { select: { users: true } },
             users: {
               where: { identity: 'WHITE_LABEL_ADMIN' },
-              select: { id: true, fullName: true },
+              select: { id: true, fullName: true, mobile: true },
               take: 1
             }
           }
@@ -101,6 +101,7 @@ const superAdminController = {
           ...t,
           adminId: t.users[0]?.id || null,
           adminName: t.users[0]?.fullName || "N/A",
+          adminMobile: t.users[0]?.mobile || "N/A",
           identityStats: stats,
           users: undefined 
         };

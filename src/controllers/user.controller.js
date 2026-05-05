@@ -39,6 +39,7 @@ const userController = {
         include: {
           tenant: true,
           wallet: true,
+          parent: { select: { fullName: true } },
           roles: { 
             include: { 
               role: { 
@@ -99,6 +100,7 @@ const userController = {
       }
 
       // Add a summary object for easy frontend consumption
+      safeUser.parentUserName = user.parent?.fullName || "System Administrator";
       safeUser.summary = {
         isMember: user.identity === 'MEMBER' || user.membershipApplications.some(a => a.status === 'APPROVED'),
         isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED'),

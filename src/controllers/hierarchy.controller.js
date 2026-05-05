@@ -261,38 +261,9 @@ const hierarchyController = {
    * Search for a specific user by ID or Mobile
    */
   getUserDetails: async (req, res) => {
-    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
-    const { identifier } = req.params;
-
-    try {
-      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { id: identifier.includes('-') ? identifier : undefined },
-            { mobile: identifier }
-          ],
-          tenantId: isSuperAdmin ? undefined : tenantId
-        },
-        select: { id: true, fullName: true, mobile: true, identity: true, path: true }
-      });
-
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User not found in this system" });
-      }
-
-      // Hierarchy Check
-      if (!isSuperAdmin && user.id !== currentUserId) {
-        if (!user.path || !user.path.includes(currentUserId)) {
-          return res.status(403).json({ success: false, message: "User found but is outside your hierarchy" });
-        }
-      }
-
-      res.json({ success: true, data: user });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Search failed" });
-    }
+    // Alias to getCompleteUserInfo to ensure consistent full dossier response
+    req.params.targetUserId = req.params.identifier;
+    return hierarchyController.getCompleteUserInfo(req, res);
   },
 
   /**
@@ -516,35 +487,41 @@ const hierarchyController = {
         })
       ]);
 
-      // 3. Format Response (Mirroring User Request Example)
+      // 3. Format Response (Robust mapping for frontend consistency)
+      const { password, ...safeUser } = targetUser;
+      
+      // Resolve location names
+      const [cityName, stateName] = await Promise.all([
+        prisma.district.findUnique({ where: { id: targetUser.registrationCity || "" }, select: { name: true } }).then(d => d?.name),
+        prisma.state.findUnique({ where: { id: targetUser.registrationState || "" }, select: { name: true } }).then(s => s?.name)
+      ]);
+
       const data = {
-        id: targetUser.id,
-        firstName: targetUser.fullName.split(' ')[0],
-        lastName: targetUser.fullName.split(' ').slice(1).join(' ') || "N/A",
-        birthDate: targetUser.dateOfBirth?.toLocaleDateString() || "N/A",
+        ...safeUser,
+        // Derived fields for legacy UserProfile.jsx support
+        firstName: targetUser.fullName?.split(' ')[0] || "User",
+        lastName: targetUser.fullName?.split(' ').slice(1).join(' ') || "",
+        birthDate: targetUser.dateOfBirth ? targetUser.dateOfBirth.toLocaleDateString('en-IN') : "N/A",
         dateOfRegistration: targetUser.createdAt,
         email: targetUser.email || targetUser.membershipApplications[0]?.email || "N/A",
         role: targetUser.identity,
         phoneNo: targetUser.mobile,
-        gender: targetUser.gender,
         genderName: targetUser.gender === "MALE" ? "Male" : targetUser.gender === "FEMALE" ? "Female" : "Other",
         isEmailVerified: !!(targetUser.email || targetUser.membershipApplications[0]?.email),
         isPhoneVerified: true,
-        profilePhotoUrl: targetUser.profilePhoto || targetUser.membershipApplications[0]?.profilePhoto || "N/A",
-        parentUserName: targetUser.parent?.fullName || "N/A",
+        profilePhotoUrl: targetUser.profilePhoto || targetUser.membershipApplications[0]?.profilePhoto || null,
+        parentUserName: targetUser.parent?.fullName || "System Administrator",
         isActive: targetUser.approvalStatus !== "DEACTIVATED",
         walletBalance: targetUser.wallet?.balance || 0,
         isMemberApproved: targetUser.membershipApplications.length > 0,
         isSaathiApproved: targetUser.saathiApplications.length > 0,
         membershipNumber: targetUser.membershipApplications[0]?.membershipNumber || "N/A",
-        referralCode: targetUser.referralCode || "N/A",
         
-        // Address Info (if available from applications or registration)
-        // Resolve Location IDs to names
+        // Address Info
         address: targetUser.membershipApplications[0]?.currentAddress || "N/A",
-        city: (await prisma.district.findUnique({ where: { id: targetUser.registrationCity || "" }, select: { name: true } }))?.name || targetUser.registrationCity || targetUser.membershipApplications[0]?.currentAddress?.split(',').slice(-4, -3)[0]?.trim() || "N/A",
+        city: cityName || targetUser.registrationCity || "N/A",
         district: targetUser.membershipApplications[0]?.currentDistrict || "N/A",
-        state: (await prisma.state.findUnique({ where: { id: targetUser.registrationState || "" }, select: { name: true } }))?.name || targetUser.registrationState || targetUser.membershipApplications[0]?.currentState || "N/A",
+        state: stateName || targetUser.registrationState || "N/A",
         country: "India",
         pincode: targetUser.registrationPincode || targetUser.membershipApplications[0]?.currentPincode || "N/A",
         
@@ -554,6 +531,7 @@ const hierarchyController = {
         noOfRemittanceTransactions: topUpStats._count._all || 0,
         totalRemittanceTransactions: topUpStats._sum.amount || 0,
         netCommission: commissionStats._sum.amount || 0,
+        netCommision: commissionStats._sum.amount || 0, // Typo fallback
         referralCount: targetUser._count.referrals || 0,
         noOfDocuments: docCount || 0,
         
