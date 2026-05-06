@@ -6,7 +6,8 @@ const hierarchyController = {
    * GET /api/admin/hierarchy/children
    */
   getDirectChildren: async (req, res) => {
-    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
     const { parentId, identity, startDate, endDate, page = 1, limit = 20 } = req.query;
 
     try {
@@ -120,16 +121,18 @@ const hierarchyController = {
     const { page = 1, limit = 20, startDate, endDate, type, category } = req.query;
 
     try {
-      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
-      const identifier = targetUserId.trim();
-      console.log(`[DEBUG] Searching for user: ${identifier} (Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const identifier = String(targetUserId).trim();
+      
+      console.log(`[DEBUG] Searching for wallet history user: ${identifier} (Resolved Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
+      
       const targetUser = await prisma.user.findFirst({
         where: {
           OR: [
-            { id: identifier.includes('-') ? identifier : undefined }, // Likely UUID
+            { id: identifier.includes('-') ? identifier : undefined }, 
             { mobile: identifier }
           ],
-          tenantId: isSuperAdmin ? undefined : tenantId
+          ...(isSuperAdmin ? {} : (tenantId ? { tenantId } : {}))
         },
         select: { id: true, path: true, tenantId: true }
       });
@@ -197,7 +200,8 @@ const hierarchyController = {
    * Returns high-level metrics for the user's hierarchy
    */
   getHierarchySummary: async (req, res) => {
-    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
 
     try {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
@@ -271,7 +275,8 @@ const hierarchyController = {
    * Combined feed of all transactions from all users in the downline
    */
   getHierarchyTransactionFeed: async (req, res) => {
-    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
     const { page = 1, limit = 20, startDate, endDate, type, category, search } = req.query;
 
     try {
@@ -416,15 +421,19 @@ const hierarchyController = {
     const { targetUserId } = req.params; // This can be ID or Mobile number
 
     try {
-      const identifier = targetUserId.trim();
-      console.log(`[DEBUG] Searching for user details: ${identifier} (Tenant: ${tenantId}, Admin: ${adminIdentity})`);
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const identifier = String(targetUserId).trim();
+      
+      console.log(`[DEBUG] Searching for user details: ${identifier} (Resolved Tenant: ${tenantId}, Admin: ${adminIdentity})`);
+      
       const targetUser = await prisma.user.findFirst({
         where: {
           OR: [
-            { id: identifier.includes('-') ? identifier : undefined }, // Likely UUID
+            { id: identifier.includes('-') ? identifier : undefined }, 
             { mobile: identifier }
           ],
-          tenantId: adminIdentity === 'SUPER_ADMIN' ? undefined : tenantId
+          // Only apply tenant filter if not Super Admin and tenantId is actually present
+          ...(adminIdentity !== 'SUPER_ADMIN' && tenantId ? { tenantId } : {})
         },
         include: {
           wallet: true,
@@ -563,7 +572,8 @@ const hierarchyController = {
    * GET /api/admin/hierarchy/members
    */
   getDescendants: async (req, res) => {
-    const { user_id: userId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { user_id: userId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
     const { identity, status, search, page = 1, limit = 20, startDate, endDate, parentId, exportCsv = "false" } = req.query;
 
     try {

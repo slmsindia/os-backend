@@ -18,13 +18,29 @@ const commissionService = {
       if (!user) return { success: false, message: "User not found" };
       const joinerName = user.fullName || "User";
 
-      // Fetch subservice info for better descriptions
-      const subService = await tx.commissionSubService.findUnique({
+      let subService = await tx.commissionSubService.findUnique({
         where: { id: subServiceId },
-        select: { name: true, slug: true }
+        select: { id: true, name: true, slug: true, schemeId: true }
       });
+
+      // DEEP SEARCH: If provided ID doesn't exist, try to find ANY subservice with this ID 
+      // (sometimes it might be from a different tenant or scheme context)
+      if (!subService) {
+          console.log(`[Commission]   ID ${subServiceId} not found in current context. Trying global search...`);
+          subService = await prisma.commissionSubService.findFirst({
+              where: { id: subServiceId },
+              select: { id: true, name: true, slug: true, schemeId: true }
+          });
+      }
+
+      if (!subService) {
+          console.log(`[Commission]   CRITICAL: SubService ID ${subServiceId} is completely missing from DB. Fallback to name-based lookup might fail.`);
+      }
+
       const serviceLabel = subService?.name || "Service";
       const isTransfer = subService?.slug?.includes('transfer');
+      
+      console.log(`[Commission]   SubService Resolved: Name='${serviceLabel}', Slug='${subService?.slug || 'NONE'}', CurrentSchemeID='${subService?.schemeId || 'GLOBAL'}'`);
 
       // --- LOCATION BASED SCHEME LOOKUP ---
       let locationScheme = null;
@@ -143,14 +159,15 @@ const commissionService = {
                       where: { schemeId_subServiceId: { schemeId, subServiceId } }
                   });
 
-                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
                   if (!share) {
+                      console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in scheme ${schemeId} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
                       const equivalentSubService = await tx.commissionSubService.findFirst({
                           where: { 
                             schemeId: schemeId,
                             OR: [
                                 (subService?.slug ? { slug: subService.slug } : null),
-                                (subService?.name ? { name: subService.name } : null)
+                                (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
                             ].filter(Boolean)
                           }
                       });
@@ -158,7 +175,7 @@ const commissionService = {
                           share = await tx.commissionShare.findUnique({
                               where: { schemeId_subServiceId: { schemeId, subServiceId: equivalentSubService.id } }
                           });
-                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Upstream Scheme.`);
+                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Upstream Scheme.`);
                       }
                   }
                   
@@ -181,14 +198,15 @@ const commissionService = {
                   where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId } }
               });
 
-              // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+              // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
               if (!share) {
+                  console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in Location Scheme ${locationScheme.id} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
                   const equivalentSubService = await tx.commissionSubService.findFirst({
                       where: { 
                         schemeId: locationScheme.id,
                         OR: [
                             (subService?.slug ? { slug: subService.slug } : null),
-                            (subService?.name ? { name: subService.name } : null)
+                            (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
                         ].filter(Boolean)
                       }
                   });
@@ -196,7 +214,7 @@ const commissionService = {
                       share = await tx.commissionShare.findUnique({
                           where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId: equivalentSubService.id } }
                       });
-                      if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Location Scheme.`);
+                      if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Location Scheme.`);
                   }
               }
 
@@ -242,14 +260,15 @@ const commissionService = {
                       where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId } }
                   });
 
-                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
                   if (!share) {
+                      console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in Default Scheme ${defaultScheme.id} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
                       const equivalentSubService = await tx.commissionSubService.findFirst({
                           where: { 
                             schemeId: defaultScheme.id,
                             OR: [
                                 (subService?.slug ? { slug: subService.slug } : null),
-                                (subService?.name ? { name: subService.name } : null)
+                                (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
                             ].filter(Boolean)
                           }
                       });
@@ -257,7 +276,7 @@ const commissionService = {
                           share = await tx.commissionShare.findUnique({
                               where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId: equivalentSubService.id } }
                           });
-                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Default Scheme.`);
+                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Default Scheme.`);
                       }
                   }
 

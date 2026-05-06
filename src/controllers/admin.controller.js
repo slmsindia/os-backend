@@ -113,47 +113,62 @@ const adminController = {
 
       // If permissions are provided (specifically for Sub-Admin delegation), create a dedicated role
       if (permissionNames && Array.isArray(permissionNames) && permissionNames.length > 0) {
+        // Ensure all requested permissions exist in the DB (Self-healing sync)
+        for (const pName of permissionNames) {
+          await prisma.permission.upsert({
+            where: { name: pName },
+            update: {},
+            create: { id: generateUuid(), name: pName }
+          });
+        }
+
         const foundPerms = await prisma.permission.findMany({
           where: { name: { in: permissionNames } }
         });
 
         if (foundPerms.length > 0) {
-          // Create a custom role for this specific user to hold their unique permissions
-          const customRoleName = `ROLE_${targetIdentity}_${user.id.split('-')[0]}_${Date.now()}`;
-          const customRole = await prisma.role.create({
-            data: {
+          // Create a custom role for this specific user
+          const customRoleName = `ROLE_${targetIdentity}_${user.mobile}`;
+          
+          // Upsert the custom role
+          const customRole = await prisma.role.upsert({
+            where: { name: customRoleName },
+            update: {},
+            create: { id: generateUuid(), name: customRoleName }
+          });
+
+          // Clear and set role permissions
+          await prisma.rolePermission.deleteMany({ where: { roleId: customRole.id } });
+          await prisma.rolePermission.createMany({
+            data: foundPerms.map(p => ({
               id: generateUuid(),
-              name: customRoleName,
-              permissions: {
-                create: foundPerms.map(p => ({
-                  id: generateUuid(),
-                  permissionId: p.id
-                }))
-              }
-            }
+              roleId: customRole.id,
+              permissionId: p.id
+            }))
           });
 
           // Link user to this custom role
-          await prisma.userRole.create({
-            data: {
-              id: generateUuid(),
-              userId: user.id,
-              roleId: customRole.id
-            }
+          await prisma.userRole.upsert({
+            where: { userId_roleId: { userId: user.id, roleId: customRole.id } },
+            update: {},
+            create: { id: generateUuid(), userId: user.id, roleId: customRole.id }
           });
         }
       } else {
         // Fallback: Assign default role based on identity
-        const defaultRole = await prisma.role.findUnique({ where: { name: targetIdentity } });
-        if (defaultRole) {
-          await prisma.userRole.create({
-            data: {
-              id: generateUuid(),
-              userId: user.id,
-              roleId: defaultRole.id
-            }
-          });
+        let defaultRole = await prisma.role.findUnique({ where: { name: targetIdentity } });
+        if (!defaultRole) {
+            // Self-healing: create the role if it doesn't exist
+            defaultRole = await prisma.role.create({
+                data: { id: generateUuid(), name: targetIdentity }
+            });
         }
+        
+        await prisma.userRole.upsert({
+          where: { userId_roleId: { userId: user.id, roleId: defaultRole.id } },
+          update: {},
+          create: { id: generateUuid(), userId: user.id, roleId: defaultRole.id }
+        });
       }
 
       await logAction({

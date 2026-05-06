@@ -101,15 +101,36 @@ const userController = {
 
       // Add a summary object for easy frontend consumption
       safeUser.parentUserName = user.parent?.fullName || "System Administrator";
+
+      // Enhanced Permission Logic: Combine role-based permissions and identity-based fallbacks
+      let permissions = user.roles.flatMap(ur => 
+        ur.role.permissions.map(p => p.permission.name)
+      );
+
+      // Fallback: If no explicit roles linked, try fetching permissions for the identity-named role 
+      // or a custom sub-admin role based on mobile (standardized naming)
+      if (permissions.length === 0 && user.identity) {
+          const fallbackRoleNames = [user.identity, `ROLE_${user.identity}_${user.mobile}`];
+          
+          const fallbackRoles = await prisma.role.findMany({
+              where: { name: { in: fallbackRoleNames } },
+              include: { permissions: { include: { permission: true } } }
+          });
+
+          if (fallbackRoles.length > 0) {
+              permissions = fallbackRoles.flatMap(role => 
+                role.permissions.map(p => p.permission.name)
+              );
+          }
+      }
+
       safeUser.summary = {
         isMember: user.identity === 'MEMBER' || user.membershipApplications.some(a => a.status === 'APPROVED'),
         isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED'),
         isBusinessPartner: user.identity === 'BUSINESS_PARTNER' || user.businessPartnerApps.some(a => a.status === 'APPROVED'),
         walletBalance: user.wallet?.balance || 0,
         activeRole: user.identity,
-        permissions: user.roles.flatMap(ur => 
-          ur.role.permissions.map(p => p.permission.name)
-        )
+        permissions: [...new Set(permissions)] // Unique permissions
       };
 
       res.json({
