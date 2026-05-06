@@ -11,6 +11,7 @@ const businessPartnerController = {
    * Add a business facility (e.g. WiFi, Parking) - Placeholder
    */
   addFacility: async (req, res) => {
+    const { user_id: adminId, tenant_id: tenantId } = req.user;
     const { name, icon } = req.body;
     if (!name) return res.status(400).json({ success: false, message: "Name is required" });
 
@@ -20,7 +21,8 @@ const businessPartnerController = {
           id: generateUuid(),
           name,
           icon: icon || null,
-          isActive: true
+          isActive: true,
+          tenantId
         }
       });
       res.json({ success: true, message: "Facility added successfully", data: facility });
@@ -34,9 +36,13 @@ const businessPartnerController = {
   },
 
   getFacilities: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const facilities = await prisma.jobFacility.findMany({
-        where: { isActive: true },
+        where: { 
+          isActive: true,
+          tenantId
+        },
         orderBy: { name: 'asc' }
       });
       res.json({ success: true, data: facilities });
@@ -88,10 +94,18 @@ const businessPartnerController = {
     }
 
     try {
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
       const setting = await prisma.globalSetting.upsert({
-        where: { key: 'BUSINESS_PARTNER_FEE' },
+        where: { 
+          key_tenantId: { key: 'BUSINESS_PARTNER_FEE', tenantId } 
+        },
         update: { value: payloadValue },
-        create: { key: 'BUSINESS_PARTNER_FEE', value: payloadValue }
+        create: { 
+          id: generateUuid(),
+          key: 'BUSINESS_PARTNER_FEE', 
+          value: payloadValue,
+          tenantId
+        }
       });
 
       res.json({ success: true, message: "Business Partner fee updated successfully", data: setting, amount: calculatedAmount });
@@ -106,8 +120,9 @@ const businessPartnerController = {
    */
   getBusinessPartnerFee: async (req, res) => {
     try {
-      const setting = await prisma.globalSetting.findUnique({
-        where: { key: 'BUSINESS_PARTNER_FEE' }
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
+      const setting = await prisma.globalSetting.findFirst({
+        where: { key: 'BUSINESS_PARTNER_FEE', tenantId }
       });
 
       let feeData = { amount: 2000 };
@@ -226,7 +241,9 @@ const businessPartnerController = {
 
       const isPaidResubmission = existingApplication && existingApplication.status === 'REJECTED';
 
-      const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
+      const feeSetting = await prisma.globalSetting.findFirst({ 
+        where: { key: 'BUSINESS_PARTNER_FEE', tenantId } 
+      });
       let amount = 2000;
       if (feeSetting && feeSetting.value) {
         try {

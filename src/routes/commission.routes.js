@@ -13,6 +13,7 @@ router.post("/AddCommissionSchemes", commissionController.addCommissionSchemes);
 router.put("/UpdateCommissionSchemes", commissionController.updateCommissionSchemes);
 router.get("/UpdateCommissionSchemeStatus", commissionController.updateCommissionSchemeStatus);
 router.post("/AssignSchemeToUser", commissionController.assignSchemeToUser);
+router.delete("/DeleteCommissionScheme", commissionController.deleteCommissionScheme);
 
 // 2. Commission Services
 router.get("/GetCommissionServices", commissionController.getCommissionServices);

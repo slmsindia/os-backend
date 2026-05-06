@@ -9,10 +9,9 @@ const saathiController = {
    */
   getSaathiFee: async (req, res) => {
     try {
-      // In a real app, this would come from a GlobalSettings table.
-      // For now, we will return a default or look for a setting.
-      const setting = await prisma.globalSetting.findUnique({
-        where: { key: 'SAATHI_FEE' }
+      const { tenant_id: tenantId } = req.user;
+      const setting = await prisma.globalSetting.findFirst({
+        where: { key: 'SAATHI_FEE', tenantId }
       });
 
       let feeData = { amount: 1000, currency: "INR" };
@@ -55,7 +54,9 @@ const saathiController = {
         });
       }
 
-      const feeSetting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
+      const feeSetting = await prisma.globalSetting.findFirst({ 
+        where: { key: 'SAATHI_FEE', tenantId } 
+      });
       let amount = 1000;
       if (feeSetting && feeSetting.value) {
         try {

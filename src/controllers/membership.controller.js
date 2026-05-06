@@ -20,9 +20,10 @@ const membershipController = {
    * Get membership price
    */
   getMembershipPrice: async (req, res) => {
+    const { tenant_id: tenantId } = req.user || {};
     try {
       const config = await prisma.membershipConfig.findFirst({
-        where: { isActive: true },
+        where: { isActive: true, tenantId },
         orderBy: { createdAt: 'desc' }
       });
 
@@ -54,13 +55,14 @@ const membershipController = {
    * Get reference data (education, sectors, job roles, document types)
    */
   getReferenceData: async (req, res) => {
+    const { tenant_id: tenantId } = req.user || {};
     try {
       const [educations, sectors, jobRoles, skills, documentTypes] = await Promise.all([
-        prisma.education.findMany({ where: { isActive: true } }),
-        prisma.sector.findMany({ where: { isActive: true }, include: { jobRoles: true, skills: true } }),
-        prisma.jobRole.findMany({ where: { isActive: true } }),
-        prisma.skill.findMany({ where: { isActive: true } }),
-        prisma.documentType.findMany({ where: { isActive: true } })
+        prisma.education.findMany({ where: { isActive: true, tenantId } }),
+        prisma.sector.findMany({ where: { isActive: true, tenantId }, include: { jobRoles: true, skills: true } }),
+        prisma.jobRole.findMany({ where: { isActive: true, tenantId } }),
+        prisma.skill.findMany({ where: { isActive: true, tenantId } }),
+        prisma.documentType.findMany({ where: { isActive: true, tenantId } })
       ]);
 
       res.json({
@@ -89,8 +91,17 @@ const membershipController = {
     }
 
     try {
+      const tenantId = req.tenant_id || (req.user ? req.user.tenant_id : null);
+      
+      if (!tenantId) {
+        console.warn("[CheckMobile] Request missing tenantId for mobile:", mobile);
+      }
+
       const user = await prisma.user.findFirst({
-        where: { mobile, tenantId: req.tenant_id },
+        where: { 
+          mobile, 
+          ...(tenantId ? { tenantId } : {})
+        },
         select: { id: true, fullName: true, identity: true }
       });
 
@@ -118,7 +129,7 @@ const membershipController = {
       });
     } catch (err) {
       console.error('Check Mobile Error:', err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -249,7 +260,7 @@ const membershipController = {
 
       // Get membership price
       const config = await prisma.membershipConfig.findFirst({
-        where: { isActive: true },
+        where: { isActive: true, tenantId },
         orderBy: { createdAt: 'desc' }
       });
 

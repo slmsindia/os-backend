@@ -29,6 +29,17 @@ model Tenant {
   // Razorpay Multi-tenant Credentials
   razorpayKeyId      String?
   razorpayKeySecret  String?
+
+  // Master Data & Config
+  bankDetails     BankDetails[]
+  documentTypes   DocumentType[]
+  educations      Education[]
+  sectors         Sector[]
+  jobRoles        JobRole[]
+  skills          Skill[]
+  jobFacilities   JobFacility[]
+  membershipConfigs MembershipConfig[]
+  globalSettings  GlobalSetting[]
 }
 
 enum Gender {
@@ -282,38 +293,15 @@ model JobPost {
 
 model JobFacility {
   id        String   @id @default(uuid())
-  name      String   @unique
+  name      String
   icon      String?
   isActive  Boolean  @default(true)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
   createdAt DateTime @default(now())
-}
 
-model Country {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  code      String   @unique
-  isActive  Boolean  @default(true)
-}
-
-model State {
-  id        String   @id @default(uuid())
-  name      String
-  countryId String
-  isActive  Boolean  @default(true)
-}
-
-model District {
-  id        String   @id @default(uuid())
-  name      String
-  stateId   String
-  isActive  Boolean  @default(true)
-}
-
-model Municipality {
-  id         String   @id @default(uuid())
-  name       String
-  districtId String
-  isActive   Boolean  @default(true)
+  @@unique([name, tenantId])
+  @@index([tenantId])
 }
 
 
@@ -843,35 +831,102 @@ model MembershipConfig {
   includedExcluded Boolean @default(true)
   platformFee     Float    @default(0)
   serviceCharge   Float    @default(0)
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 model GlobalSetting {
-  key   String @id
-  value String
+  id       String   @id @default(uuid())
+  key      String
+  value    String
+  tenantId String?
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@unique([key, tenantId])
+  @@index([tenantId])
+}
+
+// ============================================
+// 🌍 Location Master Data
+// ============================================
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String?  @unique // e.g. IN, NP
+  isActive  Boolean  @default(true)
+  states    State[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id])
+  districts District[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model District {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  stateId   String
+  state     State    @relation(fields: [stateId], references: [id])
+  municipalities Municipality[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stateId])
+}
+
+model Municipality {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  districtId String
+  district   District @relation(fields: [districtId], references: [id])
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([districtId])
 }
 
 
 // Reference Data Models
 model Education {
   id        String   @id @default(uuid())
-  name      String   @unique
+  name      String
   tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   membershipApplications MembershipApplication[]
   jobPosts               JobPost[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
 }
 
 model Sector {
   id          String   @id @default(uuid())
-  name        String   @unique
+  name        String
   description String?
   imageUrl    String?
   tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -882,16 +937,20 @@ model Sector {
   businessProfiles       BusinessProfile[]
   businessApplications   BusinessApplication[]
   jobPosts               JobPost[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
 }
 
 model JobRole {
   id          String   @id @default(uuid())
   sectorId    String?
   sector      Sector?  @relation(fields: [sectorId], references: [id])
-  name        String   @unique
+  name        String
   description String?
   imageUrl    String?
   tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -900,7 +959,9 @@ model JobRole {
   membershipApplications MembershipApplication[]
   jobPosts               JobPost[]
   
+  @@unique([name, tenantId])
   @@index([sectorId])
+  @@index([tenantId])
 }
 
 model Skill {
@@ -911,22 +972,29 @@ model Skill {
   jobRole     JobRole? @relation(fields: [jobRoleId], references: [id])
   name        String
   tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
 
   @@index([sectorId])
   @@index([jobRoleId])
+  @@index([tenantId])
 }
 
 model DocumentType {
   id        String   @id @default(uuid())
-  name      String   @unique
+  name      String
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   membershipDocuments MembershipDocument[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
 }
 
 // Membership Application
@@ -1112,12 +1180,15 @@ model BankDetails {
   branch          String
   ifscCode        String
   isActive        Boolean  @default(true)
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   topUpRequests   WalletTopUpRequest[]
 
   @@index([isActive])
+  @@index([tenantId])
 }
 
 model WalletTopUpRequest {
@@ -1288,6 +1359,7 @@ model CommissionScheme {
   tenantId  String
   users     User[]   @relation("UserCommissionScheme")
   shares    CommissionShare[]
+  services  CommissionService[] @relation("SchemeServices")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1301,9 +1373,15 @@ model CommissionService {
   id          String   @id @default(uuid())
   name        String
   isActive    Boolean  @default(true)
+  tenantId    String?
+  schemeId    String?
+  scheme      CommissionScheme? @relation("SchemeServices", fields: [schemeId], references: [id])
   subServices CommissionSubService[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([schemeId])
+  @@index([tenantId])
 }
 
 model FormDraft {
@@ -1326,9 +1404,11 @@ model FormDraft {
 model CommissionSubService {
   id          String   @id @default(uuid())
   name        String
-  slug        String?  @unique
+  slug        String?
   serviceId   String
   service     CommissionService @relation(fields: [serviceId], references: [id])
+  tenantId    String?
+  schemeId    String?
   isActive    Boolean  @default(true)
   shares      CommissionShare[]
   transactions TransactionLog[]
@@ -1336,6 +1416,9 @@ model CommissionSubService {
   updatedAt   DateTime @updatedAt
 
   @@index([serviceId])
+  @@index([schemeId])
+  @@index([tenantId])
+  @@unique([slug, schemeId])
 }
 
 model CommissionShare {

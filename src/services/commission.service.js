@@ -139,16 +139,37 @@ const commissionService = {
               console.log(`[Commission]   Checking Upstream: ${upstreamPartner.fullName}, SchemeID: ${schemeId || "None"}`);
               
               if (schemeId) {
-                  const share = await tx.commissionShare.findUnique({
+                  let share = await tx.commissionShare.findUnique({
                       where: { schemeId_subServiceId: { schemeId, subServiceId } }
                   });
+
+                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+                  if (!share) {
+                      const equivalentSubService = await tx.commissionSubService.findFirst({
+                          where: { 
+                            schemeId: schemeId,
+                            OR: [
+                                (subService?.slug ? { slug: subService.slug } : null),
+                                (subService?.name ? { name: subService.name } : null)
+                            ].filter(Boolean)
+                          }
+                      });
+                      if (equivalentSubService) {
+                          share = await tx.commissionShare.findUnique({
+                              where: { schemeId_subServiceId: { schemeId, subServiceId: equivalentSubService.id } }
+                          });
+                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Upstream Scheme.`);
+                      }
+                  }
                   
                   if (share && parseFloat(share[shareKey]) > 0) {
                       const val = parseFloat(share[shareKey]);
                       transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
                       resolvedBy = upstreamPartner.fullName;
-                      console.log(`[Commission]   MATCH Upstream Scheme! Amount: ${transferAmount}`);
+                      console.log(`[Commission]   MATCH Upstream Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
                       break; 
+                  } else {
+                      console.log(`[Commission]   No valid share found in Upstream Scheme for ${shareKey} (Value: ${share ? share[shareKey] : 'NULL'})`);
                   }
               }
           }
@@ -156,14 +177,36 @@ const commissionService = {
           // 2. Location-Based Scheme Fallback
           if (transferAmount <= 0 && locationScheme) {
               console.log(`[Commission]   Trying Location Scheme: ${locationScheme.name}`);
-              const share = await tx.commissionShare.findUnique({
+              let share = await tx.commissionShare.findUnique({
                   where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId } }
               });
+
+              // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+              if (!share) {
+                  const equivalentSubService = await tx.commissionSubService.findFirst({
+                      where: { 
+                        schemeId: locationScheme.id,
+                        OR: [
+                            (subService?.slug ? { slug: subService.slug } : null),
+                            (subService?.name ? { name: subService.name } : null)
+                        ].filter(Boolean)
+                      }
+                  });
+                  if (equivalentSubService) {
+                      share = await tx.commissionShare.findUnique({
+                          where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId: equivalentSubService.id } }
+                      });
+                      if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Location Scheme.`);
+                  }
+              }
+
               if (share && parseFloat(share[shareKey]) > 0) {
                   const val = parseFloat(share[shareKey]);
                   transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
                   resolvedBy = `Location Override (${locationScheme.name})`;
-                  console.log(`[Commission]   MATCH Location Scheme! Amount: ${transferAmount}`);
+                  console.log(`[Commission]   MATCH Location Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
+              } else {
+                  console.log(`[Commission]   No valid share found in Location Scheme for ${shareKey} (Value: ${share ? share[shareKey] : 'NULL'})`);
               }
           }
 
@@ -195,16 +238,36 @@ const commissionService = {
 
               if (defaultScheme) {
                   console.log(`[Commission]   Default/Fallback Scheme Found: ${defaultScheme.name} (ID: ${defaultScheme.id})`);
-                  const share = await tx.commissionShare.findUnique({
+                  let share = await tx.commissionShare.findUnique({
                       where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId } }
                   });
+
+                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR name
+                  if (!share) {
+                      const equivalentSubService = await tx.commissionSubService.findFirst({
+                          where: { 
+                            schemeId: defaultScheme.id,
+                            OR: [
+                                (subService?.slug ? { slug: subService.slug } : null),
+                                (subService?.name ? { name: subService.name } : null)
+                            ].filter(Boolean)
+                          }
+                      });
+                      if (equivalentSubService) {
+                          share = await tx.commissionShare.findUnique({
+                              where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId: equivalentSubService.id } }
+                          });
+                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.id} via ${subService.slug ? 'slug' : 'name'} in Default Scheme.`);
+                      }
+                  }
+
                   if (share && parseFloat(share[shareKey]) > 0) {
                       const val = parseFloat(share[shareKey]);
                       transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
                       resolvedBy = `Fallback (${defaultScheme.name})`;
-                      console.log(`[Commission]   MATCH Default Scheme! Amount: ${transferAmount}`);
+                      console.log(`[Commission]   MATCH Default Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
                   } else {
-                    console.log(`[Commission]   Scheme ${defaultScheme.name} has 0 or no share for ${shareKey} / SubService ${subServiceId}`);
+                    console.log(`[Commission]   Scheme ${defaultScheme.name} has 0 or no share for ${shareKey} / SubService ${subServiceId}. Share Object: ${JSON.stringify(share)}`);
                   }
               } else {
                 console.log(`[Commission]   CRITICAL: No schemes whatsoever found for tenant ${user.tenantId}`);
@@ -290,6 +353,7 @@ const commissionService = {
                     accountType: "commission"
                 }
             });
+
 
             console.log(`[Commission]   SUCCESS: ${transferAmount} moved.`);
           } catch (txErr) {

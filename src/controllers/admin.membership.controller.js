@@ -92,25 +92,28 @@ const adminMembershipController = {
       let fee = 0;
       if (PAID_ROLES.includes(targetIdentity)) {
         if (targetIdentity === 'SAATHI') {
-          const setting = await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } });
+          const setting = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
           fee = 1000;
           if (setting && setting.value) {
             try { fee = JSON.parse(setting.value).amount || 1000; } catch (e) { fee = parseFloat(setting.value); }
           }
         } else if (targetIdentity === 'MEMBER') {
-          const config = await prisma.membershipConfig.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } });
+          const config = await prisma.membershipConfig.findFirst({ 
+            where: { isActive: true, tenantId }, 
+            orderBy: { createdAt: 'desc' } 
+          });
           fee = config ? config.membershipPrice : 150;
         } else if (targetIdentity === 'BUSINESS_PARTNER') {
-          const setting = await prisma.globalSetting.findUnique({ where: { key: 'BUSINESS_PARTNER_FEE' } });
+          const setting = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
           fee = 2000;
           if (setting && setting.value) {
             try { fee = JSON.parse(setting.value).amount || 2000; } catch (e) { fee = parseFloat(setting.value); }
           }
         } else if (targetIdentity === 'AGENT') {
-          const setting = await prisma.globalSetting.findUnique({ where: { key: 'AGENT_REGISTRATION_FEE' } });
+          const setting = await prisma.globalSetting.findFirst({ where: { key: 'AGENT_REGISTRATION_FEE', tenantId } });
           fee = setting ? parseFloat(setting.value) : 500;
         } else if (['AGENT'].includes(targetIdentity)) {
-          const setting = await prisma.globalSetting.findUnique({ where: { key: 'ADMIN_REGISTRATION_FEE' } });
+          const setting = await prisma.globalSetting.findFirst({ where: { key: 'ADMIN_REGISTRATION_FEE', tenantId } });
           fee = setting ? parseFloat(setting.value) : 5000;
         }
       }
@@ -311,9 +314,9 @@ const adminMembershipController = {
     }
 
     try {
-      // Deactivate old config
+      // Deactivate old config for this tenant
       await prisma.membershipConfig.updateMany({
-        where: { isActive: true },
+        where: { isActive: true, tenantId },
         data: { isActive: false }
       });
 
@@ -321,7 +324,8 @@ const adminMembershipController = {
           id: generateUuid(),
           membershipPrice: calculatedAmount,
           currency: 'INR',
-          isActive: true
+          isActive: true,
+          tenantId
       };
 
       if (serviceCharges !== undefined) {
@@ -722,7 +726,7 @@ const adminMembershipController = {
           });
 
           if (subService) {
-             console.log(`[Commission] Found SubService: ${subService.name} (${subService.id})`);
+             console.log(`[Commission] Found SubService for Approval: ${subService.name} (${subService.id}) with slug: ${subService.slug}`);
              await commissionService.processCommission(
                 application.payment.amount,
                 subService.id,
@@ -731,7 +735,7 @@ const adminMembershipController = {
                 prisma
              );
           } else {
-             console.log("[Commission] WARNING: membership_fee SubService not found. Please create it via /api/Commission/AddCommissionSubService");
+             console.log("[Commission] WARNING: membership_fee SubService not found. Search criteria: slug='membership_fee' or name containing 'membership'");
           }
         } else {
           console.log("[Commission] SKIP: No Admin Corporate Wallet found or amount is 0");
@@ -853,7 +857,7 @@ const adminMembershipController = {
    * Education Management
    */
   createEducation: async (req, res) => {
-    const { user_id: adminId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId } = req.user;
     const { name } = req.body;
 
     if (!name || name.trim() === '') {
@@ -867,7 +871,7 @@ const adminMembershipController = {
       const education = await prisma.education.create({
         data: {
           id: generateUuid(),
-          name: name.trim()
+          name: name.trim(), tenantId
         }
       });
 
@@ -895,8 +899,10 @@ const adminMembershipController = {
   },
 
   getEducations: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const educations = await prisma.education.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' }
       });
 
@@ -914,7 +920,7 @@ const adminMembershipController = {
    * Sector Management
    */
   createSector: async (req, res) => {
-    const { user_id: adminId } = req.user || {};
+    const { user_id: adminId, tenant_id: tenantId } = req.user || {};
     const { name, description, imageUrl } = req.body || {};
 
     if (!name || name.trim() === '') {
@@ -930,7 +936,8 @@ const adminMembershipController = {
           id: generateUuid(),
           name: name.trim(),
           description: description ? description.trim() : null,
-          imageUrl: imageUrl || null
+          imageUrl: imageUrl || null,
+          tenantId
         }
       });
 
@@ -958,8 +965,10 @@ const adminMembershipController = {
   },
 
   getSectors: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const sectors = await prisma.sector.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' },
         include: { jobRoles: true, skills: true }
       });
@@ -978,7 +987,7 @@ const adminMembershipController = {
    * Job Role Management
    */
   createJobRole: async (req, res) => {
-    const { user_id: adminId } = req.user || {};
+    const { user_id: adminId, tenant_id: tenantId } = req.user || {};
     const { name, sectorId, description, imageUrl } = req.body || {};
 
     if (!name || name.trim() === '') {
@@ -1002,7 +1011,8 @@ const adminMembershipController = {
           name: name.trim(),
           sectorId,
           description: description ? description.trim() : null,
-          imageUrl: imageUrl || null
+          imageUrl: imageUrl || null,
+          tenantId
         }
       });
 
@@ -1030,8 +1040,10 @@ const adminMembershipController = {
   },
 
   getJobRoles: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const jobRoles = await prisma.jobRole.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' },
         include: { sector: true, skills: true }
       });
@@ -1050,7 +1062,7 @@ const adminMembershipController = {
    * Skill Management
    */
   createSkill: async (req, res) => {
-    const { user_id: adminId } = req.user || {};
+    const { user_id: adminId, tenant_id: tenantId } = req.user || {};
     const { name, sectorId, jobRoleId } = req.body || {};
 
     if (!name || name.trim() === '') {
@@ -1066,7 +1078,8 @@ const adminMembershipController = {
           id: generateUuid(),
           name: name.trim(),
           sectorId,
-          jobRoleId
+          jobRoleId,
+          tenantId
         }
       });
 
@@ -1091,8 +1104,10 @@ const adminMembershipController = {
   },
 
   getSkills: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const skills = await prisma.skill.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' },
         include: { sector: true, jobRole: true }
       });
@@ -1111,7 +1126,7 @@ const adminMembershipController = {
    * Document Type Management
    */
   createDocumentType: async (req, res) => {
-    const { user_id: adminId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId } = req.user;
     const { name } = req.body;
 
     if (!name || name.trim() === '') {
@@ -1125,7 +1140,7 @@ const adminMembershipController = {
       const documentType = await prisma.documentType.create({
         data: {
           id: generateUuid(),
-          name: name.trim()
+          name: name.trim(), tenantId
         }
       });
 
@@ -1153,8 +1168,10 @@ const adminMembershipController = {
   },
 
   getDocumentTypes: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const documentTypes = await prisma.documentType.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' }
       });
 

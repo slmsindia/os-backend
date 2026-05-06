@@ -1,11 +1,12 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
+const { generateUuid } = require("../utils/id");
 
 const notificationController = {
   /**
    * Get Current User's Notifications
    */
   getNotifications: async (req, res) => {
+    // Ensure we use the correct tenantId from req.user (set by auth middleware)
     const { user_id: userId, tenant_id: tenantId } = req.user;
     try {
       const notifications = await prisma.notification.findMany({

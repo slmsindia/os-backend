@@ -49,11 +49,19 @@ const adminSaathiController = {
     }
 
     try {
-      const setting = prisma.globalSetting ? await prisma.globalSetting.upsert({
-        where: { key: 'SAATHI_FEE' },
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
+      const setting = await prisma.globalSetting.upsert({
+        where: { 
+          key_tenantId: { key: 'SAATHI_FEE', tenantId } 
+        },
         update: { value: payloadValue },
-        create: { key: 'SAATHI_FEE', value: payloadValue }
-      }) : null;
+        create: { 
+          id: generateUuid(),
+          key: 'SAATHI_FEE', 
+          value: payloadValue,
+          tenantId
+        }
+      });
 
       res.json({ success: true, message: "Saathi fee updated successfully", amount: calculatedAmount });
     } catch (err) {
@@ -67,8 +75,9 @@ const adminSaathiController = {
    */
   getSaathiFee: async (req, res) => {
     try {
-      const setting = await prisma.globalSetting.findUnique({
-        where: { key: 'SAATHI_FEE' }
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
+      const setting = await prisma.globalSetting.findFirst({
+        where: { key: 'SAATHI_FEE', tenantId }
       });
       
       let feeData = { amount: 1000 };
@@ -188,7 +197,9 @@ const adminSaathiController = {
       const shouldUpdateExisting = isPaidResubmission;
 
       // 4. Payment Validation & Transaction
-      const feeSetting = prisma.globalSetting ? await prisma.globalSetting.findUnique({ where: { key: 'SAATHI_FEE' } }) : null;
+      const feeSetting = await prisma.globalSetting.findFirst({ 
+        where: { key: 'SAATHI_FEE', tenantId } 
+      });
       let amount = 1000;
       if (feeSetting && feeSetting.value) {
         try {

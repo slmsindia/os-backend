@@ -259,15 +259,20 @@ const commissionController = {
    * 2.3 Add New Commission Service
    */
   addCommissionService: async (req, res) => {
-    const { name } = req.body || {};
+    const { name, schemeId } = req.body || {};
+    const { tenant_id: tenantId } = req.user || {};
+
     if (!name) return res.status(400).json({ success: false, message: "Service name is required" });
     try {
       const service = await prisma.commissionService.create({
         data: {
           id: generateUuid(),
-          name
+          name,
+          schemeId,
+          tenantId
         }
       });
+
       res.status(201).json({ success: true, message: "Service added", data: service });
     } catch (err) {
       console.error(err);
@@ -312,16 +317,40 @@ const commissionController = {
    * 3.2b Add New Commission Sub-Service
    */
   addCommissionSubService: async (req, res) => {
-    const { name, serviceId } = req.body || {};
+    const { name, serviceId, schemeId, slug } = req.body || {};
+    const { tenant_id: tenantId } = req.user || {};
+
     if (!name || !serviceId) return res.status(400).json({ success: false, message: "Name and serviceId are required" });
     try {
       const subService = await prisma.commissionSubService.create({
         data: {
           id: generateUuid(),
           name,
-          serviceId
+          serviceId,
+          slug: slug || undefined,
+          schemeId,
+          tenantId
         }
       });
+
+      // If schemeId is provided, create an initial share for this sub-service in this scheme
+      if (schemeId) {
+        await prisma.commissionShare.create({
+          data: {
+            id: generateUuid(),
+            schemeId,
+            subServiceId: subService.id,
+            commissionType: 2, // Default to Flat
+            admin: 0,
+            countryPartner: 0,
+            statePartner: 0,
+            districtPartner: 0,
+            saathi: 0,
+            member: 0
+          }
+        });
+      }
+
       res.status(201).json({ success: true, message: "Sub-service added", data: subService });
     } catch (err) {
       console.error(err);
@@ -353,8 +382,25 @@ const commissionController = {
    */
   getServiceSubServiceBySchemeId: async (req, res) => {
     const { SchemeID } = req.query;
+    if (!SchemeID) return res.status(400).json({ success: false, message: "SchemeID is required" });
+
     try {
+      // Return services that belong to this scheme OR have shares in this scheme (for migration)
       const data = await prisma.commissionService.findMany({
+        where: {
+          OR: [
+            { schemeId: SchemeID },
+            {
+              subServices: {
+                some: {
+                  shares: {
+                    some: { schemeId: SchemeID }
+                  }
+                }
+              }
+            }
+          ]
+        },
         include: {
           subServices: {
             include: {
@@ -365,9 +411,10 @@ const commissionController = {
           }
         }
       });
+
       res.json({ success: true, data });
     } catch (err) {
-      console.error(err);
+      console.error("GET SERVICE BY SCHEME ERROR:", err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
     }
   },
@@ -775,6 +822,63 @@ const commissionController = {
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  /**
+   * 1.7 Scheme Delete Karo
+   */
+  deleteCommissionScheme: async (req, res) => {
+    const { id } = req.query; // Following the pattern of getCommissionSchemeById
+    const { tenant_id: tenantId, identity, user_id: adminId } = req.user || {};
+
+    if (!id) return res.status(400).json({ success: false, message: "Scheme ID is required" });
+
+    try {
+      // Permission check - Only Admins/Super Admins
+      const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
+      if (!ELIGIBLE_ROLES.includes(identity)) {
+        return res.status(403).json({ success: false, message: "Permission denied" });
+      }
+
+      const scheme = await prisma.commissionScheme.findUnique({
+        where: { id },
+        include: { _count: { select: { users: true } } }
+      });
+
+      if (!scheme) return res.status(404).json({ success: false, message: "Scheme not found" });
+
+      // Ensure tenant isolation
+      if (identity !== 'SUPER_ADMIN' && scheme.tenantId !== tenantId) {
+        return res.status(403).json({ success: false, message: "You do not have permission to delete this scheme" });
+      }
+      
+      // Prevent deleting assigned schemes
+      if (scheme._count.users > 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Cannot delete scheme because it is assigned to ${scheme._count.users} users. Please unassign it first.` 
+        });
+      }
+
+      // Delete in transaction: shares then the scheme
+      await prisma.$transaction([
+        prisma.commissionShare.deleteMany({ where: { schemeId: id } }),
+        prisma.commissionScheme.delete({ where: { id } })
+      ]);
+
+      await logAction({
+        userId: adminId,
+        action: "DELETE_COMMISSION_SCHEME",
+        targetId: id,
+        tenantId: scheme.tenantId,
+        metadata: { name: scheme.name }
+      });
+
+      res.json({ success: true, message: "Commission scheme deleted successfully" });
+    } catch (err) {
+      console.error("DELETE SCHEME ERROR:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   }
 };

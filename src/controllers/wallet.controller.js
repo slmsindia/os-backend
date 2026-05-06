@@ -41,9 +41,13 @@ const walletController = {
    * Get all active bank details (for members to see where to send money)
    */
   getActiveBankDetails: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     try {
       const bankDetails = await prisma.bankDetails.findMany({
-        where: { isActive: true },
+        where: { 
+          isActive: true,
+          tenantId: tenantId
+        },
         orderBy: { createdAt: "desc" }
       });
 
@@ -273,7 +277,7 @@ const walletController = {
    * Create bank details
    */
   createBankDetails: async (req, res) => {
-    const { user_id: adminId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId } = req.user;
     const { bankName, beneficiaryName, accountNumber, branch, ifscCode } = req.body;
 
     if (!bankName || !beneficiaryName || !accountNumber || !branch || !ifscCode) {
@@ -291,7 +295,8 @@ const walletController = {
           accountNumber,
           branch,
           ifscCode,
-          isActive: true
+          isActive: true,
+          tenantId
         }
       });
 
@@ -317,11 +322,12 @@ const walletController = {
    * Get all bank details (with filtering)
    */
   getAllBankDetails: async (req, res) => {
+    const { tenant_id: tenantId } = req.user;
     const { page = 1, limit = 20, isActive } = req.query;
 
     try {
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const where = {};
+      const where = { tenantId };
 
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
