@@ -1,15 +1,25 @@
 /**
  * rd.routes.js
  *
- * Mantra RD Service uses NON-STANDARD HTTP methods:
- *   RDSERVICE  →  https://<host>/          (discovery)
- *   CAPTURE    →  https://<host>/rd/capture (fingerprint)
- *   GET        →  https://<host>/rd/info    (device info)
+ * ⚠️  ARCHITECTURE — READ THIS FIRST:
  *
- * Flow:
- *   1. Discover: scan ports 11100–11105 using RDSERVICE method
- *   2. Parse XML to get actual paths for DEVICEINFO + CAPTURE
- *   3. Use discovered port/paths for subsequent requests
+ * The Mantra RD Service runs on the CSP agent's LOCAL MACHINE (127.0.0.1).
+ * These backend routes ONLY work when:
+ *   - The backend server is running on the SAME machine as the fingerprint device
+ *   - i.e., LOCAL DEVELOPMENT only
+ *
+ * In PRODUCTION (apiv3.onlinesaathi.org on Render):
+ *   - The server cannot reach 127.0.0.1:11100 on the agent's machine
+ *   - These routes will always return "not found" in production
+ *
+ * ✅ CORRECT PRODUCTION FLOW:
+ *   Browser → 127.0.0.1:11100 (direct, no backend)
+ *   Use: os-frontend/src/api/rdService.js → captureFingerprint()
+ *
+ * Mantra uses NON-STANDARD HTTP methods:
+ *   RDSERVICE  →  https://<host>/          (discovery)
+ *   DEVICEINFO →  https://<host>/rd/info   (device info)
+ *   CAPTURE    →  https://<host>/rd/capture (fingerprint)
  */
 
 const express = require('express');
@@ -25,7 +35,29 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 // ─── Ports to scan ────────────────────────────────────────────────────────────
 const RD_PORTS  = [11100, 11101, 11102, 11103, 11104, 11105];
-const PROTOCOLS = ['https', 'http']; // HTTPS first (Mantra MFS110 confirmed)
+const PROTOCOLS = ['https', 'http'];
+
+// ─── Production guard ─────────────────────────────────────────────────────────
+// Returns true only when the backend is running locally (dev mode)
+function isLocalServer() {
+  const host = process.env.HOST || '';
+  const env  = process.env.NODE_ENV || 'development';
+  const port = process.env.PORT || '3005';
+  // Local if: explicitly development OR port is local dev port
+  return (
+    env === 'development' ||
+    host.includes('localhost') ||
+    host.includes('127.0.0.1') ||
+    port === '3005'
+  );
+}
+
+const PRODUCTION_ERROR = {
+  success: false,
+  message: 'This endpoint only works when the backend runs on the same machine as the Mantra device.',
+  solution: 'Use the frontend captureFingerprint() function from rdService.js — it calls 127.0.0.1:11100 directly from the browser.',
+  docs: 'See os-frontend/src/api/rdService.js',
+};
 
 // ─── discoverRdService ────────────────────────────────────────────────────────
 /**
@@ -139,6 +171,11 @@ router.get('/discover', async (req, res) => {
 // Discover service first, then fetch device info
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/info', async (req, res) => {
+  // Guard: only works locally — production server can't reach agent's device
+  if (!isLocalServer()) {
+    return res.status(501).json(PRODUCTION_ERROR);
+  }
+
   // Step 1: discover
   const device = await discoverRdService();
 
@@ -213,6 +250,11 @@ router.get('/info', async (req, res) => {
 //     For web-based capture, use frontend rdService.js directly.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/capture', async (req, res) => {
+  // Guard: only works locally — production server can't reach agent's device
+  if (!isLocalServer()) {
+    return res.status(501).json(PRODUCTION_ERROR);
+  }
+
   try {
     // Accept both JSON { xml: '...' } and raw XML string body
     const xmlBody =
