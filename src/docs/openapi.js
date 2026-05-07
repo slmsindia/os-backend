@@ -4329,6 +4329,158 @@ paths[`${remittancePrefix}/GetTransactionByPinNo`] = {
   }
 };
 
+// ─── RD Device ────────────────────────────────────────────────────────────────
+
+paths["/api/rd/capture"] = {
+  post: {
+    tags: ["RD Device"],
+    summary: "Capture biometric data from RD device",
+    description: "Sends an XML PID Options payload to the locally-running RD Service (Mantra / Morpho fingerprint device) and returns the encrypted biometric data ready for UIDAI/IME eKYC.\n\n**Requires the RD Service to be running on the client machine** (port 11100 HTTP or 11101 HTTPS).\n\nPass the full PID XML string either as a raw text body or wrapped in a JSON object `{ \"xml\": \"<PidOptions ...>...</PidOptions>\" }`.",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["xml"],
+            properties: {
+              xml: {
+                type: "string",
+                description: "Full PID Options XML string for the RD device",
+                example: "<?xml version=\"1.0\"?><PidOptions ver=\"1.0\"><Opts fCount=\"1\" fType=\"2\" iCount=\"0\" pCount=\"0\" format=\"0\" pidVer=\"2.0\" timeout=\"10000\" posh=\"UNKNOWN\" env=\"P\"/></PidOptions>"
+              }
+            }
+          }
+        },
+        "text/xml": {
+          schema: {
+            type: "string",
+            description: "Raw PID Options XML string",
+            example: "<?xml version=\"1.0\"?><PidOptions ver=\"1.0\"><Opts fCount=\"1\" fType=\"2\" iCount=\"0\" pCount=\"0\" format=\"0\" pidVer=\"2.0\" timeout=\"10000\" posh=\"UNKNOWN\" env=\"P\"/></PidOptions>"
+          }
+        }
+      }
+    },
+    responses: {
+      200: {
+        description: "Biometric capture successful",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                data: {
+                  type: "object",
+                  properties: {
+                    EncryptedPid: { type: "string", description: "Encrypted PID data (base64)", example: "Ao3q5H..." },
+                    EncryptedHmac: { type: "string", description: "Encrypted HMAC (base64)", example: "XyZ12..." },
+                    SessionKeyValue: { type: "string", description: "Session key (base64)", example: "AbC34..." },
+                    CertificateIdentifier: { type: "string", description: "Certificate identifier (ci attribute)", example: "20250101" },
+                    RegisteredDeviceProviderId: { type: "string", description: "Device provider ID (dpId)", example: "MANTRA.MSIPL" },
+                    RegisteredDeviceServiceId: { type: "string", description: "RDS ID", example: "MANTRA.WIN.001" },
+                    RegisteredDeviceServiceVersion: { type: "string", description: "RDS version", example: "1.0.3" },
+                    RegisteredDeviceCode: { type: "string", description: "Device code (dc)", example: "DC001" },
+                    RegisteredDeviceModelId: { type: "string", description: "Model ID (mi)", example: "MI001" },
+                    RegisteredDevicePublicKey: { type: "string", description: "Device public key / MC (mc)", example: "MIIBIjA..." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      400: {
+        description: "Invalid request body or device error",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: false },
+                message: { type: "string", example: "Invalid request body: XML string required" },
+                errCode: { type: "string", example: "-1" }
+              }
+            }
+          }
+        }
+      },
+      500: {
+        description: "RD Service not running or connection refused",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: false },
+                message: { type: "string", example: "Device not found: RD Service not running on client machine" }
+              }
+            }
+          }
+        }
+      },
+      504: {
+        description: "RD Service request timed out",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: false },
+                message: { type: "string", example: "RD Service request timed out" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+paths["/api/rd/info"] = {
+  get: {
+    tags: ["RD Device"],
+    summary: "Get RD device information",
+    description: "Fetches device information from the locally-running RD Service (port 11100). Returns raw XML/JSON from the RD Service containing device model, firmware version, serial number, and registration status.\n\n**Requires the RD Service to be running on the client machine.**",
+    responses: {
+      200: {
+        description: "Device information returned (raw XML from RD Service)",
+        content: {
+          "text/xml": {
+            schema: {
+              type: "string",
+              description: "Raw XML response from the RD Service",
+              example: "<?xml version=\"1.0\"?><DeviceInfo dpId=\"MANTRA.MSIPL\" rdsId=\"MANTRA.WIN.001\" rdsVer=\"1.0.3\" mi=\"MFS100\" mc=\"MIIBIjA...\" dc=\"DC001\"><additional info=\"Mantra MFS100\"/></DeviceInfo>"
+            }
+          },
+          "application/json": {
+            schema: {
+              type: "object",
+              description: "May be JSON depending on device/driver version",
+              additionalProperties: true
+            }
+          }
+        }
+      },
+      500: {
+        description: "RD Service not reachable",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: false },
+                message: { type: "string", example: "Device not found: RD Service not reachable" },
+                details: { type: "string", example: "connect ECONNREFUSED 127.0.0.1:11100" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 module.exports = {
   openapi: "3.0.3",
   info: {
@@ -4350,7 +4502,6 @@ module.exports = {
     { name: "Membership" },
     { name: "Devices" },
     { name: "RD Device" },
-    { name: "RD" },
     { name: "Locations" },
     { name: "Prabhu" },
     { name: "Prabhu CSP" },
