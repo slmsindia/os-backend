@@ -116,12 +116,13 @@ const hierarchyController = {
    * GET /api/admin/hierarchy/user-history/:targetUserId
    */
   getUserWalletHistory: async (req, res) => {
-    const { user_id: currentUserId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
     const { targetUserId } = req.params; // This can be ID or Mobile number
     const { page = 1, limit = 20, startDate, endDate, type, category } = req.query;
 
     try {
       const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       const identifier = String(targetUserId).trim();
       
       console.log(`[DEBUG] Searching for wallet history user: ${identifier} (Resolved Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
@@ -752,7 +753,7 @@ const hierarchyController = {
       const roleRank = {
         "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
         "COUNTRY_HEAD": 4, "STATE_PARTNER": 5, "DISTRICT_PARTNER": 6,
-        "BUSINESS_PARTNER": 7, "SAATHI": 8, "MEMBER": 9, "AGENT": 10, "USER": 11
+        "BUSINESS_PARTNER": 8, "SAATHI": 7, "MEMBER": 9, "AGENT": 10, "USER": 11
       };
 
       const myRank = roleRank[user.identity] ?? 99;

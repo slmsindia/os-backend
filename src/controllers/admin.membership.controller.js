@@ -49,7 +49,8 @@ const adminMembershipController = {
         'SUB_ADMIN',
         'COUNTRY_HEAD',
         'STATE_PARTNER',
-        'DISTRICT_PARTNER'
+        'DISTRICT_PARTNER',
+        'SAATHI'
       ];
 
       // Block if caller is not one of the authorized roles
@@ -69,6 +70,7 @@ const adminMembershipController = {
         'STATE_PARTNER': 50,
         'DISTRICT_PARTNER': 40,
         'SAATHI': 30,
+        'BUSINESS_PARTNER': 25,
         'MEMBER': 20,
         'AGENT': 15,
         'USER': 10

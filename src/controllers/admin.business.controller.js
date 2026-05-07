@@ -207,7 +207,7 @@ const businessPartnerController = {
       }
 
       // Hierarchy Check for Partners
-      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
+      const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER', 'SAATHI'];
       if (partnerRoles.includes(adminIdentity)) {
         // Must be in creator's path or directly under them
         if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
