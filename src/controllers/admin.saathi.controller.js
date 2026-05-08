@@ -523,8 +523,7 @@ const adminSaathiController = {
                 application.payment.amount,
                 subService.id,
                 application.userId,
-                null,
-                prisma
+                null
              );
           } else {
              console.log("[Commission] WARNING: saathi_fee SubService not found. Cannot distribute commission.");

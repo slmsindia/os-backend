@@ -510,8 +510,7 @@ const businessPartnerController = {
                 application.amount,
                 subService.id,
                 application.userId,
-                null,
-                prisma
+                null  // customDescription — null uses auto-generated descriptions
              );
           } else {
              console.log("[Commission] WARNING: business_partner_fee SubService not found. Cannot distribute commission.");

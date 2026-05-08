@@ -730,12 +730,11 @@ const adminMembershipController = {
           if (subService) {
              console.log(`[Commission] Found SubService for Approval: ${subService.name} (${subService.id}) with slug: ${subService.slug}`);
              await commissionService.processCommission(
-                application.payment.amount,
-                subService.id,
-                application.userId,
-                null,
-                prisma
-             );
+                 application.payment.amount,
+                 subService.id,
+                 application.userId,
+                 null  // customDescription — null uses auto-generated descriptions
+              );
           } else {
              console.log("[Commission] WARNING: membership_fee SubService not found. Search criteria: slug='membership_fee' or name containing 'membership'");
           }

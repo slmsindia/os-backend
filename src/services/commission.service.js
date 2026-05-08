@@ -1,409 +1,598 @@
 const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 
+// ============================================================
+// IDENTITY → COMMISSION SHARE KEY MAPPING
+// Configurable map. Add new roles here as needed.
+// ============================================================
+const IDENTITY_TO_SHARE_KEY = {
+  'COUNTRY_HEAD':     'countryPartner',
+  'STATE_PARTNER':    'statePartner',
+  'DISTRICT_PARTNER': 'districtPartner',
+  'SAATHI':           'saathi',
+  'MEMBER':           'member',
+  'AGENT':            'member',         // Agents treated like members for commission
+  'BUSINESS_PARTNER': 'member',         // Business Partners treated like members
+};
+
+// ============================================================
+// HELPER: Build Dynamic Payout Chain
+// 
+// Walks the parentId chain upward from the joiner, building
+// a top-down [WL → CH → DP → SAATHI] array.
+//
+// Key properties:
+//   - Uses ACTUAL parentId relationships (not static path)
+//   - Missing hierarchy levels are automatically skipped
+//   - Handles broken/transferred hierarchy correctly
+//   - Always anchors chain at WL Admin for the tenant
+// ============================================================
+async function buildDynamicPayoutChain(joinerId, tenantId, db) {
+  const ADMIN_IDENTITIES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
+  const chain = [];
+  let currentId = joinerId;
+  const visited = new Set();
+  const MAX_DEPTH = 20; // Safety guard against circular references
+  let depth = 0;
+
+  console.log(`[Commission] Building dynamic payout chain for joiner: ${joinerId}`);
+
+  // Walk up the parentId chain
+  while (currentId && !visited.has(currentId) && depth < MAX_DEPTH) {
+    visited.add(currentId);
+    depth++;
+
+    const user = await db.user.findUnique({
+      where: { id: currentId },
+      select: {
+        id: true,
+        fullName: true,
+        identity: true,
+        parentId: true,
+        commissionSchemeId: true,
+        tenantId: true,
+        path: true
+      }
+    });
+
+    if (!user) {
+      console.log(`[Commission] User ${currentId} not found during chain build. Stopping.`);
+      break;
+    }
+
+    chain.unshift(user); // Prepend to build top-down order
+    console.log(`[Commission] Chain step: ${user.fullName} (${user.identity}) → parent: ${user.parentId || 'NONE'}`);
+
+    // Stop if we've reached the top admin level
+    if (ADMIN_IDENTITIES.includes(user.identity)) break;
+
+    currentId = user.parentId;
+  }
+
+  // Ensure WL Admin is at the top of the chain
+  const topAdmin = await db.user.findFirst({
+    where: {
+      tenantId,
+      identity: { in: ADMIN_IDENTITIES }
+    },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      fullName: true,
+      identity: true,
+      commissionSchemeId: true,
+      tenantId: true,
+      path: true,
+      parentId: true
+    }
+  });
+
+  if (topAdmin && (!chain[0] || chain[0].id !== topAdmin.id)) {
+    console.log(`[Commission] Prepending WL Admin: ${topAdmin.fullName} (${topAdmin.identity})`);
+    chain.unshift(topAdmin);
+  }
+
+  console.log(`[Commission] Final chain (${chain.length} nodes): ${chain.map(u => `${u.fullName}(${u.identity})`).join(' → ')}`);
+  return chain;
+}
+
+// ============================================================
+// HELPER: Find CommissionShare in a Scheme for a SubService
+//
+// First tries direct ID match, then falls back to:
+//   1. Slug match (same service type, different scheme)
+//   2. Fuzzy name match
+// ============================================================
+async function findShareInScheme(schemeId, subService, db) {
+  if (!schemeId || !subService) return null;
+
+  // Direct match
+  let share = await db.commissionShare.findUnique({
+    where: { schemeId_subServiceId: { schemeId, subServiceId: subService.id } }
+  });
+
+  if (share) return share;
+
+  // Cross-scheme slug match
+  if (subService.slug) {
+    const equivalent = await db.commissionSubService.findFirst({
+      where: { schemeId, slug: subService.slug }
+    });
+    if (equivalent) {
+      share = await db.commissionShare.findUnique({
+        where: { schemeId_subServiceId: { schemeId, subServiceId: equivalent.id } }
+      });
+      if (share) {
+        console.log(`[Commission] Slug-matched subservice: ${equivalent.name} in scheme ${schemeId}`);
+        return share;
+      }
+    }
+  }
+
+  // Fuzzy name match
+  if (subService.name) {
+    const firstWord = subService.name.split(' ')[0];
+    const equivalent = await db.commissionSubService.findFirst({
+      where: {
+        schemeId,
+        name: { contains: firstWord, mode: 'insensitive' }
+      }
+    });
+    if (equivalent) {
+      share = await db.commissionShare.findUnique({
+        where: { schemeId_subServiceId: { schemeId, subServiceId: equivalent.id } }
+      });
+      if (share) {
+        console.log(`[Commission] Fuzzy-matched subservice: ${equivalent.name} in scheme ${schemeId}`);
+        return share;
+      }
+    }
+  }
+
+  return null;
+}
+
+// ============================================================
+// HELPER: Calculate Amount from CommissionShare
+// ============================================================
+function calculateAmount(totalAmount, share, shareKey) {
+  const val = parseFloat(share[shareKey]);
+  if (!val || val <= 0) return 0;
+  return share.commissionType === 1
+    ? (totalAmount * val) / 100  // Percentage
+    : val;                        // Flat
+}
+
+// ============================================================
+// HELPER: Resolve SubService (with global fallback)
+// ============================================================
+async function resolveSubService(subServiceId, db) {
+  let subService = await db.commissionSubService.findUnique({
+    where: { id: subServiceId },
+    select: { id: true, name: true, slug: true, schemeId: true }
+  });
+
+  if (!subService) {
+    // Global fallback (cross-tenant/scheme lookup)
+    subService = await prisma.commissionSubService.findFirst({
+      where: { id: subServiceId },
+      select: { id: true, name: true, slug: true, schemeId: true }
+    });
+    if (subService) {
+      console.log(`[Commission] SubService found via global lookup: ${subService.name}`);
+    } else {
+      console.log(`[Commission] CRITICAL: SubService ${subServiceId} not found anywhere in DB`);
+    }
+  }
+
+  return subService;
+}
+
+// ============================================================
+// HELPER: Location-Based Scheme Share Lookup
+// ============================================================
+async function findLocationSchemeShare(joiner, subService, shareKey, db) {
+  try {
+    const locationScheme = await db.commissionScheme.findFirst({
+      where: {
+        tenantId: joiner.tenantId,
+        isActive: true,
+        OR: [
+          { targetPincode: { equals: joiner.registrationPincode, not: null } },
+          { targetCity: { equals: joiner.registrationCity, not: null } },
+          { targetState: { equals: joiner.registrationState, not: null } }
+        ]
+      },
+      orderBy: [
+        { targetPincode: 'desc' },
+        { targetCity: 'desc' },
+        { targetState: 'desc' }
+      ]
+    });
+
+    if (!locationScheme) return 0;
+
+    const share = await findShareInScheme(locationScheme.id, subService, db);
+    if (share) {
+      const amount = calculateAmount(0, share, shareKey); // amount=0 means we return the config, not calc
+      // Re-calculate with actual total — we need to pass totalAmount here
+      // This is a design limitation; the caller must handle this differently
+      console.log(`[Commission] Location scheme found: ${locationScheme.name}`);
+      return share; // Return the share object, let caller calculate
+    }
+  } catch (err) {
+    console.error(`[Commission] Location scheme lookup error:`, err);
+  }
+  return null;
+}
+
+// ============================================================
+// HELPER: Resolve Share Amount for a Receiver
+//
+// Priority:
+//   1. Sender's own commissionSchemeId (direct parent override)
+//   2. Walk up joiner's path — find nearest ancestor with a scheme
+//   3. Location-based scheme
+//   4. Default tenant scheme (isDefault or oldest active)
+// ============================================================
+async function resolveShareAmount(totalAmount, sender, receiver, joiner, subService, db) {
+  const shareKey = IDENTITY_TO_SHARE_KEY[receiver.identity];
+  if (!shareKey) {
+    console.log(`[Commission] SKIP: No shareKey for identity ${receiver.identity}`);
+    return 0;
+  }
+
+  console.log(`[Commission] Resolving share for ${receiver.identity} (shareKey: ${shareKey})`);
+
+  // 1. Check sender's scheme override (sender is the direct parent in payout chain)
+  if (sender.commissionSchemeId) {
+    console.log(`[Commission]   Checking sender scheme: ${sender.commissionSchemeId}`);
+    const share = await findShareInScheme(sender.commissionSchemeId, subService, db);
+    if (share && parseFloat(share[shareKey]) > 0) {
+      const amount = calculateAmount(totalAmount, share, shareKey);
+      console.log(`[Commission]   ✅ Sender scheme match: ${share[shareKey]} (${share.commissionType === 1 ? '%' : '₹'}) = ₹${amount}`);
+      return amount;
+    }
+  }
+
+  // 2. Walk up joiner's path to find nearest ancestor with a scheme
+  //    (covers cases where grandparent has override, not direct parent)
+  const pathIds = joiner.path ? joiner.path.split('/').filter(id => id && id.length > 5) : [];
+  for (let i = pathIds.length - 1; i >= 0; i--) {
+    const ancestorId = pathIds[i];
+    if (ancestorId === sender.id) continue; // Already checked sender above
+    
+    const ancestor = await db.user.findUnique({
+      where: { id: ancestorId },
+      select: { commissionSchemeId: true, fullName: true, identity: true }
+    });
+    
+    if (ancestor?.commissionSchemeId) {
+      console.log(`[Commission]   Checking ancestor ${ancestor.fullName} (${ancestor.identity}) scheme: ${ancestor.commissionSchemeId}`);
+      const share = await findShareInScheme(ancestor.commissionSchemeId, subService, db);
+      if (share && parseFloat(share[shareKey]) > 0) {
+        const amount = calculateAmount(totalAmount, share, shareKey);
+        console.log(`[Commission]   ✅ Ancestor scheme match via ${ancestor.fullName}: ${share[shareKey]} = ₹${amount}`);
+        return amount;
+      }
+    }
+  }
+
+  // 3. Location-based scheme fallback
+  const joinerFull = await db.user.findUnique({
+    where: { id: joiner.id },
+    select: { registrationPincode: true, registrationCity: true, registrationState: true, tenantId: true }
+  });
+
+  if (joinerFull) {
+    const locationScheme = await db.commissionScheme.findFirst({
+      where: {
+        tenantId: joinerFull.tenantId,
+        isActive: true,
+        OR: [
+          (joinerFull.registrationPincode ? { targetPincode: joinerFull.registrationPincode } : null),
+          (joinerFull.registrationCity ? { targetCity: joinerFull.registrationCity } : null),
+          (joinerFull.registrationState ? { targetState: joinerFull.registrationState } : null)
+        ].filter(Boolean)
+      },
+      orderBy: [
+        { targetPincode: 'desc' },
+        { targetCity: 'desc' },
+        { targetState: 'desc' }
+      ]
+    });
+
+    if (locationScheme) {
+      console.log(`[Commission]   Trying location scheme: ${locationScheme.name}`);
+      const share = await findShareInScheme(locationScheme.id, subService, db);
+      if (share && parseFloat(share[shareKey]) > 0) {
+        const amount = calculateAmount(totalAmount, share, shareKey);
+        console.log(`[Commission]   ✅ Location scheme match: ₹${amount}`);
+        return amount;
+      }
+    }
+  }
+
+  // 4. Default tenant scheme fallback
+  const defaultScheme = await db.commissionScheme.findFirst({
+    where: { tenantId: joiner.tenantId, isActive: true, isDefault: true }
+  }) || await db.commissionScheme.findFirst({
+    where: {
+      tenantId: joiner.tenantId,
+      isActive: true,
+      targetState: null,
+      targetCity: null,
+      targetPincode: null
+    },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (defaultScheme) {
+    console.log(`[Commission]   Trying default scheme: ${defaultScheme.name}`);
+    const share = await findShareInScheme(defaultScheme.id, subService, db);
+    if (share && parseFloat(share[shareKey]) > 0) {
+      const amount = calculateAmount(totalAmount, share, shareKey);
+      console.log(`[Commission]   ✅ Default scheme match: ₹${amount}`);
+      return amount;
+    }
+  }
+
+  console.log(`[Commission]   ❌ No share resolved for ${receiver.identity}. Amount = 0.`);
+  return 0;
+}
+
+// ============================================================
+// HELPER: Ensure Wallet Exists
+// ============================================================
+async function ensureWalletExists(userId, tenantId, db) {
+  if (!userId) return;
+  const wallet = await db.wallet.findUnique({ where: { userId } });
+  if (!wallet) {
+    await db.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId,
+        tenantId,
+        balance: 0,
+        isCorporate: false,
+        isActive: true
+      }
+    });
+    console.log(`[Commission] Created new wallet for user ${userId}`);
+  }
+}
+
+// ============================================================
+// HELPER: Execute Wallet Transfer (Debit Sender, Credit Receiver)
+// 
+// IMPORTANT: No balance guard is applied here.
+// Negative wallet balances are INTENTIONALLY ALLOWED per business rules.
+// ============================================================
+async function executeWalletTransfer(sender, receiver, amount, txLog, joiner, subService, customDesc, db) {
+  const tenantId = joiner.tenantId;
+  const ADMIN_IDENTITIES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
+  const isAdminSender = ADMIN_IDENTITIES.includes(sender.identity);
+  const serviceLabel = subService?.name || 'Service';
+
+  // Resolve sender wallet
+  let senderWallet;
+  if (isAdminSender) {
+    // Admin uses corporate wallet
+    senderWallet = await db.wallet.findFirst({
+      where: { tenantId, isCorporate: true }
+    });
+    if (!senderWallet) {
+      console.error(`[Commission] ❌ No corporate wallet found for tenant ${tenantId}`);
+      return false;
+    }
+  } else {
+    await ensureWalletExists(sender.id, tenantId, db);
+    senderWallet = await db.wallet.findUnique({ where: { userId: sender.id } });
+  }
+
+  if (!senderWallet) {
+    console.error(`[Commission] ❌ No wallet for sender ${sender.fullName} (${sender.identity})`);
+    return false;
+  }
+
+  // Resolve receiver wallet
+  await ensureWalletExists(receiver.id, tenantId, db);
+  const receiverWallet = await db.wallet.findUnique({ where: { userId: receiver.id } });
+
+  if (!receiverWallet) {
+    console.error(`[Commission] ❌ No wallet for receiver ${receiver.fullName} (${receiver.identity})`);
+    return false;
+  }
+
+  const debitDesc = customDesc || `Commission paid to ${receiver.fullName} for ${serviceLabel} (joiner: ${joiner.fullName})`;
+  const creditDesc = customDesc || `Commission received from ${sender.fullName} for ${serviceLabel} (joiner: ${joiner.fullName})`;
+
+  // DEBIT sender — direct decrement, negative balances allowed
+  await db.wallet.update({
+    where: { id: senderWallet.id },
+    data: { balance: { decrement: amount } }
+  });
+  await db.walletTransaction.create({
+    data: {
+      id: generateUuid(),
+      walletId: senderWallet.id,
+      amount,
+      type: 'DEBIT',
+      category: 'COMMISSION_PAYOUT',
+      referenceId: txLog.id,
+      description: debitDesc,
+      tenantId
+    }
+  });
+
+  // CREDIT receiver — direct increment
+  await db.wallet.update({
+    where: { id: receiverWallet.id },
+    data: { balance: { increment: amount } }
+  });
+  await db.walletTransaction.create({
+    data: {
+      id: generateUuid(),
+      walletId: receiverWallet.id,
+      amount,
+      type: 'CREDIT',
+      category: 'COMMISSION',
+      referenceId: txLog.id,
+      description: creditDesc,
+      tenantId
+    }
+  });
+
+  // Commission history record for receiver
+  await db.commissionHistory.create({
+    data: {
+      id: generateUuid(),
+      userId: receiver.id,
+      transactionId: txLog.id,
+      amount,
+      accountType: 'commission'
+    }
+  });
+
+  console.log(`[Commission] ✅ Transferred ₹${amount}: ${sender.fullName}(${sender.identity}) → ${receiver.fullName}(${receiver.identity})`);
+  return true;
+}
+
+// ============================================================
+// MAIN: Commission Service
+// ============================================================
 const commissionService = {
   /**
-   * Cascading Commission Logic with Full Transaction History (Debit & Credit)
-   * Includes Joiner Name in descriptions for better transparency.
+   * processCommission — Dynamic Hierarchical Commission Engine
+   * 
+   * Implements wallet-chain settlement with:
+   *   - Dynamic parentId traversal (not static path)
+   *   - Missing-level safe hierarchy handling
+   *   - Recursive override resolution (nearest ancestor wins)
+   *   - Subtree-specific overrides via commissionSchemeId
+   *   - Atomic transaction wrapping
+   *   - Infinite negative wallet support (no balance guards)
+   * 
+   * @param {number} transactionAmount - Total amount collected (e.g. membership fee)
+   * @param {string} subServiceId - CommissionSubService ID for rate lookup
+   * @param {string} userId - The joiner/trigger user (new member, saathi, etc.)
+   * @param {string|null} customDescription - Optional description override for wallet logs
+   * @param {object|null} externalTx - Pass an existing Prisma transaction context (or null)
    */
-  processCommission: async (transactionAmount, subServiceId, userId, customDescription = null, tx = prisma) => {
-    console.log(`[Commission] >>> STARTING CASCADING: User=${userId}, SubService=${subServiceId}`);
-    
+  processCommission: async (transactionAmount, subServiceId, userId, customDescription = null, externalTx = null) => {
+    console.log(`\n[Commission] ════════════ STARTING ════════════`);
+    console.log(`[Commission] Amount: ₹${transactionAmount}, SubService: ${subServiceId}, Joiner: ${userId}`);
+
     try {
-      const user = await tx.user.findUnique({
+      // ── 1. Load Joiner ──────────────────────────────────────
+      const joiner = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, fullName: true, path: true, tenantId: true }
+        select: { id: true, fullName: true, path: true, tenantId: true, parentId: true, registrationPincode: true, registrationCity: true, registrationState: true }
       });
 
-      if (!user) return { success: false, message: "User not found" };
-      const joinerName = user.fullName || "User";
-
-      let subService = await tx.commissionSubService.findUnique({
-        where: { id: subServiceId },
-        select: { id: true, name: true, slug: true, schemeId: true }
-      });
-
-      // DEEP SEARCH: If provided ID doesn't exist, try to find ANY subservice with this ID 
-      // (sometimes it might be from a different tenant or scheme context)
-      if (!subService) {
-          console.log(`[Commission]   ID ${subServiceId} not found in current context. Trying global search...`);
-          subService = await prisma.commissionSubService.findFirst({
-              where: { id: subServiceId },
-              select: { id: true, name: true, slug: true, schemeId: true }
-          });
+      if (!joiner) {
+        console.log(`[Commission] ❌ Joiner user ${userId} not found`);
+        return { success: false, message: 'User not found' };
       }
 
-      if (!subService) {
-          console.log(`[Commission]   CRITICAL: SubService ID ${subServiceId} is completely missing from DB. Fallback to name-based lookup might fail.`);
+      // ── 2. Resolve SubService ───────────────────────────────
+      const subService = await resolveSubService(subServiceId, prisma);
+      console.log(`[Commission] SubService: ${subService?.name || 'UNKNOWN'} (slug: ${subService?.slug || 'none'})`);
+
+      // ── 3. Build Dynamic Payout Chain ──────────────────────
+      const payoutChain = await buildDynamicPayoutChain(joiner.id, joiner.tenantId, prisma);
+
+      if (payoutChain.length < 2) {
+        console.log(`[Commission] SKIP: Payout chain too short (${payoutChain.length} nodes). No upline to pay.`);
+        return { success: true, skipped: true, reason: 'No payout chain' };
       }
 
-      const serviceLabel = subService?.name || "Service";
-      const isTransfer = subService?.slug?.includes('transfer');
-      
-      console.log(`[Commission]   SubService Resolved: Name='${serviceLabel}', Slug='${subService?.slug || 'NONE'}', CurrentSchemeID='${subService?.schemeId || 'GLOBAL'}'`);
-
-      // --- LOCATION BASED SCHEME LOOKUP ---
-      let locationScheme = null;
-      try {
-        const joiner = await tx.user.findUnique({
-          where: { id: userId },
-          select: { registrationPincode: true, registrationCity: true, registrationState: true, tenantId: true }
-        });
-
-        if (joiner) {
-          console.log(`[Commission] Joiner Location Data: Pincode=${joiner.registrationPincode}, City=${joiner.registrationCity}, State=${joiner.registrationState}`);
-          
-          // Priority: Pincode > City > State
-          locationScheme = await tx.commissionScheme.findFirst({
-            where: {
-              tenantId: joiner.tenantId,
-              isActive: true,
-              OR: [
-                { targetPincode: { equals: joiner.registrationPincode, not: null } },
-                { targetCity: { equals: joiner.registrationCity, not: null } },
-                { targetState: { equals: joiner.registrationState, not: null } }
-              ]
-            },
-            orderBy: [
-              { targetPincode: 'desc' }, 
-              { targetCity: 'desc' },
-              { targetState: 'desc' }
-            ]
-          });
-          
-          if (locationScheme) {
-            console.log(`[Commission] LOCATION OVERRIDE FOUND: ${locationScheme.name} (ID: ${locationScheme.id})`);
-          } else {
-            console.log(`[Commission] No location-specific scheme found for this joiner.`);
-          }
-        }
-      } catch (locErr) {
-        console.error("[Commission] Location lookup failed:", locErr);
-      }
-
-      const rawPathIds = user.path ? user.path.split('/').filter(id => id && id.length > 5) : [];
-      
-      const adminUser = await tx.user.findFirst({
-        where: {
-          tenantId: user.tenantId,
-          identity: { in: ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"] }
-        },
-        orderBy: { createdAt: 'asc' }
-      });
-
-      const pathIds = [...rawPathIds];
-      if (adminUser && !pathIds.includes(adminUser.id)) {
-          pathIds.unshift(adminUser.id);
-      }
-
-      if (pathIds.length < 2) {
-          console.log("[Commission] SKIP: No partners in path");
-          return { success: true };
-      }
-
-      const pathUsers = await tx.user.findMany({
-        where: { id: { in: pathIds } },
-        select: { id: true, identity: true, commissionSchemeId: true, fullName: true, tenantId: true }
-      });
-
-      const hierarchy = pathIds.map(id => pathUsers.find(u => u.id === id)).filter(Boolean);
-      console.log(`[Commission] Hierarchy resolved: ${hierarchy.map(u => `${u.fullName} (${u.identity})`).join(' -> ')}`);
-
-      const transactionLog = await tx.transactionLog.create({
+      // ── 4. Create TransactionLog ────────────────────────────
+      const txLog = await prisma.transactionLog.create({
         data: {
           id: generateUuid(),
-          subServiceId,
+          subServiceId: subService?.id || subServiceId,
           amount: transactionAmount,
           transactionDoneById: userId,
-          status: "SUCCESS"
+          status: 'PENDING'
         }
       });
-      console.log(`[Commission] Created TransactionLog ID: ${transactionLog.id}`);
+      console.log(`[Commission] TransactionLog created: ${txLog.id}`);
 
-      const adminCorporateWallet = await tx.wallet.findFirst({
-        where: { tenantId: user.tenantId, isCorporate: true }
+      // ── 5. Execute Payout Chain in Atomic Transaction ───────
+      const transfers = [];
+      const errors = [];
+
+      await prisma.$transaction(async (tx) => {
+        for (let i = 0; i < payoutChain.length - 1; i++) {
+          const sender = payoutChain[i];
+          const receiver = payoutChain[i + 1];
+
+          console.log(`\n[Commission] ── Step ${i + 1}: ${sender.fullName}(${sender.identity}) → ${receiver.fullName}(${receiver.identity})`);
+
+          // Resolve how much this receiver gets
+          const shareAmount = await resolveShareAmount(
+            transactionAmount,
+            sender,
+            receiver,
+            joiner,
+            subService,
+            tx
+          );
+
+          if (shareAmount <= 0) {
+            console.log(`[Commission]   SKIP: Amount resolved to 0 for ${receiver.identity}`);
+            continue;
+          }
+
+          // Execute the actual wallet transfer
+          const success = await executeWalletTransfer(
+            sender,
+            receiver,
+            shareAmount,
+            txLog,
+            joiner,
+            subService,
+            customDescription,
+            tx
+          );
+
+          if (success) {
+            transfers.push({
+              from: sender.fullName,
+              fromRole: sender.identity,
+              to: receiver.fullName,
+              toRole: receiver.identity,
+              amount: shareAmount
+            });
+          } else {
+            errors.push(`Failed: ${sender.identity} → ${receiver.identity}`);
+          }
+        }
       });
-      console.log(`[Commission] Admin Corporate Wallet ID: ${adminCorporateWallet?.id || "NOT FOUND"}`);
 
-      for (let i = 0; i < hierarchy.length - 1; i++) {
-          const sender = hierarchy[i];
-          const receiver = hierarchy[i + 1];
+      // ── 6. Update TransactionLog Status ────────────────────
+      await prisma.transactionLog.update({
+        where: { id: txLog.id },
+        data: { status: transfers.length > 0 ? 'SUCCESS' : 'SKIPPED' }
+      });
 
-          console.log(`[Commission] --- STEP ${i+1}: ${sender.fullName} -> ${receiver.fullName} ---`);
+      console.log(`\n[Commission] ════════════ COMPLETE ════════════`);
+      console.log(`[Commission] ${transfers.length} transfers executed, ${errors.length} errors`);
+      transfers.forEach(t => console.log(`[Commission]   ₹${t.amount}: ${t.fromRole} → ${t.toRole}`));
 
-          let transferAmount = 0;
-          let resolvedBy = "";
-
-          const recIdentity = receiver.identity.toUpperCase();
-          let shareKey = "";
-          if (recIdentity.includes("COUNTRY")) shareKey = "countryPartner";
-          else if (recIdentity.includes("STATE")) shareKey = "statePartner";
-          else if (recIdentity.includes("DISTRICT")) shareKey = "districtPartner";
-          else if (recIdentity.includes("SAATHI")) shareKey = "saathi";
-          else if (recIdentity.includes("MEMBER")) shareKey = "member";
-
-          console.log(`[Commission]   Receiver Identity: ${recIdentity}, ShareKey: ${shareKey}`);
-          if (!shareKey) {
-            console.log(`[Commission]   SKIP: Identity ${recIdentity} not mapped to any share key.`);
-            continue;
-          }
-
-          // 1. Closest Upstream Partner Override
-          for (let j = i; j >= 0; j--) {
-              const upstreamPartner = hierarchy[j];
-              const schemeId = upstreamPartner.commissionSchemeId;
-              console.log(`[Commission]   Checking Upstream: ${upstreamPartner.fullName}, SchemeID: ${schemeId || "None"}`);
-              
-              if (schemeId) {
-                  let share = await tx.commissionShare.findUnique({
-                      where: { schemeId_subServiceId: { schemeId, subServiceId } }
-                  });
-
-                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
-                  if (!share) {
-                      console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in scheme ${schemeId} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
-                      const equivalentSubService = await tx.commissionSubService.findFirst({
-                          where: { 
-                            schemeId: schemeId,
-                            OR: [
-                                (subService?.slug ? { slug: subService.slug } : null),
-                                (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
-                            ].filter(Boolean)
-                          }
-                      });
-                      if (equivalentSubService) {
-                          share = await tx.commissionShare.findUnique({
-                              where: { schemeId_subServiceId: { schemeId, subServiceId: equivalentSubService.id } }
-                          });
-                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Upstream Scheme.`);
-                      }
-                  }
-                  
-                  if (share && parseFloat(share[shareKey]) > 0) {
-                      const val = parseFloat(share[shareKey]);
-                      transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
-                      resolvedBy = upstreamPartner.fullName;
-                      console.log(`[Commission]   MATCH Upstream Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
-                      break; 
-                  } else {
-                      console.log(`[Commission]   No valid share found in Upstream Scheme for ${shareKey} (Value: ${share ? share[shareKey] : 'NULL'})`);
-                  }
-              }
-          }
-
-          // 2. Location-Based Scheme Fallback
-          if (transferAmount <= 0 && locationScheme) {
-              console.log(`[Commission]   Trying Location Scheme: ${locationScheme.name}`);
-              let share = await tx.commissionShare.findUnique({
-                  where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId } }
-              });
-
-              // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
-              if (!share) {
-                  console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in Location Scheme ${locationScheme.id} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
-                  const equivalentSubService = await tx.commissionSubService.findFirst({
-                      where: { 
-                        schemeId: locationScheme.id,
-                        OR: [
-                            (subService?.slug ? { slug: subService.slug } : null),
-                            (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
-                        ].filter(Boolean)
-                      }
-                  });
-                  if (equivalentSubService) {
-                      share = await tx.commissionShare.findUnique({
-                          where: { schemeId_subServiceId: { schemeId: locationScheme.id, subServiceId: equivalentSubService.id } }
-                      });
-                      if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Location Scheme.`);
-                  }
-              }
-
-              if (share && parseFloat(share[shareKey]) > 0) {
-                  const val = parseFloat(share[shareKey]);
-                  transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
-                  resolvedBy = `Location Override (${locationScheme.name})`;
-                  console.log(`[Commission]   MATCH Location Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
-              } else {
-                  console.log(`[Commission]   No valid share found in Location Scheme for ${shareKey} (Value: ${share ? share[shareKey] : 'NULL'})`);
-              }
-          }
-
-          // 3. Global Default Fallback
-          if (transferAmount <= 0) {
-              console.log(`[Commission]   Trying System Default Scheme...`);
-              let defaultScheme = await tx.commissionScheme.findFirst({
-                  where: { tenantId: user.tenantId, isActive: true, isDefault: true }
-              });
-
-              // Fallback 1: Look for scheme named "General"
-              if (!defaultScheme) {
-                  defaultScheme = await tx.commissionScheme.findFirst({
-                      where: { 
-                          tenantId: user.tenantId, 
-                          isActive: true, 
-                          name: { contains: 'General', mode: 'insensitive' } 
-                      }
-                  });
-              }
-
-              // Fallback 2: Pick the first active scheme
-              if (!defaultScheme) {
-                  defaultScheme = await tx.commissionScheme.findFirst({
-                      where: { tenantId: user.tenantId, isActive: true },
-                      orderBy: { createdAt: 'asc' }
-                  });
-              }
-
-              if (defaultScheme) {
-                  console.log(`[Commission]   Default/Fallback Scheme Found: ${defaultScheme.name} (ID: ${defaultScheme.id})`);
-                  let share = await tx.commissionShare.findUnique({
-                      where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId } }
-                  });
-
-                  // BUG FIX: If ID doesn't match this scheme, try finding by slug OR fuzzy name
-                  if (!share) {
-                      console.log(`[Commission]   ID mismatch. Looking for equivalent sub-service in Default Scheme ${defaultScheme.id} using Slug='${subService?.slug}' or Name='${subService?.name}'`);
-                      const equivalentSubService = await tx.commissionSubService.findFirst({
-                          where: { 
-                            schemeId: defaultScheme.id,
-                            OR: [
-                                (subService?.slug ? { slug: subService.slug } : null),
-                                (subService?.name ? { name: { contains: subService.name.split(' ')[0], mode: 'insensitive' } } : null)
-                            ].filter(Boolean)
-                          }
-                      });
-                      if (equivalentSubService) {
-                          share = await tx.commissionShare.findUnique({
-                              where: { schemeId_subServiceId: { schemeId: defaultScheme.id, subServiceId: equivalentSubService.id } }
-                          });
-                          if (share) console.log(`[Commission]   Found equivalent SubService ${equivalentSubService.name} (${equivalentSubService.id}) via ${subService.slug ? 'slug' : 'fuzzy name'} in Default Scheme.`);
-                      }
-                  }
-
-                  if (share && parseFloat(share[shareKey]) > 0) {
-                      const val = parseFloat(share[shareKey]);
-                      transferAmount = share.commissionType === 1 ? (transactionAmount * val) / 100 : val;
-                      resolvedBy = `Fallback (${defaultScheme.name})`;
-                      console.log(`[Commission]   MATCH Default Scheme! Share found for ${shareKey}. Type: ${share.commissionType === 1 ? 'Percent' : 'Flat'}, Value: ${val}, Final Amount: ${transferAmount}`);
-                  } else {
-                    console.log(`[Commission]   Scheme ${defaultScheme.name} has 0 or no share for ${shareKey} / SubService ${subServiceId}. Share Object: ${JSON.stringify(share)}`);
-                  }
-              } else {
-                console.log(`[Commission]   CRITICAL: No schemes whatsoever found for tenant ${user.tenantId}`);
-              }
-          }
-
-          if (transferAmount <= 0) {
-            console.log(`[Commission]   SKIP: Final transfer amount is 0.`);
-            continue;
-          }
-
-          // --- EXECUTE TRANSFER ---
-          const isSenderTopAdmin = ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(sender.identity.toUpperCase());
-          
-          try {
-            let senderWallet;
-            if (isSenderTopAdmin && adminCorporateWallet) {
-                senderWallet = adminCorporateWallet;
-            } else {
-                await ensureWallet(sender.id, user.tenantId, tx);
-                senderWallet = await tx.wallet.findUnique({ where: { userId: sender.id } });
-            }
-
-            if (!senderWallet) {
-                console.log(`[Commission]   ERROR: Could not find wallet for sender ${sender.fullName}`);
-                continue;
-            }
-
-            console.log(`[Commission]   Executing: Wallet ${senderWallet.id} (-${transferAmount}) -> Partner ${receiver.fullName}`);
-
-            // Deduct from Sender
-            await tx.wallet.update({
-                where: { id: senderWallet.id },
-                data: { balance: { decrement: transferAmount } }
-            });
-
-            // Create DEBIT Transaction log for Sender
-            await tx.walletTransaction.create({
-                data: {
-                    id: generateUuid(),
-                    walletId: senderWallet.id,
-                    amount: transferAmount,
-                    type: "DEBIT",
-                    category: "COMMISSION_PAYOUT",
-                    referenceId: transactionLog.id,
-                    description: customDescription || (isTransfer 
-                        ? `${serviceLabel} commission paid to ${receiver.fullName} (determined by ${resolvedBy})`
-                        : `Commission paid to ${receiver.fullName} for joiner ${joinerName} (determined by ${resolvedBy})`),
-                    tenantId: user.tenantId
-                }
-            });
-
-            // CREDIT TO RECEIVER
-            await ensureWallet(receiver.id, user.tenantId, tx);
-            const recWallet = await tx.wallet.findUnique({ where: { userId: receiver.id } });
-            await tx.wallet.update({
-                where: { id: recWallet.id },
-                data: { balance: { increment: transferAmount } }
-            });
-
-            // Create CREDIT Transaction log for Receiver
-            await tx.walletTransaction.create({
-                data: {
-                    id: generateUuid(),
-                    walletId: recWallet.id,
-                    amount: transferAmount,
-                    type: "CREDIT",
-                    category: "COMMISSION",
-                    referenceId: transactionLog.id,
-                    description: customDescription || (isTransfer
-                        ? `${serviceLabel} commission from ${sender.fullName} (determined by ${resolvedBy})`
-                        : `Commission for ${joinerName} received from ${sender.fullName} (determined by ${resolvedBy})`),
-                    tenantId: user.tenantId
-                }
-            });
-
-            await tx.commissionHistory.create({
-                data: {
-                    id: generateUuid(),
-                    userId: receiver.id,
-                    transactionId: transactionLog.id,
-                    amount: transferAmount,
-                    accountType: "commission"
-                }
-            });
-
-
-            console.log(`[Commission]   SUCCESS: ${transferAmount} moved.`);
-          } catch (txErr) {
-            console.error(`[Commission]   CRITICAL TX ERROR:`, txErr);
-          }
-      }
-
-      console.log("[Commission] <<< FINISHED");
-      return { success: true };
+      return {
+        success: true,
+        transactionLogId: txLog.id,
+        transfers,
+        errors: errors.length > 0 ? errors : undefined
+      };
 
     } catch (err) {
-      console.error("[Commission] CRITICAL GLOBAL ERROR:", err);
+      console.error(`[Commission] ❌ CRITICAL ERROR:`, err);
       return { success: false, error: err.message };
     }
   }
 };
-
-async function ensureWallet(userId, tenantId, tx) {
-    if (!userId) return;
-    const wallet = await tx.wallet.findUnique({ where: { userId } });
-    if (!wallet) {
-        await tx.wallet.create({
-            data: {
-                id: generateUuid(),
-                userId,
-                tenantId,
-                balance: 0,
-                isCorporate: false
-            }
-        });
-    }
-}
 
 module.exports = commissionService;

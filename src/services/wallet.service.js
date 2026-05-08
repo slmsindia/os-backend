@@ -237,6 +237,12 @@ const walletService = {
 
   /**
    * Atomically deduct balance from a user's wallet (Shared or Individual)
+   * 
+   * ⚠️  IMPORTANT: This function enforces a MINIMUM BALANCE check.
+   * Do NOT use this function in commission distribution chains.
+   * Commission payouts must allow NEGATIVE wallet balances.
+   * Use commission.service.js executeWalletTransfer() for commission chains.
+   * 
    * @param {string} userId - Current user ID
    * @param {number|string} amount - Amount to deduct
    * @param {string} tenantId - Tenant ID
@@ -392,6 +398,60 @@ const walletService = {
     }
   },
   /**
+   * Commission-safe direct wallet transfer (NO balance guard)
+   * 
+   * Use this when commission business logic requires wallet transfers
+   * that must succeed even if sender balance goes negative.
+   * 
+   * @param {string} fromWalletId - Sender wallet ID
+   * @param {string} toWalletId - Receiver wallet ID
+   * @param {number} amount - Amount to transfer
+   * @param {object} txnData - { referenceId, description, category, tenantId }
+   * @param {object} db - Prisma client or transaction object
+   */
+  transferNoGuard: async (fromWalletId, toWalletId, amount, txnData, db = null) => {
+    const client = db || prisma;
+    const { generateUuid } = require('../utils/id');
+    const { referenceId, description, category = 'COMMISSION', tenantId } = txnData;
+
+    // Debit sender — no balance check, negative allowed
+    await client.wallet.update({
+      where: { id: fromWalletId },
+      data: { balance: { decrement: amount } }
+    });
+    await client.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: fromWalletId,
+        amount,
+        type: 'DEBIT',
+        category: `${category}_PAYOUT`,
+        referenceId,
+        description,
+        tenantId
+      }
+    });
+
+    // Credit receiver
+    await client.wallet.update({
+      where: { id: toWalletId },
+      data: { balance: { increment: amount } }
+    });
+    await client.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: toWalletId,
+        amount,
+        type: 'CREDIT',
+        category,
+        referenceId,
+        description,
+        tenantId
+      }
+    });
+  },
+
+  /**
    * Automatically process commission for services like IME/Prabhu
    */
   processServiceCommission: async (serviceType, tenantId, referenceId, userId, tx) => {
@@ -459,7 +519,7 @@ const walletService = {
       if (subService && userId) {
         console.log(`[WalletService] Triggering cascading commission for ${serviceType} (slug: ${slug})`);
         const commissionDesc = `${serviceType} Transfer Commission (Ref: ${referenceId})`;
-        await commissionService.processCommission(config.amount, subService.id, userId, commissionDesc, db);
+        await commissionService.processCommission(config.amount, subService.id, userId, commissionDesc);
       } else {
         console.log(`[WalletService] Cascading commission skipped: subService not found for slug ${slug} or userId missing`);
       }
