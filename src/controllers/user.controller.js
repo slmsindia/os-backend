@@ -63,7 +63,21 @@ const userController = {
           saathiProfile: true,
           partnerProfile: true,
           // NEW: Unified application history
-          applications: { orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, targetIdentity: true, status: true, paymentStatus: true, paymentMethod: true, createdAt: true, approvedAt: true } }
+          applications: { 
+            orderBy: { createdAt: 'desc' }, 
+            take: 10, 
+            select: { 
+              id: true, 
+              targetIdentity: true, 
+              status: true, 
+              rejectionReason: true,
+              paymentStatus: true, 
+              paymentMethod: true, 
+              submittedData: true,
+              createdAt: true, 
+              approvedAt: true 
+            } 
+          }
         }
       });
 

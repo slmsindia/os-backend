@@ -1912,8 +1912,12 @@ model Application {
 
   user              User     @relation("AppTarget",  fields: [userId],      references: [id])
   creator           User     @relation("AppCreator", fields: [createdById], references: [id])
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
 
-
+  // NEW: Back-references for layered profiles
+  memberProfile     MemberProfile?
+  saathiProfile     SaathiProfile?
+  partnerProfile    PartnerProfile?
 
   @@index([userId])
   @@index([tenantId])
@@ -1963,7 +1967,7 @@ model MemberProfile {
   updatedAt            DateTime @updatedAt
 
   user                 User        @relation(fields: [userId],       references: [id])
-  application          MembershipApplication? @relation(fields: [applicationId], references: [id])
+  application          Application? @relation(fields: [applicationId], references: [id])
 }
 
 // Layered Saathi Profile — created when SAATHI application is approved
@@ -1998,7 +2002,7 @@ model SaathiProfile {
   updatedAt         DateTime @updatedAt
 
   user              User        @relation(fields: [userId],       references: [id])
-  application       SaathiApplication? @relation(fields: [applicationId], references: [id])
+  application       Application? @relation(fields: [applicationId], references: [id])
 }
 
 // Layered Partner Profile — created when DP/SP/CP/WhiteLabel application is approved
@@ -2063,5 +2067,5 @@ model PartnerProfile {
   updatedAt            DateTime @updatedAt
 
   user                 User        @relation(fields: [userId],       references: [id])
-  application          BusinessPartnerApplication? @relation(fields: [applicationId], references: [id])
+  application          Application? @relation(fields: [applicationId], references: [id])
 }
