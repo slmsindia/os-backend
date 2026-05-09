@@ -195,7 +195,18 @@ const businessPartnerController = {
               identity: 'USER',  // Wait for admin approval
               tenantId,
               parentId: adminId,
-              path
+              path,
+              registrationState: body.liveState || null,
+              registrationCity: body.liveCity || null,
+              registrationPincode: body.livePincode || null,
+              registrationAddress: body.liveAddress ? {
+                addressType: "URBAN",
+                country: body.liveCountry || "India",
+                state: body.liveState,
+                city: body.liveCity,
+                pinCode: body.livePincode,
+                addressLine1: body.liveAddress
+              } : undefined
             }
           });
         }
@@ -453,6 +464,46 @@ const businessPartnerController = {
         })
       ]);
 
+      await prisma.businessProfile.upsert({
+        where: { userId: application.userId },
+        create: {
+          id: generateUuid(),
+          userId: application.userId,
+          applicationId: application.id,
+          businessName: application.businessName || 'Business',
+          brandName: application.brandName || application.businessName || 'Business',
+          ownerName: application.ownerName || '',
+          email: application.email || '',
+          contactNumber1: application.contactNumber1 || '',
+          contactNumber2: application.contactNumber2 || null,
+          companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
+          sectorId: application.sectorId,
+          businessType: Number(application.bussinessType || 0),
+          employerType: Number(application.employeerType || 0),
+          serviceCharges: Number(application.serviceCharges || 0),
+          gst: Number(application.gst || 0),
+          platformFees: Number(application.platformFees || 0),
+          address: application.addressJson || null
+        },
+        update: {
+          applicationId: application.id,
+          businessName: application.businessName || 'Business',
+          brandName: application.brandName || application.businessName || 'Business',
+          ownerName: application.ownerName || '',
+          email: application.email || '',
+          contactNumber1: application.contactNumber1 || '',
+          contactNumber2: application.contactNumber2 || null,
+          companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
+          sectorId: application.sectorId,
+          businessType: Number(application.bussinessType || 0),
+          employerType: Number(application.employeerType || 0),
+          serviceCharges: Number(application.serviceCharges || 0),
+          gst: Number(application.gst || 0),
+          platformFees: Number(application.platformFees || 0),
+          address: application.addressJson || null
+        }
+      });
+
       // 4. Ensure Personal Wallet exists for the new Business Partner
       try {
         const walletService = require("../services/wallet.service");
@@ -463,63 +514,78 @@ const businessPartnerController = {
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
-        const adminWallet = await prisma.wallet.findFirst({
-          where: { tenantId, isCorporate: true }
-        });
-
-        if (adminWallet && (application.amount > 0)) {
-          // 1. Credit the Admin Corporate Wallet for all methods
-          // (Wallet/Cash/Razorpay payments now all credit Admin only upon approval)
-          const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
-          const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
-
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.amount } }
-          });
-
-          await prisma.walletTransaction.create({
+        await prisma.$transaction(async (tx) => {
+          const adminWallet = await tx.wallet.findFirst({
+            where: { tenantId, isCorporate: true }
+          }) || await tx.wallet.create({
             data: {
               id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Business Partner fee received from user ${application.userId} (via ${modeLabel})`,
-              referenceId: application.id,
-              tenantId
-            }
-          });
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.amount} (via ${modeLabel})`);
-
-          // 2. Distribute
-          const subService = await prisma.commissionSubService.findFirst({
-            where: {
-              OR: [
-                { slug: "business_partner_fee" },
-                { name: { contains: "business", mode: "insensitive" } },
-                { name: { contains: "buisness", mode: "insensitive" } },
-                { name: { contains: "partner", mode: "insensitive" } }
-              ]
+              userId: null,
+              tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
             }
           });
 
-          if (subService) {
-             console.log(`[Commission] Found SubService for BP: ${subService.name}. Starting Cascading Distribution...`);
-             await commissionService.processCommission(
+          if (adminWallet && (application.amount > 0)) {
+            const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
+            const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
+
+            await tx.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: application.amount } }
+            });
+
+            await tx.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: application.amount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                status: "SUCCESS",
+                description: `Business Partner fee received from user ${application.userId} (via ${modeLabel})`,
+                referenceId: application.id,
+                tenantId,
+                metadata: {
+                  trigger: "BUSINESS_APPROVAL",
+                  applicationId: application.id,
+                  userId: application.userId
+                }
+              }
+            });
+
+            const subService = await tx.commissionSubService.findFirst({
+              where: {
+                OR: [
+                  { slug: "business_partner_fee" },
+                  { name: { contains: "business", mode: "insensitive" } },
+                  { name: { contains: "buisness", mode: "insensitive" } },
+                  { name: { contains: "partner", mode: "insensitive" } }
+                ]
+              }
+            });
+
+            if (subService) {
+              await commissionService.processCommission(
                 application.amount,
                 subService.id,
                 application.userId,
-                null  // customDescription — null uses auto-generated descriptions
-             );
-          } else {
-             console.log("[Commission] WARNING: business_partner_fee SubService not found. Cannot distribute commission.");
+                null,
+                tx,
+                {
+                  referenceId: application.id,
+                  referenceType: "BUSINESS_APPLICATION"
+                }
+              );
+            }
           }
-        }
+        });
       } catch (commErr) {
         console.error("BP commission failed:", commErr);
       }
-      // -------------------------------
       // -------------------------------
 
       res.json({ success: true, message: "Business Partner approved successfully. Identity updated to BUSINESS_PARTNER." });

@@ -208,35 +208,45 @@ const hierarchyController = {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       const isWhiteLabel = creatorIdentity === 'WHITE_LABEL_ADMIN';
 
-      // Base filter: for partners, they only see their own path
-      // for admins, they see the whole tenant
-      let where = {};
+      // 1. Define User Filter
+      let userWhere = {};
       if (!isSuperAdmin) {
-        where.tenantId = tenantId;
+        userWhere.tenantId = tenantId;
         if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity)) {
-          where.OR = [
+          userWhere.OR = [
             { id: currentUserId },
             { path: { contains: currentUserId } }
           ];
         }
       }
 
-      // Calculate Outstanding Credit (Total Negative Balance)
-      const walletSummary = await prisma.wallet.aggregate({
-        where: {
-          ...where,
-          balance: { lt: 0 }
-        },
-        _sum: { balance: true },
-        _count: { id: true }
-      });
+      // 2. Define Wallet Filter (Must use relation for path-based hierarchy)
+      let walletWhere = { balance: { lt: 0 } };
+      if (!isSuperAdmin) {
+        walletWhere.tenantId = tenantId;
+        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity)) {
+          walletWhere.user = {
+            OR: [
+              { id: currentUserId },
+              { path: { contains: currentUserId } }
+            ]
+          };
+        }
+      }
 
-      // Calculate User Counts by Identity
-      const identityCounts = await prisma.user.groupBy({
-        by: ['identity'],
-        where,
-        _count: { id: true }
-      });
+      // Calculate Metrics
+      const [walletSummary, identityCounts] = await Promise.all([
+        prisma.wallet.aggregate({
+          where: walletWhere,
+          _sum: { balance: true },
+          _count: { id: true }
+        }),
+        prisma.user.groupBy({
+          by: ['identity'],
+          where: userWhere,
+          _count: { id: true }
+        })
+      ]);
 
       const counts = Object.fromEntries(identityCounts.map(i => [i.identity, i._count.id]));
 
@@ -256,7 +266,7 @@ const hierarchyController = {
         }
       });
     } catch (err) {
-      console.error(err);
+      console.error("Hierarchy Summary Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },

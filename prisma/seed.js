@@ -134,6 +134,13 @@ async function main() {
     create: { id: generateUuid(), name: "India", code: "IN", isActive: true }
   });
 
+  const nepal = await prisma.country.upsert({
+    where: { name: "Nepal" },
+    update: {},
+    create: { id: generateUuid(), name: "Nepal", code: "NP", isActive: true }
+  });
+
+  // India -> Gujarat
   const gujarat = await prisma.state.upsert({
     where: { name: "Gujarat" },
     update: {},
@@ -145,9 +152,9 @@ async function main() {
     }
   });
 
-  const districts = ["Ahmedabad", "Surat", "Vadodara", "Rajkot"];
-  for (const dName of districts) {
-    const dist = await prisma.district.upsert({
+  const inDistricts = ["Ahmedabad", "Surat", "Vadodara", "Rajkot"];
+  for (const dName of inDistricts) {
+    await prisma.district.upsert({
       where: { name: dName },
       update: {},
       create: { 
@@ -157,19 +164,75 @@ async function main() {
         isActive: true 
       }
     });
+  }
 
-    await prisma.municipality.upsert({
-      where: { name: `${dName} Municipality` },
+  // Nepal -> Provinces (States)
+  const nepalProvinces = ["Koshi Province", "Madhesh Province", "Bagmati Province", "Gandaki Province", "Lumbini Province", "Karnali Province", "Sudurpashchim Province"];
+  for (const pName of nepalProvinces) {
+    const province = await prisma.state.upsert({
+      where: { name: pName },
       update: {},
       create: { 
         id: generateUuid(), 
-        name: `${dName} Municipality`, 
-        districtId: dist.id, 
+        name: pName, 
+        countryId: nepal.id, 
         isActive: true 
       }
     });
+
+    // Sample Districts for Bagmati
+    if (pName === "Bagmati Province") {
+      const bagmatiDistricts = ["Kathmandu", "Lalitpur", "Bhaktapur"];
+      for (const dName of bagmatiDistricts) {
+        const dist = await prisma.district.upsert({
+          where: { name: dName },
+          update: {},
+          create: { 
+            id: generateUuid(), 
+            name: dName, 
+            stateId: province.id, 
+            isActive: true 
+          }
+        });
+
+        // Municipalities for Kathmandu
+        if (dName === "Kathmandu") {
+          const ktmMunicipalities = ["Kathmandu Metropolitan City", "Kirtipur Municipality", "Budhanilkantha Municipality", "Tokha Municipality"];
+          for (const mName of ktmMunicipalities) {
+            await prisma.municipality.upsert({
+              where: { name: mName },
+              update: {},
+              create: { id: generateUuid(), name: mName, districtId: dist.id, isActive: true }
+            });
+          }
+        }
+        // Municipalities for Lalitpur
+        if (dName === "Lalitpur") {
+          const lalitMunicipalities = ["Lalitpur Metropolitan City", "Mahalaxmi Municipality", "Godawari Municipality"];
+          for (const mName of lalitMunicipalities) {
+            await prisma.municipality.upsert({
+              where: { name: mName },
+              update: {},
+              create: { id: generateUuid(), name: mName, districtId: dist.id, isActive: true }
+            });
+          }
+        }
+        // Municipalities for Bhaktapur
+        if (dName === "Bhaktapur") {
+          const bhakMunicipalities = ["Bhaktapur Municipality", "Madhyapur Thimi Municipality", "Changunarayan Municipality", "Suryabinayak Municipality"];
+          for (const mName of bhakMunicipalities) {
+            await prisma.municipality.upsert({
+              where: { name: mName },
+              update: {},
+              create: { id: generateUuid(), name: mName, districtId: dist.id, isActive: true }
+            });
+          }
+        }
+      }
+    }
   }
-  console.log("✅ Location data seeded (India -> Gujarat -> Districts).");
+
+  console.log("✅ Location data seeded (India & Nepal).");
 
   console.log("✨ Seeding finished successfully.");
 }

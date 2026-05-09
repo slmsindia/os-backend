@@ -519,7 +519,17 @@ const walletService = {
       if (subService && userId) {
         console.log(`[WalletService] Triggering cascading commission for ${serviceType} (slug: ${slug})`);
         const commissionDesc = `${serviceType} Transfer Commission (Ref: ${referenceId})`;
-        await commissionService.processCommission(config.amount, subService.id, userId, commissionDesc);
+        await commissionService.processCommission(
+          config.amount,
+          subService.id,
+          userId,
+          commissionDesc,
+          db,
+          {
+            referenceId,
+            referenceType: `${serviceType}_TRANSACTION`
+          }
+        );
       } else {
         console.log(`[WalletService] Cascading commission skipped: subService not found for slug ${slug} or userId missing`);
       }

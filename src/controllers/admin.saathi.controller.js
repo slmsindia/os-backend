@@ -101,7 +101,7 @@ const adminSaathiController = {
    */
   createSaathiDirectly: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
-    const { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod } = req.body;
+    const { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod, liveAddress, liveCity, liveState, livePincode, liveCountry } = req.body;
 
     try {
       // 1. Get Target User (or create if new)
@@ -119,11 +119,17 @@ const adminSaathiController = {
         if (targetUser) {
           if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
           
-          // Update email if it's null and provided
-          if (!targetUser.email && email) {
+          // Update email and password if provided
+          const updateData = {};
+          if (!targetUser.email && email) updateData.email = email;
+          if (req.body.password) {
+            updateData.password = await bcrypt.hash(req.body.password, 10);
+          }
+
+          if (Object.keys(updateData).length > 0) {
             targetUser = await prisma.user.update({
               where: { id: targetUser.id },
-              data: { email }
+              data: updateData
             });
           }
         } else {
@@ -152,7 +158,18 @@ const adminSaathiController = {
               identity: 'USER',   // Wait for admin approval to become SAATHI
               tenantId,
               parentId: adminId,
-              path
+              path,
+              registrationState: liveState || null,
+              registrationCity: liveCity || null,
+              registrationPincode: livePincode || null,
+              registrationAddress: liveAddress ? {
+                addressType: "URBAN",
+                country: liveCountry || "India",
+                state: liveState,
+                city: liveCity,
+                pinCode: livePincode,
+                addressLine1: liveAddress
+              } : undefined
             }
           });
         }
@@ -468,7 +485,57 @@ const adminSaathiController = {
           data: { status: 'APPROVED', approvedBy: adminId }
         })
       ]);
-      
+
+      await prisma.saathiProfile.upsert({
+        where: { userId: application.userId },
+        create: {
+          id: generateUuid(),
+          userId: application.userId,
+          applicationId: application.id,
+          shopName: application.shopName || '',
+          shopType: application.shopType || null,
+          gstNumber: application.gstNumber || null,
+          businessRegNumber: application.businessRegNumber || null,
+          yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
+          shopOpeningTime: application.shopOpeningTime || null,
+          shopClosingTime: application.shopClosingTime || null,
+          shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
+          shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
+          shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
+          shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
+          shopCountry: application.addressesJson?.[0]?.country || 'India',
+          shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
+            ? String(application.addressesJson[0].addressType)
+            : null,
+          shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
+          serviceCategory: application.sector || null,
+          serviceType: application.jobRole || null,
+          serviceName: application.membershipNumber || null
+        },
+        update: {
+          applicationId: application.id,
+          shopName: application.shopName || '',
+          shopType: application.shopType || null,
+          gstNumber: application.gstNumber || null,
+          businessRegNumber: application.businessRegNumber || null,
+          yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
+          shopOpeningTime: application.shopOpeningTime || null,
+          shopClosingTime: application.shopClosingTime || null,
+          shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
+          shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
+          shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
+          shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
+          shopCountry: application.addressesJson?.[0]?.country || 'India',
+          shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
+            ? String(application.addressesJson[0].addressType)
+            : null,
+          shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
+          serviceCategory: application.sector || null,
+          serviceType: application.jobRole || null,
+          serviceName: application.membershipNumber || null
+        }
+      });
+
       // 4. Ensure Personal Wallet exists for the new Saathi
       try {
         const walletService = require("../services/wallet.service");
@@ -479,56 +546,70 @@ const adminSaathiController = {
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
-        const adminWallet = await prisma.wallet.findFirst({
-          where: { tenantId, isCorporate: true }
-        });
-
-        if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. Credit the Admin Corporate Wallet ONLY IF RAZORPAY
-          // (Wallet/Cash payments are credited to Admin at application creation)
-          // 1. Credit the Admin Corporate Wallet for all methods 
-          // (Wallet/Cash/Razorpay payments now all credit Admin only upon approval)
-          await prisma.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: application.payment.amount } }
-          });
-
-          await prisma.walletTransaction.create({
+        await prisma.$transaction(async (tx) => {
+          const adminWallet = await tx.wallet.findFirst({
+            where: { tenantId, isCorporate: true }
+          }) || await tx.wallet.create({
             data: {
               id: generateUuid(),
-              walletId: adminWallet.id,
-              amount: application.payment.amount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              description: `Saathi fee received from user ${application.userId} (via ${application.payment.method})`,
-              referenceId: application.id,
-              tenantId
-            }
-          });
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.payment.amount} (via ${application.payment.method})`);
-
-          // 2. Distribute
-          const subService = await prisma.commissionSubService.findFirst({
-            where: {
-              OR: [
-                { slug: "saathi_fee" },
-                { name: { contains: "saathi", mode: "insensitive" } }
-              ]
+              userId: null,
+              tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
             }
           });
 
-          if (subService) {
-             console.log(`[Commission] Found SubService for Saathi: ${subService.name}. Starting Cascading Distribution...`);
-             await commissionService.processCommission(
+          if (adminWallet && (application.payment?.amount > 0)) {
+            await tx.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: application.payment.amount } }
+            });
+
+            await tx.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: application.payment.amount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                status: "SUCCESS",
+                description: `Saathi fee received from user ${application.userId} (via ${application.payment.method})`,
+                referenceId: application.id,
+                tenantId,
+                metadata: {
+                  trigger: "SAATHI_APPROVAL",
+                  applicationId: application.id,
+                  userId: application.userId
+                }
+              }
+            });
+
+            const subService = await tx.commissionSubService.findFirst({
+              where: {
+                OR: [
+                  { slug: "saathi_fee" },
+                  { name: { contains: "saathi", mode: "insensitive" } }
+                ]
+              }
+            });
+
+            if (subService) {
+              await commissionService.processCommission(
                 application.payment.amount,
                 subService.id,
                 application.userId,
-                null
-             );
-          } else {
-             console.log("[Commission] WARNING: saathi_fee SubService not found. Cannot distribute commission.");
+                null,
+                tx,
+                {
+                  referenceId: application.id,
+                  referenceType: "SAATHI_APPLICATION"
+                }
+              );
+            }
           }
-        }
+        });
       } catch (commErr) {
         console.error("Saathi commission failed:", commErr);
       }

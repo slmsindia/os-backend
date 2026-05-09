@@ -9,9 +9,13 @@ const walletController = {
    * Get my wallet details
    */
   getMyWallet: async (req, res) => {
-    const { user_id: userId, identity, tenant_id: tenantId } = req.user;
-
     try {
+      const { user_id: userId, identity, tenant_id: tenantId } = req.user || {};
+
+      if (!userId || !identity) {
+        return res.status(400).json({ success: false, message: "Invalid user data in token" });
+      }
+
       console.log(`[Wallet] Getting wallet for user: ${userId}, identity: ${identity}, tenant: ${tenantId}`);
       // 1. Use the Smart Resolver to find the correct wallet (Personal or Shared)
       let wallet = await walletService.resolveWallet(userId, tenantId, identity);
@@ -33,7 +37,11 @@ const walletController = {
       });
     } catch (err) {
       console.error("Get Wallet Error:", err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error",
+        error: err.message
+      });
     }
   },
 
@@ -41,12 +49,15 @@ const walletController = {
    * Get all active bank details (for members to see where to send money)
    */
   getActiveBankDetails: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
     try {
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      
+      console.log(`[WalletController] Fetching active bank details for tenant: ${tenantId}`);
+
       const bankDetails = await prisma.bankDetails.findMany({
         where: { 
           isActive: true,
-          tenantId: tenantId
+          ...(tenantId ? { tenantId } : {})
         },
         orderBy: { createdAt: "desc" }
       });
@@ -56,8 +67,13 @@ const walletController = {
         data: bankDetails
       });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("[WalletController] getActiveBankDetails Error:", err);
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error",
+        error: err.message,
+        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+      });
     }
   },
 
@@ -206,7 +222,11 @@ const walletController = {
           message: "This UTR number has already been used."
         });
       }
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({ 
+        success: false, 
+        message: "Internal server error",
+        error: err.message
+      });
     }
   },
 

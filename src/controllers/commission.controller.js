@@ -2,6 +2,65 @@ const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 
+async function cloneCommissionSchemeForUser(sourceSchemeId, userId, tenantId) {
+  const sourceScheme = await prisma.commissionScheme.findFirst({
+    where: { id: sourceSchemeId, tenantId },
+    include: {
+      shares: true
+    }
+  });
+
+  if (!sourceScheme) {
+    throw new Error("Source commission scheme not found");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { fullName: true }
+  });
+
+  const clonedScheme = await prisma.commissionScheme.create({
+    data: {
+      id: generateUuid(),
+      name: `${sourceScheme.name} - ${targetUser?.fullName || userId}`,
+      isActive: sourceScheme.isActive,
+      isDefault: false,
+      targetState: sourceScheme.targetState,
+      targetCity: sourceScheme.targetCity,
+      targetPincode: sourceScheme.targetPincode,
+      tenantId
+    }
+  });
+
+  if (sourceScheme.shares.length > 0) {
+    await prisma.commissionShare.createMany({
+      data: sourceScheme.shares.map((share) => ({
+        id: generateUuid(),
+        schemeId: clonedScheme.id,
+        subServiceId: share.subServiceId,
+        commissionType: share.commissionType,
+        baseType: share.baseType,
+        admin: share.admin,
+        countryPartner: share.countryPartner,
+        statePartner: share.statePartner,
+        districtPartner: share.districtPartner,
+        saathi: share.saathi,
+        member: share.member,
+        servicePrice: share.servicePrice,
+        referral: share.referral,
+        referralMinAmount: share.referralMinAmount
+      }))
+    });
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { commissionSchemeId: clonedScheme.id }
+  });
+
+  return clonedScheme;
+}
+
 const commissionController = {
   /**
    * 1.1 Sabhi Schemes List Karo
@@ -204,18 +263,31 @@ const commissionController = {
     if (!schemeId || !userId) return res.status(400).json({ success: false, message: "userId and schemeId are required" });
 
     try {
-      // Basic check: is requestor allowed? (Can add hierarchy check here)
       const ELIGIBLE_ROLES = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN', 'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (!ELIGIBLE_ROLES.includes(identity)) {
         return res.status(403).json({ success: false, message: "Permission denied" });
       }
 
-      const updatedUser = await prisma.user.update({
+      const user = await prisma.user.findUnique({
         where: { id: userId },
-        data: { commissionSchemeId: schemeId }
+        select: { id: true, tenantId: true, commissionSchemeId: true }
       });
 
-      res.json({ success: true, message: "Scheme assigned successfully", data: { userId, schemeId } });
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      const clonedScheme = await cloneCommissionSchemeForUser(schemeId, userId, user.tenantId);
+
+      res.json({
+        success: true,
+        message: "Scheme assigned successfully",
+        data: {
+          userId,
+          schemeId: clonedScheme.id,
+          sourceSchemeId: schemeId
+        }
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

@@ -35,6 +35,7 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 const adminAccessRoutes = require("./routes/admin.access.routes");
 const draftRoutes = require("./routes/draft.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const applicationRoutes = require("./routes/application.routes");
 
 const app = express();
 
@@ -107,6 +108,7 @@ app.get("/api/health-check", (req, res) => res.json({
   timestamp: new Date().toISOString() 
 }));
 
+app.use("/api/applications", applicationRoutes);
 app.use("/api/membership", membershipRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);

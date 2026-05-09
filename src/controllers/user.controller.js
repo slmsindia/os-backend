@@ -54,21 +54,16 @@ const userController = {
           membershipApplications: {
             orderBy: { createdAt: 'desc' },
             take: 1,
-            include: { 
-              education: true, 
-              sector: true, 
-              jobRole: true,
-              documents: true 
-            }
+            include: { education: true, sector: true, jobRole: true, documents: true }
           },
-          saathiApplications: {
-            orderBy: { createdAt: 'desc' },
-            take: 1
-          },
-          businessPartnerApps: {
-            orderBy: { createdAt: 'desc' },
-            take: 1
-          }
+          saathiApplications: { orderBy: { createdAt: 'desc' }, take: 1 },
+          businessPartnerApps: { orderBy: { createdAt: 'desc' }, take: 1 },
+          // NEW: Layered identity profiles
+          memberProfile: true,
+          saathiProfile: true,
+          partnerProfile: true,
+          // NEW: Unified application history
+          applications: { orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, targetIdentity: true, status: true, paymentStatus: true, paymentMethod: true, createdAt: true, approvedAt: true } }
         }
       });
 

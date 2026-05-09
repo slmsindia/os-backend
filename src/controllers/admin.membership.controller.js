@@ -10,7 +10,7 @@ const adminMembershipController = {
    * Create a user directly (Admin/Partner led)
    */
   createUser: async (req, res) => {
-    const { mobile, fullName, gender, dateOfBirth, password, identity, paymentMethod, flowType } = req.body;
+    const { mobile, fullName, gender, dateOfBirth, password, identity, paymentMethod, flowType, liveAddress, liveCity, liveState, livePincode, liveCountry, profilePhoto, email } = req.body;
     const creatorId = req.user?.user_id || req.user?.id;
     const tenantId = req.user?.tenant_id || req.user?.tenantId;
 
@@ -182,11 +182,16 @@ const adminMembershipController = {
       const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { path: true } });
       const path = creator?.path ? `${creator.path}/${creatorId}` : `/${creatorId}`;
 
+      const addrState = liveState || loc.state;
+      const addrCity = liveCity || loc.city;
+      const addrPincode = livePincode || loc.pincode;
+
       // 1. Create the base User (as USER identity first)
       const user = await prisma.user.create({
         data: {
           id: generateUuid(),
           mobile,
+          email: email || `${mobile}@os.com`,
           fullName,
           gender: gender ? gender.toUpperCase() : 'OTHER',
           dateOfBirth: new Date(dateOfBirth),
@@ -198,9 +203,18 @@ const adminMembershipController = {
           tenantId,
           parentId: creatorId,
           path,
-          registrationState: loc.state,
-          registrationCity: loc.city,
-          registrationPincode: loc.pincode
+          profilePhoto: profilePhoto || null,
+          registrationState: addrState,
+          registrationCity: addrCity,
+          registrationPincode: addrPincode,
+          registrationAddress: liveAddress ? { 
+            addressType: "URBAN", 
+            country: liveCountry || "India", 
+            state: addrState, 
+            city: addrCity, 
+            pinCode: addrPincode, 
+            addressLine1: liveAddress 
+          } : undefined
         }
       });
 
@@ -226,26 +240,26 @@ const adminMembershipController = {
           user: { connect: { id: user.id } },
           firstName: fullName.split(' ')[0],
           lastName: fullName.split(' ').slice(1).join(' ') || 'N/A',
-          email: `${mobile}@os.com`,
+          email: email || `${mobile}@os.com`,
           mobile: mobile,
           gender: gender.toUpperCase(),
           status: 'PENDING',
           createdById: creatorId,
           paymentType: paymentMethod === 'CASH' ? 'CASH' : (paymentMethod === 'WALLET' ? 'WALLET' : 'RAZORPAY'),
-          currentState: loc.state || 'N/A',
-          currentDistrict: loc.city || 'N/A',
-          currentPincode: loc.pincode || '000000',
-          currentAddress: loc.state || 'N/A',
-          currentCountry: 'India',
+          currentState: addrState || 'N/A',
+          currentDistrict: addrCity || 'N/A',
+          currentPincode: addrPincode || '000000',
+          currentAddress: liveAddress || addrState || 'N/A',
+          currentCountry: liveCountry || 'India',
           maritalStatus: req.body.maritalStatus || 'UNMARRIED',
           citizenship: req.body.citizenship || 'Indian',
           isMigrantWorker: req.body.isMigrantWorker || false,
           monthlyIncome: req.body.monthlyIncome || '0-10000',
-          permanentCountry: 'India',
-          permanentState: loc.state || 'N/A',
-          permanentDistrict: loc.city || 'N/A',
-          permanentAddress: loc.state || 'N/A',
-          permanentPincode: loc.pincode || '000000',
+          permanentCountry: liveCountry || 'India',
+          permanentState: addrState || 'N/A',
+          permanentDistrict: addrCity || 'N/A',
+          permanentAddress: liveAddress || addrState || 'N/A',
+          permanentPincode: addrPincode || '000000',
         }
       });
 
@@ -645,79 +659,93 @@ const adminMembershipController = {
         });
       }
 
-      // Update application status
-      const updated = await prisma.membershipApplication.update({
-        where: { id: applicationId },
-        data: {
-          status: 'APPROVED',
-          approvedAt: new Date(),
-          approvedBy: adminId
-        }
-      });
-
-      // Update user profile and identity from application data
-      await prisma.user.update({
-        where: { id: application.userId },
-        data: {
-          fullName: `${application.firstName} ${application.lastName}`,
-          email: application.email,
-          gender: application.gender.toUpperCase(),
-          userType: 'MEMBER',
-          identity: 'MEMBER',
-          approvalStatus: 'APPROVED',
-          approvedAt: new Date(),
-          roleId: null,
-          // Sync location for Commission Scheme targeting
-          registrationPincode: application.currentPincode,
-          registrationState: application.currentState,
-          registrationCity: application.currentDistrict
-        }
-      });
-
-      // Create wallet for the new member
-      try {
-        await walletService.createWallet(application.userId, tenantId, false);
-      } catch (walletErr) {
-        console.error("Failed to create wallet for user:", walletErr);
-      }
-
-      await logAction({
-        userId: adminId,
-        action: "MEMBERSHIP_APPLICATION_APPROVED",
-        targetId: applicationId,
-        tenantId,
-        metadata: { userId: application.userId }
-      });
-
-      // --- COMMISSION DISTRIBUTION ---
-      try {
-        const adminWallet = await prisma.wallet.findFirst({
-          where: { tenantId, isCorporate: true }
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedApplication = await tx.membershipApplication.update({
+          where: { id: applicationId },
+          data: {
+            status: 'APPROVED',
+            approvedAt: new Date(),
+            approvedBy: adminId
+          }
         });
 
-        if (adminWallet && (application.payment?.amount > 0)) {
-          // 1. Credit Admin Corporate Wallet (Always credit now, as it was held/deferred at creation)
-          await prisma.wallet.update({
+        await tx.user.update({
+          where: { id: application.userId },
+          data: {
+            fullName: `${application.firstName} ${application.lastName}`,
+            email: application.email,
+            gender: application.gender.toUpperCase(),
+            userType: 'MEMBER',
+            identity: 'MEMBER',
+            approvalStatus: 'APPROVED',
+            approvedAt: new Date(),
+            roleId: null,
+            registrationPincode: application.currentPincode,
+            registrationState: application.currentState,
+            registrationCity: application.currentDistrict
+          }
+        });
+
+        const existingWallet = await tx.wallet.findUnique({
+          where: { userId: application.userId }
+        });
+        if (!existingWallet) {
+          await tx.wallet.create({
+            data: {
+              id: generateUuid(),
+              userId: application.userId,
+              tenantId,
+              isCorporate: false,
+              balance: 0,
+              currency: "INR",
+              isActive: true
+            }
+          });
+        }
+
+        const adminWallet =
+          (await tx.wallet.findFirst({
+            where: { tenantId, isCorporate: true }
+          })) ||
+          (await tx.wallet.create({
+            data: {
+              id: generateUuid(),
+              userId: null,
+              tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
+            }
+          }));
+
+        const settlementAmount = Number(application.payment?.amount || 0);
+        if (settlementAmount > 0) {
+          await tx.wallet.update({
             where: { id: adminWallet.id },
-            data: { balance: { increment: application.payment.amount } }
+            data: { balance: { increment: settlementAmount } }
           });
 
-          await prisma.walletTransaction.create({
+          await tx.walletTransaction.create({
             data: {
               id: generateUuid(),
               walletId: adminWallet.id,
-              amount: application.payment.amount,
+              amount: settlementAmount,
               type: "CREDIT",
               category: "SERVICE_CHARGE",
+              status: "SUCCESS",
+              referenceId: application.id,
               description: `Membership fee received from user ${application.userId} (via ${application.paymentType})`,
-              tenantId
+              tenantId,
+              metadata: {
+                trigger: "MEMBERSHIP_APPROVAL",
+                applicationId,
+                userId: application.userId
+              }
             }
           });
-          console.log(`[Commission] Credited Admin Wallet (${adminWallet.id}) with amount: ${application.payment.amount}`);
 
-          // 2. Now distribute from Admin down to the hierarchy
-          // Lookup by slug first, then fall back to name
-          const subService = await prisma.commissionSubService.findFirst({
+          const subService = await tx.commissionSubService.findFirst({
             where: {
               OR: [
                 { slug: "membership_fee" },
@@ -728,25 +756,30 @@ const adminMembershipController = {
           });
 
           if (subService) {
-             console.log(`[Commission] Found SubService for Approval: ${subService.name} (${subService.id}) with slug: ${subService.slug}`);
-             await commissionService.processCommission(
-                 application.payment.amount,
-                 subService.id,
-                 application.userId,
-                 null  // customDescription — null uses auto-generated descriptions
-              );
-          } else {
-             console.log("[Commission] WARNING: membership_fee SubService not found. Search criteria: slug='membership_fee' or name containing 'membership'");
+            await commissionService.processCommission(
+              settlementAmount,
+              subService.id,
+              application.userId,
+              null,
+              tx,
+              {
+                referenceId: application.id,
+                referenceType: "MEMBERSHIP_APPLICATION"
+              }
+            );
           }
-        } else {
-          console.log("[Commission] SKIP: No Admin Corporate Wallet found or amount is 0");
         }
-      } catch (commErr) {
-        console.error("Commission distribution failed:", commErr);
-      }
-      // -------------------------------
-      // -------------------------------
-      // -------------------------------------------
+
+        return updatedApplication;
+      });
+
+      await logAction({
+        userId: adminId,
+        action: "MEMBERSHIP_APPLICATION_APPROVED",
+        targetId: applicationId,
+        tenantId,
+        metadata: { userId: application.userId }
+      });
 
       res.json({
         success: true,

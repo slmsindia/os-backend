@@ -176,7 +176,19 @@ const authController = {
   },
 
   register: async (req, res) => {
-    const { mobile, email, fullName, profilePhoto, gender, dateOfBirth, password, referredBy, tenantId: bodyTenantId } = req.body;
+    const {
+      mobile,
+      email,
+      fullName,
+      profilePhoto,
+      gender,
+      dateOfBirth,
+      password,
+      referredBy,
+      tenantId: bodyTenantId,
+      liveAddress,
+      geolocation
+    } = req.body;
     let tenantId = bodyTenantId || req.tenant_id;
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
@@ -274,6 +286,13 @@ const authController = {
           identity: "USER",
           referralCode: generateReferralCode(),
           referredBy: referredBy || null,
+          registrationState: liveAddress?.state || null,
+          registrationCity: liveAddress?.city || null,
+          registrationPincode: liveAddress?.pinCode || liveAddress?.pincode || null,
+          registrationLat: geolocation?.lat ?? null,
+          registrationLong: geolocation?.lng ?? null,
+          registrationAddress: liveAddress || null,
+          registrationGeo: geolocation || null,
           roles: {
             create: {
               id: generateUuid(),

@@ -11,7 +11,49 @@ const hasGlobalAdminScope = (user = {}) => {
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
-    const { mobile, fullName, email, password, gender, dateOfBirth, parentId } = req.body;
+    const {
+      mobile,
+      fullName,
+      email,
+      password,
+      gender,
+      dateOfBirth,
+      parentId,
+      profilePhoto,
+      registrationState,
+      registrationCity,
+      registrationPincode,
+      registrationLat,
+      registrationLong,
+      registrationAddress,
+      registrationGeo,
+      liveAddress,
+      liveCity,
+      liveState,
+      livePincode,
+      liveCountry,
+      geolocation,
+      partnerType,
+      areaOfExpertise,
+      about,
+      currentAddress,
+      currentAddressLine,
+      currentCity,
+      currentState,
+      currentPinCode,
+      currentPincode,
+      currentCountry,
+      currentAddressType,
+      permanentAddress,
+      permanentAddressLine,
+      permanentCity,
+      permanentState,
+      permanentPinCode,
+      permanentPincode,
+      permanentCountry,
+      permanentAddressType,
+      documents
+    } = req.body;
     const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!mobile || !fullName || !password) {
@@ -66,6 +108,36 @@ const adminController = {
       const newPath = parent?.path ? `${parent.path}/${finalParentId}` : `/${finalParentId}`;
 
       let user;
+      const geoData = registrationGeo || geolocation || null;
+      
+      const addrState = liveState || registrationState || (typeof liveAddress === 'object' ? liveAddress?.state : null) || null;
+      const addrCity = liveCity || registrationCity || (typeof liveAddress === 'object' ? liveAddress?.city : null) || null;
+      const addrPincode = livePincode || registrationPincode || (typeof liveAddress === 'object' ? liveAddress?.pinCode || liveAddress?.pincode : null) || null;
+      
+      let addressData = registrationAddress;
+      if (!addressData) {
+        if (typeof liveAddress === 'object' && liveAddress !== null) {
+          addressData = liveAddress;
+        } else if (liveAddress || addrState || addrCity) {
+          addressData = {
+            addressType: "URBAN",
+            country: liveCountry || "India",
+            state: addrState,
+            city: addrCity,
+            pinCode: addrPincode,
+            addressLine1: typeof liveAddress === 'string' ? liveAddress : undefined
+          };
+        } else {
+          addressData = null;
+        }
+      }
+
+      const resolvedRegistrationState = addrState;
+      const resolvedRegistrationCity = addrCity;
+      const resolvedRegistrationPincode = addrPincode;
+      const resolvedRegistrationLat = registrationLat ?? geoData?.lat;
+      const resolvedRegistrationLong = registrationLong ?? geoData?.lng;
+
       if (existingUser) {
         // Upgrade existing user and move into this admin's hierarchy
         user = await prisma.user.update({
@@ -76,6 +148,14 @@ const adminController = {
             email: email || existingUser.email,
             gender: gender || existingUser.gender,
             dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : existingUser.dateOfBirth,
+            ...(profilePhoto ? { profilePhoto } : {}),
+            ...(resolvedRegistrationState ? { registrationState: resolvedRegistrationState } : {}),
+            ...(resolvedRegistrationCity ? { registrationCity: resolvedRegistrationCity } : {}),
+            ...(resolvedRegistrationPincode ? { registrationPincode: resolvedRegistrationPincode } : {}),
+            ...(resolvedRegistrationLat !== undefined ? { registrationLat: resolvedRegistrationLat === '' ? null : Number(resolvedRegistrationLat) } : {}),
+            ...(resolvedRegistrationLong !== undefined ? { registrationLong: resolvedRegistrationLong === '' ? null : Number(resolvedRegistrationLong) } : {}),
+            ...(addressData ? { registrationAddress: addressData } : {}),
+            ...(geoData ? { registrationGeo: geoData } : {}),
             parentId: finalParentId,
             path: newPath,
             // Only update password if provided
@@ -95,10 +175,18 @@ const adminController = {
             password: hash,
             gender,
             dateOfBirth: new Date(dateOfBirth),
+            profilePhoto: profilePhoto || null,
             identity: targetIdentity,
             tenantId: myTenantId,
             parentId: finalParentId,
             path: newPath,
+            registrationState: resolvedRegistrationState,
+            registrationCity: resolvedRegistrationCity,
+            registrationPincode: resolvedRegistrationPincode,
+            registrationLat: resolvedRegistrationLat !== undefined && resolvedRegistrationLat !== '' ? Number(resolvedRegistrationLat) : null,
+            registrationLong: resolvedRegistrationLong !== undefined && resolvedRegistrationLong !== '' ? Number(resolvedRegistrationLong) : null,
+            registrationAddress: addressData,
+            registrationGeo: geoData,
             referralCode: generateReferralCode(),
             createdBy: myId
           }
@@ -168,6 +256,40 @@ const adminController = {
           where: { userId_roleId: { userId: user.id, roleId: defaultRole.id } },
           update: {},
           create: { id: generateUuid(), userId: user.id, roleId: defaultRole.id }
+        });
+      }
+
+      if (["COUNTRY_HEAD", "STATE_PARTNER", "DISTRICT_PARTNER"].includes(targetIdentity)) {
+        const partnerProfileData = {
+          partnerType: targetIdentity,
+          partnerTypeDetail: partnerType || null,
+          areaOfExpertise: areaOfExpertise || null,
+          about: about || null,
+          serviceLocation: resolvedRegistrationCity || resolvedRegistrationState || null,
+          currentAddressLine: currentAddressLine || currentAddress || null,
+          currentCity: currentCity || resolvedRegistrationCity || null,
+          currentState: currentState || resolvedRegistrationState || null,
+          currentPincode: currentPincode || currentPinCode || resolvedRegistrationPincode || null,
+          currentCountry: currentCountry || addressData?.country || null,
+          currentAddressType: currentAddressType || addressData?.addressType || null,
+          permanentAddressLine: permanentAddressLine || permanentAddress || null,
+          permanentCity: permanentCity || null,
+          permanentState: permanentState || null,
+          permanentPincode: permanentPincode || permanentPinCode || null,
+          permanentCountry: permanentCountry || null,
+          permanentAddressType: permanentAddressType || null,
+          documents: documents || null,
+          approvedAt: new Date()
+        };
+
+        await prisma.partnerProfile.upsert({
+          where: { userId: user.id },
+          create: {
+            id: generateUuid(),
+            userId: user.id,
+            ...partnerProfileData
+          },
+          update: partnerProfileData
         });
       }
 
@@ -292,7 +414,8 @@ const adminController = {
             },
             roles: {
               include: { role: true }
-            }
+            },
+            partnerProfile: true
           }
         }),
         prisma.user.count({ where })
@@ -378,7 +501,8 @@ const adminController = {
           },
           roles: {
             include: { role: true }
-          }
+          },
+          partnerProfile: true
         }
       });
 
