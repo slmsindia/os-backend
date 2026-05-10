@@ -84,9 +84,10 @@ const hierarchyController = {
         prisma.user.count({ where })
       ]);
 
-      // Resolve Location IDs
-      const stateIds = [...new Set(children.map(c => c.registrationState).filter(id => id && id.length > 5))];
-      const cityIds = [...new Set(children.map(c => c.registrationCity).filter(id => id && id.length > 5))];
+      // Resolve Location IDs (Validate as UUIDs to prevent Prisma/Postgres errors)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const stateIds = [...new Set(children.map(c => c.registrationState).filter(id => id && uuidRegex.test(id)))];
+      const cityIds = [...new Set(children.map(c => c.registrationCity).filter(id => id && uuidRegex.test(id)))];
 
       const [states, cities] = await Promise.all([
         prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
@@ -653,12 +654,13 @@ const hierarchyController = {
       ]);
 
       const allPathIds = new Set();
-      users.forEach(u => { if (u.path) u.path.split('/').forEach(id => { if (id && id.length > 5) allPathIds.add(id); }); });
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      users.forEach(u => { if (u.path) u.path.split('/').forEach(id => { if (id && uuidRegex.test(id)) allPathIds.add(id); }); });
       const pathUsers = await prisma.user.findMany({ where: { id: { in: Array.from(allPathIds) } }, select: { id: true, fullName: true, identity: true } });
       const userMap = Object.fromEntries(pathUsers.map(u => [u.id, u]));
 
       const enrichedUsers = users.map(u => {
-        const pathArray = u.path ? u.path.split('/').filter(id => id && id.length > 5) : [];
+        const pathArray = u.path ? u.path.split('/').filter(id => id && uuidRegex.test(id)) : [];
         const partners = pathArray.map(id => userMap[id]).filter(Boolean);
         return {
           ...u,
@@ -688,9 +690,9 @@ const hierarchyController = {
         lastLogin: loginMap[u.id] || null
       }));
 
-      // Resolve Location IDs to Names
-      const stateIds = [...new Set(finalUsers.map(u => u.registrationState).filter(id => id && id.length > 5))];
-      const cityIds = [...new Set(finalUsers.map(u => u.registrationCity).filter(id => id && id.length > 5))];
+      // Resolve Location IDs to Names (Validate as UUIDs)
+      const stateIds = [...new Set(finalUsers.map(u => u.registrationState).filter(id => id && uuidRegex.test(id)))];
+      const cityIds = [...new Set(finalUsers.map(u => u.registrationCity).filter(id => id && uuidRegex.test(id)))];
 
       const [states, cities] = await Promise.all([
         prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),

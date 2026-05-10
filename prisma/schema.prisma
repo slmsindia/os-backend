@@ -40,6 +40,7 @@ model Tenant {
   jobFacilities   JobFacility[]
   membershipConfigs MembershipConfig[]
   globalSettings  GlobalSetting[]
+  applications    Application[]
 }
 
 enum Gender {
@@ -1931,6 +1932,10 @@ model MemberProfile {
   id                   String   @id @default(uuid())
   userId               String   @unique
   applicationId        String?  @unique
+  membershipApplicationId String? @unique
+  membershipApplication MembershipApplication? @relation(fields: [membershipApplicationId], references: [id])
+  
+  
 
   maritalStatus        String?
   citizenship          String?
@@ -2003,6 +2008,8 @@ model SaathiProfile {
 
   user              User        @relation(fields: [userId],       references: [id])
   application       Application? @relation(fields: [applicationId], references: [id])
+  saathiApplication SaathiApplication? @relation(fields: [saathiApplicationId], references: [id])
+  saathiApplicationId String? @unique
 }
 
 // Layered Partner Profile — created when DP/SP/CP/WhiteLabel application is approved
@@ -2010,6 +2017,10 @@ model PartnerProfile {
   id                   String   @id @default(uuid())
   userId               String   @unique
   applicationId        String?  @unique
+  businessPartnerApplicationId String? @unique
+  businessPartnerApplication BusinessPartnerApplication? @relation(fields: [businessPartnerApplicationId], references: [id])
+  
+  
 
   partnerType          String   // DISTRICT_PARTNER | STATE_PARTNER | COUNTRY_HEAD | WHITE_LABEL_ADMIN
 
@@ -2069,3 +2080,8 @@ model PartnerProfile {
   user                 User        @relation(fields: [userId],       references: [id])
   application          Application? @relation(fields: [applicationId], references: [id])
 }
+
+
+
+
+

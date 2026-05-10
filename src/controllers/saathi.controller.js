@@ -19,6 +19,10 @@ const saathiController = {
         try {
           const parsed = JSON.parse(setting.value);
           feeData = { ...parsed, currency: "INR" };
+          // Support both names for frontend consistency
+          if (feeData.serviceCharges) {
+            feeData.serviceCharge = feeData.serviceCharges;
+          }
         } catch (e) {
           feeData = { amount: parseFloat(setting.value), currency: "INR" };
         }
@@ -67,17 +71,57 @@ const saathiController = {
         }
       }
 
-      // 4 & 5. Create Application and Handle Payment in Transaction
-      const application = await prisma.$transaction(async (tx) => {
-        // Check for existing pending application
-        const existing = await tx.saathiApplication.findFirst({
-          where: { userId, status: 'PENDING' },
-          include: { payment: true }
-        });
+      // 4 & 5. Create Application and Handle Payment
+      // Check for existing application to avoid duplicates or allow resubmission
+      const existing = await prisma.saathiApplication.findFirst({
+        where: { userId },
+        include: { payment: true },
+        orderBy: { createdAt: 'desc' }
+      });
 
+      // BLOCK if already APPROVED
+      if (existing && existing.status === 'APPROVED') {
+        return res.status(400).json({ success: false, message: "You are already a SAATHI." });
+      }
+
+      // Check if it's a paid resubmission
+      const isPaidResubmission = existing && 
+                                existing.status === 'REJECTED' && 
+                                (existing.payment?.status === 'SUCCESS' || existing.payment?.status === 'PAID');
+
+      let finalPaymentMethod = paymentMethod;
+      let razorpayOrder = null;
+
+      // Check wallet balance if method is WALLET
+      if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+        const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
+        if (!wallet || wallet.balance < amount) {
+          // Automatic fallback to Razorpay
+          console.log(`[SaathiApply] Insufficient wallet balance for user ${userId}. Falling back to Razorpay.`);
+          finalPaymentMethod = 'RAZORPAY';
+        }
+      }
+
+      // Create Razorpay Order if needed (OUTSIDE transaction)
+      if (finalPaymentMethod === 'RAZORPAY' && !isPaidResubmission) {
+        const razorpayService = require("../services/razorpay.service");
+        try {
+          razorpayOrder = await razorpayService.createOrder(
+            tenantId, 
+            amount, 
+            "INR", 
+            `saathi_apply_${userId.slice(0, 8)}`
+          );
+        } catch (err) {
+          console.error("Razorpay Order Error:", err);
+          return res.status(500).json({ success: false, message: "Failed to initiate Razorpay payment. Please try again." });
+        }
+      }
+
+      const application = await prisma.$transaction(async (tx) => {
         let app;
-        if (existing && existing.payment?.status === 'PENDING') {
-          // Update existing
+        // Logic for Resubmission or Updating Pending
+        if (existing && (existing.status === 'PENDING' || isPaidResubmission)) {
           app = await tx.saathiApplication.update({
             where: { id: existing.id },
             data: {
@@ -86,23 +130,28 @@ const saathiController = {
               gender,
               dateOfBirth: new Date(dateOfBirth),
               address,
-              paymentType: paymentMethod
+              paymentType: finalPaymentMethod,
+              status: 'PENDING', // Reset status if it was REJECTED
+              rejectionReason: null
             },
             include: { payment: true }
           });
 
           // Update or recreate payment
-          await tx.saathiPayment.update({
-            where: { id: existing.payment.id },
-            data: {
-              amount,
-              method: paymentMethod,
-              status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-              paidAt: paymentMethod === 'WALLET' ? new Date() : null
-            }
-          });
+          if (!isPaidResubmission) {
+            await tx.saathiPayment.update({
+              where: { id: existing.payment.id },
+              data: {
+                amount,
+                method: finalPaymentMethod,
+                razorpayOrderId: razorpayOrder?.id || null,
+                status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
+                paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
+              }
+            });
+          }
         } else {
-          // Create Application first to get ID
+          // Create New Application
           app = await tx.saathiApplication.create({
             data: {
               id: generateUuid(),
@@ -112,16 +161,17 @@ const saathiController = {
               gender,
               dateOfBirth: new Date(dateOfBirth),
               address,
-              createdById: userId, // Self application
-              paymentType: paymentMethod,
+              createdById: userId,
+              paymentType: finalPaymentMethod,
               status: 'PENDING',
               payment: {
                 create: {
                   id: generateUuid(),
                   amount,
-                  method: paymentMethod,
-                  status: paymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                  paidAt: paymentMethod === 'WALLET' ? new Date() : null
+                  method: finalPaymentMethod,
+                  razorpayOrderId: razorpayOrder?.id || null,
+                  status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
+                  paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
                 }
               }
             },
@@ -129,26 +179,23 @@ const saathiController = {
           });
         }
 
-        // If Wallet, deduct now
-        if (paymentMethod === 'WALLET') {
-          const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
-          if (!wallet || wallet.balance < amount) {
-            throw new Error("Insufficient wallet balance. Use Razorpay instead.");
-          }
-
+        // If WALLET and not resubmission, deduct now but don't credit admin immediately
+        if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+          const userWallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
           const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } });
-          if (!adminWallet) throw new Error("Admin wallet not found");
+          
+          if (!adminWallet) throw new Error("Admin wallet configuration missing.");
 
-          // Deduct from user and credit to admin
           await walletService.payCreationFeeWithHistory(
-            wallet.id,
+            userWallet.id,
             adminWallet.id,
             amount,
             `Saathi Application Fee for ${fullName}`,
             app.id,
             tenantId,
             'WALLET',
-            tx
+            tx,
+            false // creditAdminImmediately = false (Wait for approval)
           );
         }
 
@@ -164,10 +211,16 @@ const saathiController = {
 
       res.status(201).json({
         success: true,
-        message: paymentMethod === 'WALLET' ? "Application submitted successfully" : "Proceed to payment",
+        message: isPaidResubmission 
+          ? "Application resubmitted successfully." 
+          : (finalPaymentMethod === 'WALLET' ? "Application submitted successfully" : "Proceed to payment"),
         data: {
           applicationId: application.id,
-          payment: application.payment
+          payment: application.payment,
+          razorpayOrder: razorpayOrder ? {
+            ...razorpayOrder,
+            key: await require("../services/razorpay.service").getKeyId(tenantId)
+          } : null
         }
       });
 

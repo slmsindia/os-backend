@@ -134,12 +134,12 @@ const userController = {
       }
 
       safeUser.summary = {
-        isMember: user.identity === 'MEMBER' || user.membershipApplications.some(a => a.status === 'APPROVED'),
-        isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED'),
-        isBusinessPartner: user.identity === 'BUSINESS_PARTNER' || user.businessPartnerApps.some(a => a.status === 'APPROVED'),
+        isMember: user.identity === 'MEMBER' || user.membershipApplications.some(a => a.status === 'APPROVED') || user.applications.some(a => a.targetIdentity === 'MEMBER' && a.status === 'APPROVED'),
+        isSaathi: user.identity === 'SAATHI' || user.saathiApplications.some(a => a.status === 'APPROVED') || user.applications.some(a => a.targetIdentity === 'SAATHI' && a.status === 'APPROVED'),
+        isBusinessPartner: user.identity === 'BUSINESS_PARTNER' || user.businessPartnerApps.some(a => a.status === 'APPROVED') || user.applications.some(a => (a.targetIdentity === 'BUSINESS_PARTNER' || a.targetIdentity === 'BUSINESS_USER') && a.status === 'APPROVED'),
         walletBalance: user.wallet?.balance || 0,
         activeRole: user.identity,
-        permissions: [...new Set(permissions)] // Unique permissions
+        permissions: [...new Set(permissions)]
       };
 
       res.json({

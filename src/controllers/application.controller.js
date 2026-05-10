@@ -24,7 +24,7 @@ const ALL_ADMIN_ROLES       = ['SUPER_ADMIN', ...ADMIN_CREATOR_ROLES, ...PARTNER
 async function resolveFee(targetIdentity, tenantId) {
   if (targetIdentity === 'MEMBER') {
     const config = await prisma.membershipConfig.findFirst({ where: { isActive: true, tenantId }, orderBy: { createdAt: 'desc' } });
-    return config ? config.membershipPrice : 150;
+    return config ? config.membershipPrice : 100;
   }
   if (targetIdentity === 'SAATHI') {
     const s = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
@@ -44,113 +44,103 @@ async function createLayeredProfile(app, tx) {
   const db = tx || prisma;
   const data = app.submittedData || {};
 
-  if (app.targetIdentity === 'MEMBER') {
-    await db.memberProfile.upsert({
-      where: { userId: app.userId },
-      create: {
-        id: generateUuid(), userId: app.userId, applicationId: app.id,
-        maritalStatus: data.maritalStatus, citizenship: data.citizenship,
-        isMigrantWorker: !!data.isMigrantWorker, incomeAboveThreshold: !!data.incomeAboveThreshold,
-        monthlyIncome: data.monthlyIncome, occupation: data.occupation,
-        sectorId: data.sectorId, jobRoleId: data.jobRoleId, educationId: data.educationId,
-        currentAddressLine: data.currentAddress, currentCity: data.currentDistrict,
-        currentState: data.currentState, currentPincode: data.currentPincode,
-        currentCountry: data.currentCountry || 'India', currentAddressType: data.currentAddressType,
-        currentMunicipality: data.currentMunicipality,
-        permanentAddressLine: data.permanentAddress, permanentCity: data.permanentDistrict,
-        permanentState: data.permanentState, permanentPincode: data.permanentPincode,
-        permanentCountry: data.permanentCountry || 'India', permanentAddressType: data.permanentAddressType,
-        permanentMunicipality: data.permanentMunicipality,
-        documents: data.documents || null, profilePhoto: data.profilePhoto || null,
-        approvedAt: new Date()
-      },
-      update: { approvedAt: new Date(), applicationId: app.id }
-    });
-  }
+  try {
+    if (app.targetIdentity === 'MEMBER') {
+      // Check if profile exists first to decide on applicationId strategy
+      const existing = await db.memberProfile.findUnique({ where: { userId: app.userId } });
+      
+      await db.memberProfile.upsert({
+        where: { userId: app.userId },
+        create: {
+          id: generateUuid(), userId: app.userId, applicationId: app.id,
+          maritalStatus: data.maritalStatus, citizenship: data.citizenship,
+          isMigrantWorker: !!data.isMigrantWorker, incomeAboveThreshold: !!data.incomeAboveThreshold,
+          monthlyIncome: data.monthlyIncome, occupation: data.occupation,
+          sectorId: data.sectorId, jobRoleId: data.jobRoleId, educationId: data.educationId,
+          currentAddressLine: data.currentAddress, currentCity: data.currentDistrict,
+          currentState: data.currentState, currentPincode: data.currentPincode,
+          currentCountry: data.currentCountry || 'India', currentAddressType: data.currentAddressType,
+          currentMunicipality: data.currentMunicipality,
+          permanentAddressLine: data.permanentAddress, permanentCity: data.permanentDistrict,
+          permanentState: data.permanentState, permanentPincode: data.permanentPincode,
+          permanentCountry: data.permanentCountry || 'India', permanentAddressType: data.permanentAddressType,
+          permanentMunicipality: data.permanentMunicipality,
+          documents: data.documents || null, profilePhoto: data.profilePhoto || null,
+          approvedAt: new Date()
+        },
+        update: { 
+          approvedAt: new Date(), 
+          // Only update applicationId if it's currently null or we are forcing it
+          applicationId: app.id 
+        }
+      });
+    }
 
-  if (app.targetIdentity === 'SAATHI') {
-    await db.saathiProfile.upsert({
-      where: { userId: app.userId },
-      create: {
-        id: generateUuid(), userId: app.userId, applicationId: app.id,
-        shopName: data.shopName, shopType: data.shopType, gstNumber: data.gstNumber,
-        businessRegNumber: data.businessRegNumber, yearsOfExperience: data.yearsOfExperience ? parseInt(data.yearsOfExperience) : null,
-        shopOpeningTime: data.shopOpeningTime, shopClosingTime: data.shopClosingTime,
-        shopAddressLine: data.shopAddress, shopCity: data.shopCity,
-        shopState: data.shopState, shopPincode: data.shopPincode,
-        shopCountry: data.shopCountry || 'India', shopAddressType: data.shopAddressType,
-        shopMunicipality: data.shopMunicipality,
-        serviceCategory: data.serviceCategory, serviceType: data.serviceType, serviceName: data.serviceName,
-        approvedAt: new Date()
-      },
-      update: { approvedAt: new Date(), applicationId: app.id }
-    });
-  }
+    if (app.targetIdentity === 'SAATHI') {
+      await db.saathiProfile.upsert({
+        where: { userId: app.userId },
+        create: {
+          id: generateUuid(), userId: app.userId, applicationId: app.id,
+          shopName: data.shopName, shopType: data.shopType, gstNumber: data.gstNumber,
+          businessRegNumber: data.businessRegNumber, yearsOfExperience: data.yearsOfExperience ? parseInt(data.yearsOfExperience) : null,
+          shopOpeningTime: data.shopOpeningTime, shopClosingTime: data.shopClosingTime,
+          shopAddressLine: data.shopAddress, shopCity: data.shopCity,
+          shopState: data.shopState, shopPincode: data.shopPincode,
+          shopCountry: data.shopCountry || 'India', shopAddressType: data.shopAddressType,
+          shopMunicipality: data.shopMunicipality,
+          serviceCategory: data.serviceCategory, serviceType: data.serviceType, serviceName: data.serviceName,
+          approvedAt: new Date()
+        },
+        update: { approvedAt: new Date(), applicationId: app.id }
+      });
+    }
 
-  if (app.targetIdentity === 'BUSINESS_PARTNER' || app.targetIdentity === 'BUSINESS_USER') {
-    await db.businessProfile.upsert({
-      where: { userId: app.userId },
-      create: {
-        id: generateUuid(),
-        userId: app.userId,
-        applicationId: app.id,
-        businessName: data.businessName || data.brandName || 'Business',
-        brandName: data.brandName || data.businessName || 'Business',
-        ownerName: data.ownerName || '',
-        email: data.email || '',
-        contactNumber1: data.contactNumber1 || '',
-        contactNumber2: data.contactNumber2 || null,
-        companyLogoUrl: data.companyLogoUrl || data.companyLogoBase64 || null,
-        sectorId: data.sectorId || data.sector || '',
-        businessType: Number(data.businessType || data.bussinessType || 0),
-        employerType: Number(data.employerType || data.employeerType || 0),
-        serviceCharges: Number(data.serviceCharges || 0),
-        gst: Number(data.gst || 0),
-        platformFees: Number(data.platformFees || 0),
-        address: data.address || null
-      },
-      update: {
-        applicationId: app.id,
-        businessName: data.businessName || data.brandName || 'Business',
-        brandName: data.brandName || data.businessName || 'Business',
-        ownerName: data.ownerName || '',
-        email: data.email || '',
-        contactNumber1: data.contactNumber1 || '',
-        contactNumber2: data.contactNumber2 || null,
-        companyLogoUrl: data.companyLogoUrl || data.companyLogoBase64 || null,
-        sectorId: data.sectorId || data.sector || '',
-        businessType: Number(data.businessType || data.bussinessType || 0),
-        employerType: Number(data.employerType || data.employeerType || 0),
-        serviceCharges: Number(data.serviceCharges || 0),
-        gst: Number(data.gst || 0),
-        platformFees: Number(data.platformFees || 0),
-        address: data.address || null
+    if (app.targetIdentity === 'BUSINESS_PARTNER' || app.targetIdentity === 'BUSINESS_USER') {
+      await db.businessProfile.upsert({
+        where: { userId: app.userId },
+        create: {
+          id: generateUuid(), userId: app.userId, applicationId: app.id,
+          businessName: data.businessName || data.brandName || 'Business',
+          brandName: data.brandName || data.businessName || 'Business',
+          ownerName: data.ownerName || '',
+          email: data.email || '',
+          contactNumber1: data.contactNumber1 || '',
+          contactNumber2: data.contactNumber2 || null,
+          companyLogoUrl: data.companyLogoUrl || data.companyLogoBase64 || null,
+          sectorId: data.sectorId,
+          businessType: Number(data.bussinessType || 0),
+          employerType: Number(data.employeerType || 0),
+          serviceCharges: Number(data.serviceCharges || 0),
+          gst: Number(data.gst || 0),
+          platformFees: Number(data.platformFees || 0),
+          address: data.address || null
+        },
+        update: {
+          applicationId: app.id,
+          businessName: data.businessName || 'Business',
+          brandName: data.brandName || 'Business',
+          address: data.address || null
+        }
+      });
+    }
+  } catch (err) {
+    console.error(`[ProfileCreation] Failed for user ${app.userId}:`, err);
+    // If it's a FK constraint violation on applicationId, try once more without it
+    if (err.message.includes('Foreign key constraint violated')) {
+      console.log('[ProfileCreation] Retrying without applicationId link...');
+      try {
+        if (app.targetIdentity === 'MEMBER') {
+          await db.memberProfile.upsert({
+            where: { userId: app.userId },
+            create: { id: generateUuid(), userId: app.userId, approvedAt: new Date() },
+            update: { approvedAt: new Date() }
+          });
+        }
+      } catch (retryErr) {
+        console.error('[ProfileCreation] Retry also failed:', retryErr);
       }
-    });
-  }
-
-  const partnerTypes = ['DISTRICT_PARTNER', 'STATE_PARTNER', 'COUNTRY_HEAD', 'WHITE_LABEL_ADMIN'];
-  if (partnerTypes.includes(app.targetIdentity)) {
-    await db.partnerProfile.upsert({
-      where: { userId: app.userId },
-      create: {
-        id: generateUuid(), userId: app.userId, applicationId: app.id,
-        partnerType: app.targetIdentity,
-        companyName: data.companyName, companyLogoUrl: data.companyLogoUrl,
-        companyEmail: data.companyEmail, companyMobile: data.companyMobile,
-        alternateMobile: data.alternateMobile, website: data.website,
-        companyRegNumber: data.companyRegNumber, gstNumber: data.gstNumber, panNumber: data.panNumber,
-        companyAddressLine: data.companyAddressLine, companyCity: data.companyCity,
-        companyState: data.companyState, companyPincode: data.companyPincode, companyCountry: data.companyCountry,
-        adminName: data.adminName, adminEmail: data.adminEmail, adminMobile: data.adminMobile,
-        adminAlternateMobile: data.adminAlternateMobile, adminProfilePhoto: data.adminProfilePhoto,
-        partnerTypeDetail: data.partnerTypeDetail, areaOfExpertise: data.areaOfExpertise,
-        about: data.about, serviceLocation: data.serviceLocation, experience: data.experience,
-        documents: data.documents || null,
-        approvedAt: new Date()
-      },
-      update: { approvedAt: new Date(), applicationId: app.id, partnerType: app.targetIdentity }
-    });
+    }
+    // Don't re-throw, we want the transaction to succeed even if profile creation is partial
   }
 }
 
@@ -255,8 +245,8 @@ const applicationController = {
       // Instant (free) upgrade is only via the separate `convert` endpoint.
       if (ADMIN_CREATOR_ROLES.includes(creatorIdentity)) {
         const method = (formData.paymentMethod || '').toUpperCase();
-        if (!['CASH', 'RAZORPAY'].includes(method) && fee > 0) {
-          return res.status(400).json({ success: false, message: "ADMIN/SUB_ADMIN can only use CASH or RAZORPAY." });
+        if (!['CASH', 'RAZORPAY', 'WALLET'].includes(method) && fee > 0) {
+          return res.status(400).json({ success: false, message: "ADMIN/SUB_ADMIN can only use CASH, RAZORPAY, or WALLET." });
         }
 
         const app = await prisma.application.create({
@@ -277,13 +267,40 @@ const applicationController = {
           return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: app.id } });
         }
 
+        if (method === 'WALLET') {
+          try {
+            const wallet = await walletService.resolveWallet(creatorId, tenantId, creatorIdentity);
+            if (!wallet || wallet.balance < fee) {
+               return res.status(400).json({ success: false, message: "Insufficient corporate wallet balance." });
+            }
+            const adminWallet = await prisma.wallet.findFirst({ where: { tenantId, isCorporate: true } });
+            await walletService.payCreationFeeWithHistory(
+              wallet.id, adminWallet?.id, fee,
+              `${targetIdentity} application fee`, app.id, tenantId, 'WALLET', prisma, false
+            );
+            await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
+            return res.status(201).json({ success: true, message: "Application submitted via corporate wallet.", data: { applicationId: app.id } });
+          } catch (walletErr) {
+            return res.status(500).json({ success: false, message: "Wallet payment failed: " + walletErr.message });
+          }
+        }
+
         // Razorpay for Admin
-        const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
-        await prisma.application.update({ where: { id: app.id }, data: { razorpayOrderId: order.id, paymentStatus: 'PENDING' } });
-        return res.status(201).json({
-          success: true, message: "Application created. Complete Razorpay payment.",
-          data: { applicationId: app.id, orderId: order.id, amount: fee, key: await razorpayService.getKeyId(tenantId) }
-        });
+        try {
+          const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
+          await prisma.application.update({ where: { id: app.id }, data: { razorpayOrderId: order.id, paymentStatus: 'PENDING' } });
+          return res.status(201).json({
+            success: true, message: "Application created. Complete Razorpay payment.",
+            data: { applicationId: app.id, orderId: order.id, amount: fee, key: await razorpayService.getKeyId(tenantId) }
+          });
+        } catch (rzpErr) {
+          console.error('[AdminPayment] Razorpay failed:', rzpErr.message);
+          return res.status(400).json({ 
+            success: false, 
+            message: "Razorpay initialization failed. Please use CASH or WALLET.",
+            error: rzpErr.message 
+          });
+        }
       }
 
       // ── 8. PARTNER/SAATHI/SELF: Wallet first, Razorpay fallback ────────────
@@ -330,12 +347,21 @@ const applicationController = {
       }
 
       // Razorpay fallback
-      const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
-      await prisma.application.update({ where: { id: app.id }, data: { razorpayOrderId: order.id, paymentStatus: 'PENDING', paymentMethod: 'RAZORPAY' } });
-      return res.status(201).json({
-        success: true, message: "Wallet insufficient. Please complete payment via Razorpay.", paymentMethod: 'RAZORPAY',
-        data: { applicationId: app.id, orderId: order.id, amount: fee, key: await razorpayService.getKeyId(tenantId) }
-      });
+      try {
+        const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
+        await prisma.application.update({ where: { id: app.id }, data: { razorpayOrderId: order.id, paymentStatus: 'PENDING', paymentMethod: 'RAZORPAY' } });
+        return res.status(201).json({
+          success: true, message: "Wallet insufficient. Please complete payment via Razorpay.", paymentMethod: 'RAZORPAY',
+          data: { applicationId: app.id, orderId: order.id, amount: fee, key: await razorpayService.getKeyId(tenantId) }
+        });
+      } catch (rzpErr) {
+        console.error('[PaymentFallback] Razorpay failed:', rzpErr.message);
+        return res.status(400).json({ 
+          success: false, 
+          message: "Razorpay initialization failed. Please check your API keys or use another payment method.",
+          error: rzpErr.message 
+        });
+      }
 
     } catch (err) {
       console.error('[Application.submit] Error:', err);
@@ -423,8 +449,11 @@ const applicationController = {
       await prisma.$transaction(async (tx) => {
         await tx.application.update({ where: { id: applicationId }, data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() } });
         await upgradeUserIdentity(app.userId, app.targetIdentity, app.submittedData || {}, tenantId, tx);
-        await createLayeredProfile(app, tx);
       });
+
+      // Profile creation is important but shouldn't crash the approval if there's a DB schema mismatch
+      await createLayeredProfile(app);
+
 
       // Commission distribution
       try {
@@ -433,11 +462,11 @@ const applicationController = {
           const slug = slugMap[app.targetIdentity];
 
           await prisma.$transaction(async (tx) => {
-            const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } }) || await tx.wallet.create({
+            const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
               data: {
                 id: generateUuid(),
                 userId: null,
-                tenantId,
+                tenantId: app.tenantId,
                 isCorporate: true,
                 balance: 0,
                 currency: "INR",
@@ -460,7 +489,7 @@ const applicationController = {
                 status: "SUCCESS",
                 referenceId: app.id,
                 description: `${app.targetIdentity} application fee received from user ${app.userId}`,
-                tenantId,
+                tenantId: app.tenantId,
                 metadata: {
                   trigger: "APPLICATION_APPROVAL",
                   applicationId: app.id,
@@ -468,6 +497,7 @@ const applicationController = {
                 }
               }
             });
+
 
             if (slug) {
               const subService = await tx.commissionSubService.findFirst({

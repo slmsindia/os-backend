@@ -23,6 +23,9 @@ const adminSaathiController = {
     const isInclusive = includedExcluded === true || includedExcluded === 'true';
 
     if (serviceCharges !== undefined) {
+      // Standard logic: 
+      // Inclusive: User pays (Service Charge + Platform Fee). GST is considered already inside Service Charge.
+      // Exclusive: User pays (Service Charge + Platform Fee + GST on Service Charge).
       if (isInclusive) {
           calculatedAmount = sc + pf;
       } else {
@@ -43,7 +46,7 @@ const adminSaathiController = {
         id: id || generateUuid(),
         includedExcluded: isInclusive,
         platformFee: pf,
-        serviceCharges: sc,
+        serviceCharge: sc,
         amount: calculatedAmount
       });
     }
@@ -85,11 +88,20 @@ const adminSaathiController = {
         try {
           const parsed = JSON.parse(setting.value);
           feeData = { ...parsed };
+          // Standardize serviceCharges to serviceCharge for frontend
+          if (feeData.serviceCharges) {
+            feeData.serviceCharge = feeData.serviceCharges;
+          }
         } catch (e) {
           feeData = { amount: parseFloat(setting.value) };
         }
       }
-      res.json({ success: true, ...feeData });
+      res.json({ 
+        success: true, 
+        data: feeData,
+        // For backward compatibility
+        ...feeData 
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -100,8 +112,9 @@ const adminSaathiController = {
    * Admin/Partner Direct Saathi Creation
    */
   createSaathiDirectly: async (req, res) => {
+    console.log("[SaathiDirect-Debug] Incoming Request Body:", JSON.stringify(req.body, null, 2));
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
-    const { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod, liveAddress, liveCity, liveState, livePincode, liveCountry } = req.body;
+    let { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod, liveAddress, liveCity, liveState, livePincode, liveCountry } = req.body;
 
     try {
       // 1. Get Target User (or create if new)
@@ -134,7 +147,7 @@ const adminSaathiController = {
           }
         } else {
           // BRAND NEW USER CREATION
-          if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password) {
+          if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password && !mobile) {
              return res.status(400).json({ success: false, message: "Password is required for new accounts" });
           }
 
@@ -222,6 +235,10 @@ const adminSaathiController = {
         try {
           const parsed = JSON.parse(feeSetting.value);
           amount = parsed.amount || 1000;
+          // Support both names during transition
+          if (!parsed.serviceCharge && parsed.serviceCharges) {
+            parsed.serviceCharge = parsed.serviceCharges;
+          }
         } catch (e) {
           amount = parseFloat(feeSetting.value);
         }
@@ -245,10 +262,20 @@ const adminSaathiController = {
       if (!isPaidResubmission && (paymentMethod === 'WALLET' || paymentMethod === 'CASH')) {
         partnerWallet = await walletService.resolveWallet(adminId, tenantId, adminIdentity);
         adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
-        
+
+        console.log(`[SaathiDirect-Debug] adminId=${adminId}, tenantId=${tenantId}, identity=${adminIdentity}`);
+        console.log(`[SaathiDirect-Debug] partnerWallet resolved:`, partnerWallet ? `id=${partnerWallet.id}, balance=${partnerWallet.balance}` : 'NULL');
+        console.log(`[SaathiDirect-Debug] Required amount: ${amount}`);
+
         if (paymentMethod === 'WALLET') {
-          if (!partnerWallet || partnerWallet.balance < amount) {
-            return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
+          if (!partnerWallet) {
+            return res.status(400).json({ success: false, message: "Wallet not found for your account. Please contact admin." });
+          }
+          if (partnerWallet.balance < amount) {
+            return res.status(400).json({ 
+              success: false, 
+              message: `Insufficient wallet balance. Required: ₹${amount}, Available: ₹${partnerWallet.balance}. Please top up your wallet or use CASH payment.` 
+            });
           }
         }
       }
@@ -353,7 +380,7 @@ const adminSaathiController = {
 
         return appResult;
       }, {
-        timeout: 10000 // 10 seconds
+        timeout: 30000 // 30 seconds
       });
 
       res.status(201).json({
@@ -381,23 +408,61 @@ const adminSaathiController = {
    * Get Saathi Applications
    */
   getSaathiApplications: async (req, res) => {
-    const { user_id: adminId, identity: adminIdentity } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     
     try {
+      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
       const admin = await prisma.user.findUnique({ where: { id: adminId } });
-      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity) || 
-                       admin.canApproveSaathi;
+      const canView = topRoles.includes(adminIdentity) || admin.canApproveSaathi;
 
       if (!canView) {
         return res.status(403).json({ success: false, message: "Permission denied" });
       }
 
-      const applications = await prisma.saathiApplication.findMany({
+      const legacyApps = await prisma.saathiApplication.findMany({
+        where: { user: { tenantId } },
         include: { user: true, payment: true },
         orderBy: { createdAt: 'desc' }
       });
 
-      res.json({ success: true, data: applications });
+      const unifiedWhere = {
+        targetIdentity: 'SAATHI'
+      };
+      if (adminIdentity !== 'SUPER_ADMIN') {
+        unifiedWhere.tenantId = tenantId;
+      }
+
+
+      const unifiedApps = await prisma.application.findMany({
+        where: unifiedWhere,
+        include: { user: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const mappedUnified = unifiedApps.map(app => {
+
+        const data = app.submittedData || {};
+        return {
+          id: app.id,
+          userId: app.userId,
+          fullName: data.fullName || app.user?.fullName || 'N/A',
+          mobile: data.mobile || app.user?.mobile || 'N/A',
+          gender: data.gender || 'OTHER',
+          status: app.status,
+          createdAt: app.createdAt,
+          user: app.user,
+          payment: {
+            status: app.paymentStatus === 'SUCCESS' ? 'SUCCESS' : 'PENDING',
+            amount: app.paymentAmount,
+            method: app.paymentStatus === 'SUCCESS' ? 'RAZORPAY' : 'UNKNOWN'
+          },
+          isUnified: true
+        };
+      });
+
+      const allApps = [...legacyApps, ...mappedUnified].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      res.json({ success: true, data: allApps });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -408,22 +473,45 @@ const adminSaathiController = {
    * Get Single Saathi Application
    */
   getSaathiApplicationById: async (req, res) => {
-    const { user_id: adminId, identity: adminIdentity } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { applicationId } = req.params;
 
     try {
-      const admin = await prisma.user.findUnique({ where: { id: adminId } });
-      const canView = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity) || 
-                       admin.canApproveSaathi;
-
-      if (!canView) {
-        return res.status(403).json({ success: false, message: "Permission denied" });
-      }
-
-      const application = await prisma.saathiApplication.findUnique({
+      let application = await prisma.saathiApplication.findUnique({
         where: { id: applicationId },
         include: { user: true, payment: true }
       });
+
+      if (!application) {
+        const unified = await prisma.application.findUnique({
+          where: { id: applicationId },
+          include: { user: true }
+        });
+
+        if (unified && unified.targetIdentity === 'SAATHI') {
+          const data = unified.submittedData || {};
+          application = {
+            id: unified.id,
+            userId: unified.userId,
+            fullName: data.fullName || unified.user?.fullName,
+            mobile: data.mobile || unified.user?.mobile,
+            gender: data.gender || 'OTHER',
+            dateOfBirth: data.dateOfBirth,
+            address: data.address || '',
+            status: unified.status,
+            createdAt: unified.createdAt,
+            user: unified.user,
+            payment: {
+              status: unified.paymentStatus === 'SUCCESS' ? 'SUCCESS' : 'PENDING',
+              amount: unified.paymentAmount,
+              method: 'RAZORPAY'
+            },
+            addressesJson: data.addresses || [],
+            documentsJson: data.documents || [],
+            isUnified: true
+          };
+        }
+      }
 
       if (!application) return res.status(404).json({ success: false, message: "Application not found" });
 
@@ -438,10 +526,18 @@ const adminSaathiController = {
    * Approve Saathi Application
    */
   approveApplication: async (req, res) => {
-    const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { applicationId } = req.params;
 
     try {
+      const unifiedApp = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (unifiedApp) {
+        const applicationController = require("./application.controller");
+        req.params.id = applicationId; // Map applicationId to id for the unified controller
+        return await applicationController.approve(req, res);
+
+      }
+
       const application = await prisma.saathiApplication.findUnique({
         where: { id: applicationId },
         include: { payment: true, user: true }
@@ -561,27 +657,32 @@ const adminSaathiController = {
             }
           });
 
-          if (adminWallet && (application.payment?.amount > 0)) {
+          const settlementAmount = Number(application.payment?.amount || application.amount || 0);
+
+          if (adminWallet && settlementAmount > 0) {
+            const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
+
             await tx.wallet.update({
               where: { id: adminWallet.id },
-              data: { balance: { increment: application.payment.amount } }
+              data: { balance: { increment: settlementAmount } }
             });
 
             await tx.walletTransaction.create({
               data: {
                 id: generateUuid(),
                 walletId: adminWallet.id,
-                amount: application.payment.amount,
+                amount: settlementAmount,
                 type: "CREDIT",
                 category: "SERVICE_CHARGE",
                 status: "SUCCESS",
-                description: `Saathi fee received from user ${application.userId} (via ${application.payment.method})`,
+                description: `Saathi fee received from user ${application.userId} (via ${modeLabel})`,
                 referenceId: application.id,
                 tenantId,
                 metadata: {
                   trigger: "SAATHI_APPROVAL",
                   applicationId: application.id,
-                  userId: application.userId
+                  userId: application.userId,
+                  paymentId: application.payment?.id
                 }
               }
             });
@@ -597,7 +698,7 @@ const adminSaathiController = {
 
             if (subService) {
               await commissionService.processCommission(
-                application.payment.amount,
+                settlementAmount,
                 subService.id,
                 application.userId,
                 null,
@@ -626,13 +727,19 @@ const adminSaathiController = {
    * Reject Saathi Application
    */
   rejectApplication: async (req, res) => {
-    const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     const { applicationId } = req.params;
     const { reason } = req.body;
 
-    if (!reason) return res.status(400).json({ success: false, message: "Rejection reason required" });
-
     try {
+      const unifiedApp = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (unifiedApp) {
+        const applicationController = require("./application.controller");
+        req.params.id = applicationId; // Map applicationId to id for the unified controller
+        return await applicationController.reject(req, res);
+
+      }
+
       const application = await prisma.saathiApplication.findUnique({
         where: { id: applicationId },
         include: { user: true }

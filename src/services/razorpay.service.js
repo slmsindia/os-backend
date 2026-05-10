@@ -19,6 +19,7 @@ class RazorpayService {
       if (!keyId || !keySecret) throw new Error("Global Razorpay credentials missing in .env");
       
       this.secrets.set('global', keySecret);
+      console.log(`[Razorpay] Instance created for global fallback using key: ${keyId.substring(0, 8)}...`);
       return new Razorpay({ key_id: keyId, key_secret: keySecret });
     }
 
@@ -33,11 +34,16 @@ class RazorpayService {
 
     let keyId, keySecret;
 
-    if (tenant && tenant.razorpayKeyId && tenant.razorpayKeySecret) {
-      keyId = tenant.razorpayKeyId;
-      keySecret = tenant.razorpayKeySecret;
+    // Only use tenant keys if they look valid (not empty, not just spaces, long enough)
+    if (tenant && 
+        tenant.razorpayKeyId && tenant.razorpayKeyId.trim().length > 5 && 
+        tenant.razorpayKeySecret && tenant.razorpayKeySecret.trim().length > 5) {
+      keyId = tenant.razorpayKeyId.trim();
+      keySecret = tenant.razorpayKeySecret.trim();
+      console.log(`[Razorpay] Using tenant-specific keys for: ${tenantId}`);
     } else {
       // Fallback to .env
+      console.log(`[Razorpay] Tenant keys invalid or missing for ${tenantId}. Falling back to .env.`);
       keyId = process.env.RAZORPAY_KEY_ID;
       keySecret = process.env.RAZORPAY_KEY_SECRET;
     }
@@ -50,6 +56,8 @@ class RazorpayService {
       key_id: keyId,
       key_secret: keySecret,
     });
+
+    console.log(`[Razorpay] Instance created for tenant: ${tenantId || 'global'} using key: ${keyId.substring(0, 8)}... and secret: ${keySecret.substring(0, 2)}...${keySecret.slice(-2)} (length: ${keySecret.length})`);
 
     this.instances.set(tenantId, instance);
     this.secrets.set(tenantId, keySecret);
@@ -73,7 +81,9 @@ class RazorpayService {
       return order;
     } catch (error) {
       console.error('Razorpay order creation error:', error);
-      throw error;
+      // Ensure we have a string message
+      const errorMsg = error.message || error.description || JSON.stringify(error);
+      throw new Error(errorMsg);
     }
   }
 

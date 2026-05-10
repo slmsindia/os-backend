@@ -86,51 +86,36 @@ const membershipController = {
    */
   checkMobile: async (req, res) => {
     const { mobile } = req.query;
-    if (!mobile || !/^\d{10}$/.test(mobile)) {
-      return res.status(400).json({ success: false, message: "Invalid mobile number" });
-    }
-
+    if (!mobile || !/^\d{10}$/.test(mobile)) return res.status(400).json({ success: false, message: "Invalid mobile number" });
     try {
       const tenantId = req.tenant_id || (req.user ? req.user.tenant_id : null);
-      
-      if (!tenantId) {
-        console.warn("[CheckMobile] Request missing tenantId for mobile:", mobile);
-      }
-
-      const user = await prisma.user.findFirst({
-        where: { 
-          mobile, 
-          ...(tenantId ? { tenantId } : {})
-        },
-        select: { id: true, fullName: true, identity: true }
+      const user = await prisma.user.findFirst({ 
+        where: { mobile, ...(tenantId ? { tenantId } : {}) }, 
+        select: { 
+          id: true, 
+          fullName: true, 
+          identity: true,
+          email: true,
+          gender: true,
+          dateOfBirth: true
+        } 
       });
 
-      // Also check for existing membership application for this user
       let application = null;
       if (user) {
-        application = await prisma.membershipApplication.findFirst({
-          where: { userId: user.id },
-          include: { payment: true },
-          orderBy: { createdAt: 'desc' }
-        });
+        const legacyApp = await prisma.membershipApplication.findFirst({ where: { userId: user.id }, include: { payment: true }, orderBy: { createdAt: 'desc' } });
+        const unifiedApp = await prisma.application.findFirst({ where: { userId: user.id, targetIdentity: 'MEMBER' }, orderBy: { createdAt: 'desc' } });
+        if (legacyApp && unifiedApp) {
+          application = legacyApp.createdAt > unifiedApp.createdAt ? legacyApp : { ...unifiedApp, payment: { status: unifiedApp.paymentStatus } };
+        } else {
+          application = legacyApp || (unifiedApp ? { ...unifiedApp, payment: { status: unifiedApp.paymentStatus } } : null);
+        }
       }
-
       res.json({
-        success: true,
-        isRegistered: !!user,
-        user: user || null,
-        application: application ? {
-          id: application.id,
-          status: application.status,
-          paymentStatus: application.payment?.status || 'NONE',
-          createdAt: application.createdAt,
-          rejectionReason: application.rejectionReason
-        } : null
+        success: true, isRegistered: !!user, user: user || null,
+        application: application ? { id: application.id, status: application.status, paymentStatus: application.payment?.status || application.paymentStatus || 'NONE', createdAt: application.createdAt, rejectionReason: application.rejectionReason } : null
       });
-    } catch (err) {
-      console.error('Check Mobile Error:', err);
-      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
-    }
+    } catch (err) { res.status(500).json({ success: false, message: "Internal server error" }); }
   },
 
   /**
@@ -232,8 +217,6 @@ const membershipController = {
       }
 
       // Every submission creates a NEW independent application record.
-      // No old application is ever deleted — all show up in admin pending list separately.
-      // isPaidResubmission: if the last app was REJECTED but payment was already SUCCESS, reuse it (no extra charge).
       const existingApplication = await prisma.membershipApplication.findFirst({
         where: { userId: targetUserId },
         include: { payment: true },
@@ -255,8 +238,8 @@ const membershipController = {
       }
 
       const isPaidResubmission = existingApplication &&
-                               existingApplication.status === 'REJECTED' &&
-                               existingApplication.payment?.status === 'SUCCESS';
+                                existingApplication.status === 'REJECTED' &&
+                                (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID');
 
       // Get membership price
       const config = await prisma.membershipConfig.findFirst({
@@ -322,17 +305,49 @@ const membershipController = {
 
       const mappedData = mapComplexToFlat();
 
-
       const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(requesterIdentity);
       const isPartner = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'].includes(requesterIdentity);
       const isFree = isTopAdmin;
+
+      let finalPaymentMode = body.paymentMode !== undefined ? parseInt(body.paymentMode) : 1;
+      let razorpayOrder = null;
+
+      // Check wallet balance if method is WALLET (Mode 2)
+      if (finalPaymentMode === 2 && !isFree && !isPaidResubmission) {
+        try {
+          const wallet = await walletService.resolveWallet(userId, tenantId, requesterIdentity);
+          if (!wallet || wallet.balance < config.membershipPrice) {
+            console.log(`[MembershipApply] Insufficient wallet balance for user ${userId}. Falling back to Razorpay.`);
+            finalPaymentMode = 1; // Fallback to Razorpay
+          }
+        } catch (walletErr) {
+          console.error("Wallet check failed, falling back to Razorpay:", walletErr);
+          finalPaymentMode = 1;
+        }
+      }
+
+      // Create Razorpay Order if needed (OUTSIDE transaction)
+      if (finalPaymentMode === 1 && !isFree && !isPaidResubmission) {
+        const receipt = `member_init_${userId.slice(0, 8)}_${Date.now().toString().slice(-6)}`;
+        try {
+          razorpayOrder = await razorpayService.createOrder(
+            tenantId,
+            config.membershipPrice,
+            config.currency,
+            receipt
+          );
+        } catch (err) {
+          console.error("Razorpay Order Error:", err);
+          return res.status(500).json({ success: false, message: "Failed to initiate Razorpay payment. Please try again." });
+        }
+      }
 
       // Create or Update membership application and documents in a TRANSACTION
       const result = await prisma.$transaction(async (tx) => {
         let partnerWallet = null;
         let adminWallet = null;
 
-        if (isPartner && !isPaidResubmission && body.paymentMode === 2 && !isFree) {
+        if (finalPaymentMode === 2 && !isPaidResubmission && !isFree) {
           partnerWallet = await walletService.resolveWallet(userId, tenantId, requesterIdentity);
           adminWallet = await walletService.resolveWallet(null, tenantId, 'ADMIN');
         }
@@ -349,7 +364,7 @@ const membershipController = {
             data: { 
               ...mappedData, 
               createdById: userId,
-              paymentType: isFree ? 'ADMIN_BYPASS' : (body.paymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
+              paymentType: isFree ? 'ADMIN_BYPASS' : (finalPaymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
               tnxStatus: isFree ? 1 : 0
             }
           });
@@ -366,7 +381,7 @@ const membershipController = {
             });
           }
         } else {
-          const initialStatus = (isFree || (isMethod2 && body.paymentMode !== 1)) ? 'PENDING' : 'PAYMENT_PENDING';
+          const initialStatus = (isFree || (isMethod2 && finalPaymentMode !== 1)) ? 'PENDING' : 'PAYMENT_PENDING';
           app = await tx.membershipApplication.create({
             data: {
               id: generateUuid(),
@@ -374,7 +389,7 @@ const membershipController = {
               ...mappedData,
               status: initialStatus,
               createdById: userId,
-              paymentType: isFree ? 'ADMIN_BYPASS' : (body.paymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
+              paymentType: isFree ? 'ADMIN_BYPASS' : (finalPaymentMode === 2 ? 'WALLET' : 'RAZORPAY'),
               tnxStatus: isFree ? 1 : 0
             }
           });
@@ -397,7 +412,7 @@ const membershipController = {
         }
 
         // Record wallet transaction history for Partner
-        if (partnerWallet && adminWallet && body.paymentMode === 2 && !isFree) {
+        if (partnerWallet && adminWallet && finalPaymentMode === 2 && !isFree) {
           await walletService.payCreationFeeWithHistory(
             partnerWallet.id,
             adminWallet.id,
@@ -417,7 +432,7 @@ const membershipController = {
         timeout: 20000  // 20 seconds for the transaction to complete
       });
 
-      application = result;
+      const application = result;
 
       // If it's a paid resubmission, we are done
       if (isPaidResubmission) {
@@ -436,9 +451,9 @@ const membershipController = {
       }
 
       // For Method 2 (Wallet or Cash), we mark payment as success immediately
-      if (isMethod2 && body.paymentMode !== 1) {
-        const isCash = body.paymentMode === 3;
-        const paymentTypeStr = isCash ? 'CASH' : 'WALLET';
+      if (finalPaymentMode !== 1 || isFree) {
+        const isCash = finalPaymentMode === 3;
+        const paymentTypeStr = isFree ? 'ADMIN_BYPASS' : (isCash ? 'CASH' : 'WALLET');
 
         await prisma.membershipPayment.create({
           data: {
@@ -461,7 +476,7 @@ const membershipController = {
 
         return res.status(201).json({
           success: true,
-          message: `Membership application created successfully via ${paymentTypeStr.toLowerCase()} payment.`,
+          message: isFree ? "Membership granted successfully." : `Membership application created successfully via ${paymentTypeStr.toLowerCase()} payment.`,
           data: {
             applicationId: application.id,
             status: 'PENDING'
@@ -470,19 +485,11 @@ const membershipController = {
       }
 
       // Method 1 (Razorpay)
-      const receipt = `member_${application.id.slice(0, 28)}`;
-      const order = await razorpayService.createOrder(
-        tenantId,
-        config.membershipPrice,
-        config.currency,
-        receipt
-      );
-
       await prisma.membershipPayment.create({
         data: {
           id: generateUuid(),
           applicationId: application.id,
-          razorpayOrderId: order.id,
+          razorpayOrderId: razorpayOrder.id,
           amount: config.membershipPrice,
           currency: config.currency,
           status: 'PENDING'
@@ -501,7 +508,7 @@ const membershipController = {
         message: "Membership application created. Please complete the payment.",
         data: {
           applicationId: application.id,
-          orderId: order.id,
+          orderId: razorpayOrder.id,
           amount: config.membershipPrice,
           currency: config.currency,
           key: await razorpayService.getKeyId(tenantId)
@@ -542,22 +549,10 @@ const membershipController = {
     }
 
     try {
-      // Find the application (Admins can verify any app, Users only their own)
-      const AUTHORIZED_CREATOR_ROLES = [
-        'SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN',
-        'COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'
-      ];
-      const isPrivileged = AUTHORIZED_CREATOR_ROLES.includes(req.user.identity);
-
+      // Find the application
       const application = await prisma.membershipApplication.findFirst({
-        where: {
-          id: applicationId,
-          ...(isPrivileged ? {} : { userId }) // Strict check only for regular users
-        },
-        include: {
-          payment: true,
-          user: true
-        }
+        where: { id: applicationId },
+        include: { payment: true, user: true }
       });
 
       if (!application) {
@@ -567,16 +562,11 @@ const membershipController = {
         });
       }
 
-      if (!application.payment) {
-        return res.status(404).json({
-          success: false,
-          message: "Payment record not found"
-        });
-      }
+      const tenantId = application.user.tenantId;
 
       // Verify signature
       const isValid = await razorpayService.verifyPaymentSignature(
-        application.user.tenantId,
+        tenantId,
         {
           razorpay_order_id,
           razorpay_payment_id,
@@ -587,17 +577,9 @@ const membershipController = {
       if (!isValid) {
         await prisma.membershipPayment.update({
           where: { id: application.payment.id },
-          data: {
-            status: 'FAILED',
-            razorpayPaymentId: razorpay_payment_id,
-            razorpaySignature: razorpay_signature
-          }
+          data: { status: 'FAILED' }
         });
-
-        return res.status(400).json({
-          success: false,
-          message: "Invalid payment signature"
-        });
+        return res.status(400).json({ success: false, message: "Invalid payment signature" });
       }
 
       // Update payment record
@@ -617,7 +599,7 @@ const membershipController = {
         data: { status: 'PENDING' }
       });
 
-      // NEW: Log Razorpay payment in Wallet History (Log only, DO NOT credit Admin here)
+      // Log Razorpay payment in Wallet History
       try {
         const partnerId = application.createdById || application.userId;
         const partner = await prisma.user.findUnique({ where: { id: partnerId } });
@@ -663,59 +645,40 @@ const membershipController = {
    */
   getApplicationStatus: async (req, res) => {
     const { user_id: userId } = req.user;
-
     try {
-      const application = await prisma.membershipApplication.findFirst({
-        where: { userId },
-        include: {
-          payment: true,
-          education: true,
-          sector: true,
-          jobRole: true,
-          documents: true
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      if (!application) {
-        return res.json({
-          success: true,
-          data: null,
-          message: "No membership application found"
-        });
+      const legacyApp = await prisma.membershipApplication.findFirst({ where: { userId }, include: { payment: true, education: true, sector: true, jobRole: true, documents: true }, orderBy: { createdAt: 'desc' } });
+      const unifiedApp = await prisma.application.findFirst({ where: { userId, targetIdentity: 'MEMBER' }, orderBy: { createdAt: 'desc' } });
+      let application = legacyApp;
+      let isUnified = false;
+      if (unifiedApp && (!legacyApp || unifiedApp.createdAt > legacyApp.createdAt)) { application = unifiedApp; isUnified = true; }
+      if (!application) return res.json({ success: true, data: null, message: "No membership application found" });
+      if (isUnified) {
+        const data = application.submittedData || {};
+        const mappedApp = { ...application, firstName: data.firstName, lastName: data.lastName, email: data.email, gender: data.gender, status: application.status, rejectionReason: application.rejectionReason, payment: { status: application.paymentStatus, amount: application.paymentAmount }, isUnified: true };
+        return res.json({ success: true, data: mappedApp });
       }
-
-      // Enrich application with location names
       const enrichedApplication = { ...application };
-      
       const [currCountry, currState, currDistrict, currMun] = await Promise.all([
         application.currentCountry ? prisma.country.findUnique({ where: { id: application.currentCountry } }) : null,
         application.currentState ? prisma.state.findUnique({ where: { id: application.currentState } }) : null,
         application.currentDistrict ? prisma.district.findUnique({ where: { id: application.currentDistrict } }) : null,
         application.currentMunicipality ? prisma.municipality.findUnique({ where: { id: application.currentMunicipality } }) : null
       ]);
-
       const [permCountry, permState, permDistrict, permMun] = await Promise.all([
         application.permanentCountry ? prisma.country.findUnique({ where: { id: application.permanentCountry } }) : null,
         application.permanentState ? prisma.state.findUnique({ where: { id: application.permanentState } }) : null,
         application.permanentDistrict ? prisma.district.findUnique({ where: { id: application.permanentDistrict } }) : null,
         application.permanentMunicipality ? prisma.municipality.findUnique({ where: { id: application.permanentMunicipality } }) : null
       ]);
-
       enrichedApplication.currentCountryName = currCountry?.name || application.currentCountry;
       enrichedApplication.currentStateName = currState?.name || application.currentState;
       enrichedApplication.currentDistrictName = currDistrict?.name || application.currentDistrict;
       enrichedApplication.currentMunicipalityName = currMun?.name || application.currentMunicipality;
-
       enrichedApplication.permanentCountryName = permCountry?.name || application.permanentCountry;
       enrichedApplication.permanentStateName = permState?.name || application.permanentState;
       enrichedApplication.permanentDistrictName = permDistrict?.name || application.permanentDistrict;
       enrichedApplication.permanentMunicipalityName = permMun?.name || application.permanentMunicipality;
-
-      res.json({
-        success: true,
-        data: enrichedApplication
-      });
+      res.json({ success: true, data: enrichedApplication });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });

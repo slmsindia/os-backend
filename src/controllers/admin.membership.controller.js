@@ -104,7 +104,7 @@ const adminMembershipController = {
             where: { isActive: true, tenantId }, 
             orderBy: { createdAt: 'desc' } 
           });
-          fee = config ? config.membershipPrice : 150;
+          fee = config ? config.membershipPrice : 100;
         } else if (targetIdentity === 'BUSINESS_PARTNER') {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
           fee = 2000;
@@ -468,74 +468,100 @@ const adminMembershipController = {
     const { status, page = 1, limit = 20 } = req.query;
 
     try {
-      const where = {
-        user: { tenantId: tenantId }
-      };
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const take = parseInt(limit);
+
+      const where = {};
+      if (adminIdentity !== 'SUPER_ADMIN') {
+        where.user = { tenantId: tenantId };
+      }
+
 
       if (status) {
         where.status = status;
       }
 
-      // Hierarchy Visibility Rule (Scalable Version):
       const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
       if (!topRoles.includes(adminIdentity)) {
-        // Check if path field exists in the client for optimized search
-        const hasPath = Object.keys(prisma.user.fields || {}).includes('path') || 
-                        prisma.user.findMany.toString().includes('path');
-
-        if (hasPath) {
-          where.OR = [
-            { user: { path: { contains: adminId } } },
-            { user: { parentId: adminId } },
-            { createdById: adminId }
-          ];
-        } else {
-          const descendantIds = await adminMembershipController.getDescendantIds(adminId);
-          where.OR = [
-            { userId: { in: descendantIds } },
-            { createdById: adminId }
-          ];
-        }
+        where.OR = [
+          { user: { path: { contains: adminId } } },
+          { user: { parentId: adminId } },
+          { createdById: adminId }
+        ];
       }
 
-      const applications = await prisma.membershipApplication.findMany({
+      const legacyApps = await prisma.membershipApplication.findMany({
         where,
         include: {
-          user: {
-            select: {
-              id: true,
-              mobile: true,
-              fullName: true,
-              profilePhoto: true,
-              parentId: true
-            }
-          },
-          creator: {
-            select: {
-              id: true,
-              fullName: true,
-              identity: true
-            }
-          },
+          user: { select: { id: true, mobile: true, fullName: true, profilePhoto: true, parentId: true } },
+          creator: { select: { id: true, fullName: true, identity: true } },
           payment: true
         },
-        orderBy: { createdAt: 'desc' },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit)
+        orderBy: { createdAt: 'desc' }
       });
 
-      const total = await prisma.membershipApplication.count({ where });
+      const unifiedWhere = {
+        targetIdentity: 'MEMBER',
+        ...(status ? { status } : {})
+      };
+      if (adminIdentity !== 'SUPER_ADMIN') {
+        unifiedWhere.tenantId = tenantId;
+      }
 
-      await logAction({
-        userId: adminId,
-        action: "VIEW_MEMBERSHIP_APPLICATIONS",
-        tenantId
+      if (!topRoles.includes(adminIdentity)) {
+        unifiedWhere.OR = [
+          { user: { path: { contains: adminId } } },
+          { user: { parentId: adminId } },
+          { createdById: adminId }
+        ];
+      }
+
+      const unifiedApps = await prisma.application.findMany({
+        where: unifiedWhere,
+        include: {
+          user: { select: { id: true, mobile: true, fullName: true, identity: true, profilePhoto: true, parentId: true, registrationCity: true, registrationState: true } },
+          creator: { select: { id: true, fullName: true, identity: true } }
+        },
+        orderBy: { createdAt: 'desc' }
       });
+
+      const mappedUnified = unifiedApps.map(app => {
+        const data = app.submittedData || {};
+        return {
+          id: app.id,
+          userId: app.userId,
+          firstName: data.firstName || app.user?.fullName?.split(' ')[0] || 'N/A',
+          lastName: data.lastName || app.user?.fullName?.split(' ').slice(1).join(' ') || '',
+          email: data.email || '',
+          gender: data.gender || 'OTHER',
+          monthlyIncome: data.monthlyIncome || '0',
+          currentDistrict: data.currentDistrict || app.user?.registrationCity || '',
+          currentState: data.currentState || app.user?.registrationState || '',
+          status: app.status,
+          createdAt: app.createdAt,
+          updatedAt: app.updatedAt,
+          user: app.user,
+          creator: app.creator,
+          payment: {
+            status: app.paymentStatus === 'SUCCESS' ? 'PAID' : 'PENDING',
+            amount: app.paymentAmount,
+            razorpayPaymentId: app.razorpayPaymentId,
+            razorpayOrderId: app.razorpayOrderId
+          },
+          isUnified: true
+        };
+      });
+
+      const allApps = [...legacyApps, ...mappedUnified].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const total = allApps.length;
+      const paginatedApps = allApps.slice(skip, skip + take);
+
+      await logAction({ userId: adminId, action: "VIEW_MEMBERSHIP_APPLICATIONS", tenantId });
 
       res.json({
         success: true,
         data: {
-          members: applications,
+          members: paginatedApps,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -558,16 +584,10 @@ const adminMembershipController = {
     const { applicationId } = req.params;
 
     try {
-      const application = await prisma.membershipApplication.findUnique({
+      let application = await prisma.membershipApplication.findUnique({
         where: { id: applicationId },
         include: {
-          user: {
-            select: {
-              id: true,
-              mobile: true,
-              fullName: true
-            }
-          },
+          user: { select: { id: true, mobile: true, fullName: true, profilePhoto: true } },
           payment: true,
           education: true,
           sector: true,
@@ -577,23 +597,60 @@ const adminMembershipController = {
       });
 
       if (!application) {
-        return res.status(404).json({
-          success: false,
-          message: "Application not found"
+        const unified = await prisma.application.findUnique({
+          where: { id: applicationId },
+          include: {
+            user: { select: { id: true, mobile: true, fullName: true, identity: true, profilePhoto: true, registrationCity: true, registrationState: true, registrationPincode: true } },
+            creator: { select: { id: true, fullName: true, identity: true } }
+          }
         });
+
+        if (unified && unified.targetIdentity === 'MEMBER') {
+          const data = unified.submittedData || {};
+          application = {
+            id: unified.id,
+            userId: unified.userId,
+            firstName: data.firstName || unified.user?.fullName?.split(' ')[0],
+            lastName: data.lastName || unified.user?.fullName?.split(' ').slice(1).join(' '),
+            email: data.email || '',
+            gender: data.gender || 'OTHER',
+            dateOfBirth: data.birthDate || data.dateOfBirth,
+            maritalStatus: data.maritalStatus || 'SINGLE',
+            citizenship: data.citizenship || 'Indian',
+            isMigrantWorker: !!data.isMigrantWorker,
+            monthlyIncome: data.monthlyIncome || '0',
+            currentAddress: data.currentAddress || '',
+            currentDistrict: data.currentDistrict || '',
+            currentState: data.currentState || '',
+            currentPincode: data.currentPincode || '',
+            permanentAddress: data.permanentAddress || '',
+            permanentDistrict: data.permanentDistrict || '',
+            permanentState: data.permanentState || '',
+            permanentPincode: data.permanentPincode || '',
+            status: unified.status,
+            createdAt: unified.createdAt,
+            updatedAt: unified.updatedAt,
+            user: unified.user,
+            creator: unified.creator,
+            payment: {
+              status: unified.paymentStatus === 'SUCCESS' ? 'PAID' : 'PENDING',
+              amount: unified.paymentAmount,
+              razorpayPaymentId: unified.razorpayPaymentId,
+              razorpayOrderId: unified.razorpayOrderId,
+              paidAt: unified.approvedAt
+            },
+            documents: data.documents || [],
+            isUnified: true
+          };
+        }
       }
 
-      await logAction({
-        userId: adminId,
-        action: "VIEW_MEMBERSHIP_APPLICATION",
-        targetId: applicationId,
-        tenantId
-      });
+      if (!application) {
+        return res.status(404).json({ success: false, message: "Application not found" });
+      }
 
-      res.json({
-        success: true,
-        data: application
-      });
+      await logAction({ userId: adminId, action: "VIEW_MEMBERSHIP_APPLICATION", targetId: applicationId, tenantId });
+      res.json({ success: true, data: application });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -608,6 +665,15 @@ const adminMembershipController = {
     const { applicationId } = req.params;
 
     try {
+      // Unified Application Support
+      const unifiedApp = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (unifiedApp) {
+        const applicationController = require("./application.controller");
+        req.params.id = applicationId; // Map applicationId to id for the unified controller
+        return await applicationController.approve(req, res);
+      }
+
+
       // Check if user has permission to approve
       const admin = await prisma.user.findUnique({
         where: { id: adminId }
@@ -720,7 +786,10 @@ const adminMembershipController = {
           }));
 
         const settlementAmount = Number(application.payment?.amount || 0);
-        if (settlementAmount > 0) {
+
+        if (adminWallet && settlementAmount > 0) {
+          const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
+
           await tx.wallet.update({
             where: { id: adminWallet.id },
             data: { balance: { increment: settlementAmount } }
@@ -735,12 +804,13 @@ const adminMembershipController = {
               category: "SERVICE_CHARGE",
               status: "SUCCESS",
               referenceId: application.id,
-              description: `Membership fee received from user ${application.userId} (via ${application.paymentType})`,
+              description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
               tenantId,
               metadata: {
                 trigger: "MEMBERSHIP_APPROVAL",
                 applicationId,
-                userId: application.userId
+                userId: application.userId,
+                paymentId: application.payment?.id
               }
             }
           });
@@ -803,34 +873,16 @@ const adminMembershipController = {
     const { applicationId } = req.params;
     const { reason } = req.body;
 
-    if (!reason || reason.trim() === '') {
-      return res.status(400).json({
-        success: false,
-        message: "Rejection reason is required"
-      });
-    }
-
     try {
-      // Check if user has permission to reject
-      const admin = await prisma.user.findUnique({
-        where: { id: adminId }
-      });
-
-      const canReject = adminIdentity === 'SUPER_ADMIN' || 
-                        adminIdentity === 'WHITE_LABEL_ADMIN' || 
-                        adminIdentity === 'ADMIN' || 
-                        admin.canApproveMembership;
-
-      if (!canReject) {
-        return res.status(403).json({
-          success: false,
-          message: "You do not have permission to reject membership applications"
-        });
+      const unifiedApp = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (unifiedApp) {
+        const applicationController = require("./application.controller");
+        req.params.id = applicationId; // Map applicationId to id for the unified controller
+        return await applicationController.reject(req, res);
       }
 
       const application = await prisma.membershipApplication.findUnique({
-        where: { id: applicationId },
-        include: { user: true }
+        where: { id: applicationId }
       });
 
       if (!application) {

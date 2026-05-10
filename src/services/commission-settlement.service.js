@@ -247,6 +247,7 @@ async function resolveShareAmountWithFallback({
 }) {
   const shareKey = IDENTITY_TO_SHARE_KEY[receiver.identity];
   if (!shareKey) {
+    console.log(`[Commission-Debug] Step ${senderIndex}: No ShareKey defined for identity: ${receiver.identity}`);
     return { amount: 0, shareKey: null, scheme: null, sourceNode: null };
   }
 
@@ -261,6 +262,7 @@ async function resolveShareAmountWithFallback({
   });
 
   if (!resolution) {
+    console.log(`[Commission-Debug] Step ${senderIndex}: Could not resolve Scheme/Share for ${receiver.identity} (${shareKey})`);
     return { amount: 0, shareKey, scheme: null, sourceNode: null };
   }
 
@@ -361,6 +363,8 @@ async function postLedgerMovement({
     customDescription ||
     `Commission received from ${sender.fullName} for ${subService?.name || "service"}`;
 
+  console.log(`[Commission-Debug] Posting Movement: ${sender.identity} -> ${receiver.identity} | Amount: ${amount} | ShareKey: ${shareKey}`);
+  
   await client.wallet.update({
     where: { id: senderWallet.id },
     data: {
@@ -420,6 +424,7 @@ async function postLedgerMovement({
       accountType: "commission",
     },
   });
+  console.log(`[Commission-Debug] Successfully credited ${amount} to ${receiver.fullName} (${receiver.identity})`);
 }
 
 async function runSettlement(db, options) {
@@ -456,8 +461,10 @@ async function runSettlement(db, options) {
 
   const tenantId = joiner.tenantId;
   const chain = await loadHierarchyChain(joiner.id, tenantId, client);
+  console.log(`[Commission-Debug] Resolved Hierarchy Chain (${chain.length} nodes):`, chain.map(u => `${u.fullName} (${u.identity})`).join(' -> '));
 
   if (chain.length < 2) {
+    console.log(`[Commission-Debug] Chain too short for payout. Skipping.`);
     return { success: true, skipped: true, reason: "No payout chain" };
   }
 
@@ -517,8 +524,11 @@ async function runSettlement(db, options) {
       });
 
       if (!resolution.shareKey || resolution.amount <= 0 || !resolution.scheme) {
+        console.log(`[Commission-Debug] Step ${index}: Skipping ${receiver.identity} (No valid share or amount is 0)`);
         continue;
       }
+
+      console.log(`[Commission-Debug] Step ${index}: Resolved Share for ${receiver.identity} = ${resolution.amount} (Scheme: ${resolution.scheme.name})`);
 
       await postLedgerMovement({
         db: client,
@@ -603,7 +613,10 @@ const commissionSettlementService = {
         return await run(externalTx);
       }
 
-      return await prisma.$transaction(async (tx) => run(tx));
+      return await prisma.$transaction(async (tx) => run(tx), {
+        maxWait: 10000,
+        timeout: 60000
+      });
     } catch (err) {
       if (externalTx) {
         throw err;
