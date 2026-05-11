@@ -32,8 +32,8 @@ const authController = {
     }
 
     try {
-      const existing = await prisma.user.findFirst({ 
-        where: { mobile, tenantId: req.tenant_id } 
+      const existing = await prisma.user.findFirst({
+        where: { mobile, tenantId: req.tenant_id }
       });
 
       if (type === 'FORGOT_PASSWORD') {
@@ -50,10 +50,10 @@ const authController = {
       const targetTenant = await prisma.tenant.findUnique({ where: { id: req.tenant_id } });
 
       if (targetTenant && systemDomains.includes(targetTenant.domain)) {
-         return res.status(403).json({ 
-           success: false, 
-           message: "Registration is not allowed on this system domain. Please use a specific partner domain." 
-         });
+        return res.status(403).json({
+          success: false,
+          message: "Registration is not allowed on this system domain. Please use a specific partner domain."
+        });
       }
 
       const success = await sendOtp(mobile);
@@ -218,7 +218,7 @@ const authController = {
       // Condition 2.5: If referred by someone, inherit their tenant and hierarchy path!
       if (referredBy) {
         const referrer = await prisma.user.findFirst({
-          where: { 
+          where: {
             OR: [
               { referralCode: referredBy },
               { id: referredBy }
@@ -237,9 +237,9 @@ const authController = {
       // Final check: If no tenant resolved via referral OR domain middleware, OR if it's a system domain
       // We block registration to prevent users from leaking into 'localhost' or root system tenant.
       if (!resolvedTenantId) {
-        return res.status(403).json({ 
-          success: false, 
-          message: "Unable to identify a valid tenant for registration. Please use a tenant-specific link or domain." 
+        return res.status(403).json({
+          success: false,
+          message: "Unable to identify a valid tenant for registration. Please use a tenant-specific link or domain."
         });
       }
 
@@ -248,22 +248,23 @@ const authController = {
       });
 
       const systemDomains = ['localhost', '127.0.0.1', 'os.dpinfoserver.co.in'];
-      
-      // Block registration if it's a system domain AND no referral is used
-      // This forces users to either use a White Label domain (abc.com) or a Referral Code.
+
+      // Relaxed system domain check for development
+      /*
       if (targetTenant && systemDomains.includes(targetTenant.domain) && !parentId) {
         return res.status(403).json({ 
           success: false, 
           message: "Registration is not allowed on this system domain. Please use your partner's specific domain." 
         });
       }
+      */
 
       if (!(await isMobileVerified(mobile))) {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
-      const existing = await prisma.user.findFirst({ 
-        where: { mobile, tenantId: resolvedTenantId } 
+      const existing = await prisma.user.findFirst({
+        where: { mobile, tenantId: resolvedTenantId }
       });
       if (existing) return res.status(409).json({ message: "already registered in this white label" });
 
@@ -348,26 +349,16 @@ const authController = {
         });
       }
 
-      // 3. Fallback: Search globally if not found in tenant or as Super Admin
-      if (!user) {
-        user = await prisma.user.findFirst({
-          where: { mobile },
-          include: { roles: { include: { role: true } } }
-        });
-        
-        if (user) {
-          console.log(`[Auth] Global fallback found user ${mobile} for tenant ${user.tenantId}`);
-        }
-      }
+
 
       if (!user) {
-        console.warn(`Login failed: User with mobile ${mobile} not found globally.`);
-        return res.status(401).json({ message: "invalid mobile or pass" });
+        console.warn(`Login failed: User with mobile ${mobile} not found in tenant ${tenantId}.`);
+        return res.status(401).json({ message: "Invalid mobile or password for this organization." });
       }
 
       if (!(await bcrypt.compare(password, user.password))) {
         console.warn(`Login failed: Password mismatch for mobile ${mobile}`);
-        return res.status(401).json({ message: "invalid mobile or pass" });
+        return res.status(401).json({ message: "invalid mobile number or password" });
       }
 
       // Track Login Location
@@ -390,9 +381,9 @@ const authController = {
         console.error("Login location tracking failed:", logErr);
       }
       if (user.approvalStatus === "DEACTIVATED") {
-        return res.status(403).json({ 
-          success: false, 
-          message: "Your account has been deactivated by Admin. Please contact support." 
+        return res.status(403).json({
+          success: false,
+          message: "Your account has been deactivated by Admin. Please contact support."
         });
       }
 
@@ -426,7 +417,7 @@ const authController = {
       });
     } catch (err) {
       console.error("Login Error:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         message: "Internal server error during login",
         error: process.env.NODE_ENV !== 'production' ? err.message : undefined

@@ -30,6 +30,16 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ success: false, message: "invalid token" });
   }
 
+  // Strict Tenant Enforcement: Ensure token's tenant matches current domain's tenant
+  // Exception for SUPER_ADMIN who has global access
+  if (decoded.identity !== 'SUPER_ADMIN' && decoded.tenant_id !== req.tenant_id) {
+    console.warn(`[Auth] Tenant mismatch: User from ${decoded.tenant_id} attempted to access ${req.tenant_id}`);
+    return res.status(403).json({ 
+      success: false, 
+      message: "Access denied: This account belongs to a different organization/domain." 
+    });
+  }
+
   req.user = decoded;
   next();
 };
