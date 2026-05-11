@@ -6,25 +6,29 @@ const CACHE_TTL = 60000; // 1 minute
 
 module.exports = async (req, res, next) => {
   try {
-    const host = req.get("host");
-    if (!host) return res.status(400).json({ success: false, message: "Host header missing" });
+    // 1. Prioritize 'Origin' header (where the frontend is running)
+    // 2. Fallback to 'Referer' header
+    // 3. Last fallback to 'Host' header
+    const origin = req.get("origin") || req.get("referer") || req.get("host");
+    if (!origin) return res.status(400).json({ success: false, message: "Origin/Host header missing" });
+
+    // Extract domain from origin (removes http://, https:// and trailing slashes)
+    let domain = origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
     // Check cache first
-    const cached = tenantCache.get(host);
+    const cached = tenantCache.get(domain);
     if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
       req.tenant_id = cached.id;
       return next();
     }
 
-    // Try both 'localhost' and 'localhost:port' for dev
-    let domain = host;
     // Try exact match first
     let tenant = await prisma.tenant.findUnique({ where: { domain } });
     
-    // If not found, try without port (for localhost)
+    // If not found, try without port (for localhost development)
     if (!tenant && domain.includes(':')) {
-      domain = domain.split(":")[0];
-      tenant = await prisma.tenant.findUnique({ where: { domain } });
+      const domainWithoutPort = domain.split(":")[0];
+      tenant = await prisma.tenant.findUnique({ where: { domain: domainWithoutPort } });
     }
 
     if (!tenant) {
@@ -33,12 +37,12 @@ module.exports = async (req, res, next) => {
       }) || await prisma.tenant.findFirst();
 
       if (process.env.NODE_ENV !== "production" && fallbackTenant) {
-        tenantCache.set(host, { id: fallbackTenant.id, timestamp: Date.now() });
+        tenantCache.set(domain, { id: fallbackTenant.id, timestamp: Date.now() });
         req.tenant_id = fallbackTenant.id;
         return next();
       }
 
-      console.warn(`Tenant not found for: ${host}`);
+      console.warn(`Tenant not found for: ${domain}`);
       return res.status(403).json({
         success: false,
         message: "Invalid domain"
@@ -46,7 +50,7 @@ module.exports = async (req, res, next) => {
     }
 
     if (tenant) {
-      tenantCache.set(host, { id: tenant.id, timestamp: Date.now() });
+      tenantCache.set(domain, { id: tenant.id, timestamp: Date.now() });
       req.tenant_id = tenant.id;
       return next();
     }

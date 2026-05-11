@@ -145,8 +145,9 @@ async function createLayeredProfile(app, tx) {
 }
 
 // ─── Identity Upgrade (called on approval) ─────────────────────────────────────
-async function upgradeUserIdentity(userId, targetIdentity, applicationData, tenantId, tx) {
+async function upgradeUserIdentity(userId, targetIdentity, applicationData, tenantId, tx, options = {}) {
   const db = tx || prisma;
+  const skipWalletCreation = options.skipWalletCreation === true;
   await db.user.update({
     where: { id: userId },
     data: {
@@ -161,7 +162,9 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
     }
   });
   // Ensure wallet exists
-  try { await walletService.createWallet(userId, tenantId, false); } catch {}
+  if (!skipWalletCreation) {
+    try { await walletService.createWallet(userId, tenantId, false); } catch {}
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -220,9 +223,14 @@ const applicationController = {
       if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found. Provide targetMobile or targetUserId." });
 
       // ── 3. Block if already has this or higher identity ─────────────────────
+      const isSelfApply = targetUser.id === creatorId;
       const currentLevel = ROLE_HIERARCHY[targetUser.identity] || 0;
       const targetLevel  = ROLE_HIERARCHY[targetIdentity] || 0;
-      if (currentLevel >= targetLevel) {
+      const isAssistedMemberCreation =
+        targetIdentity === 'MEMBER' &&
+        !isSelfApply &&
+        PARTNER_CREATOR_ROLES.includes(creatorIdentity);
+      if (currentLevel >= targetLevel && !isAssistedMemberCreation) {
         return res.status(400).json({ success: false, message: `User already has identity ${targetUser.identity}. Use the Convert action to upgrade directly.` });
       }
 
@@ -245,7 +253,11 @@ const applicationController = {
       // Instant (free) upgrade is only via the separate `convert` endpoint.
       if (ADMIN_CREATOR_ROLES.includes(creatorIdentity)) {
         const method = (formData.paymentMethod || '').toUpperCase();
-        if (!['CASH', 'RAZORPAY', 'WALLET'].includes(method) && fee > 0) {
+        if (creatorIdentity === 'WHITE_LABEL_ADMIN') {
+          if (!['CASH', 'RAZORPAY'].includes(method) && fee > 0) {
+            return res.status(400).json({ success: false, message: "WHITE_LABEL_ADMIN can only use CASH or RAZORPAY for membership creation." });
+          }
+        } else if (!['CASH', 'RAZORPAY', 'WALLET'].includes(method) && fee > 0) {
           return res.status(400).json({ success: false, message: "ADMIN/SUB_ADMIN can only use CASH, RAZORPAY, or WALLET." });
         }
 
@@ -281,7 +293,31 @@ const applicationController = {
             await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
             return res.status(201).json({ success: true, message: "Application submitted via corporate wallet.", data: { applicationId: app.id } });
           } catch (walletErr) {
-            return res.status(500).json({ success: false, message: "Wallet payment failed: " + walletErr.message });
+            console.warn('[AdminWalletFallback] Wallet failed, falling back to Razorpay:', walletErr.message);
+            try {
+              const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
+              await prisma.application.update({
+                where: { id: app.id },
+                data: { razorpayOrderId: order.id, paymentStatus: 'PENDING', paymentMethod: 'RAZORPAY' }
+              });
+              return res.status(201).json({
+                success: true,
+                message: "Wallet payment failed. Please complete payment via Razorpay.",
+                paymentMethod: 'RAZORPAY',
+                data: {
+                  applicationId: app.id,
+                  orderId: order.id,
+                  amount: fee,
+                  key: await razorpayService.getKeyId(tenantId)
+                }
+              });
+            } catch (rzpErr) {
+              return res.status(400).json({
+                success: false,
+                message: "Wallet payment failed and Razorpay initialization also failed.",
+                error: `${walletErr.message}; ${rzpErr.message}`
+              });
+            }
           }
         }
 
@@ -448,8 +484,10 @@ const applicationController = {
 
       await prisma.$transaction(async (tx) => {
         await tx.application.update({ where: { id: applicationId }, data: { status: 'APPROVED', approvedBy: adminId, approvedAt: new Date() } });
-        await upgradeUserIdentity(app.userId, app.targetIdentity, app.submittedData || {}, tenantId, tx);
+        await upgradeUserIdentity(app.userId, app.targetIdentity, app.submittedData || {}, tenantId, tx, { skipWalletCreation: true });
       });
+
+      try { await walletService.createWallet(app.userId, tenantId, false); } catch {}
 
       // Profile creation is important but shouldn't crash the approval if there's a DB schema mismatch
       await createLayeredProfile(app);
@@ -582,10 +620,12 @@ const applicationController = {
             geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
           }
         });
-        await upgradeUserIdentity(targetUser.id, targetIdentity, formData, tenantId, tx);
+        await upgradeUserIdentity(targetUser.id, targetIdentity, formData, tenantId, tx, { skipWalletCreation: true });
         await createLayeredProfile(newApp, tx);
         return newApp;
       });
+
+      try { await walletService.createWallet(targetUser.id, tenantId, false); } catch {}
 
       await logAction({ userId: creatorId, action: `${targetIdentity}_DIRECT_CONVERSION`, targetId: app.id, tenantId, metadata: { targetUserId } });
       return res.status(201).json({
