@@ -234,6 +234,23 @@ const authController = {
         }
       }
 
+      if (!parentId) {
+        const whiteLabelAdmin = await prisma.user.findFirst({
+          where: {
+            tenantId: resolvedTenantId,
+            identity: "WHITE_LABEL_ADMIN"
+          },
+          select: { id: true, path: true }
+        });
+
+        if (whiteLabelAdmin) {
+          parentId = whiteLabelAdmin.id;
+          path = whiteLabelAdmin.path
+            ? `${whiteLabelAdmin.path}/${whiteLabelAdmin.id}`
+            : `/${whiteLabelAdmin.id}`;
+        }
+      }
+
       // Final check: If no tenant resolved via referral OR domain middleware, OR if it's a system domain
       // We block registration to prevent users from leaking into 'localhost' or root system tenant.
       if (!resolvedTenantId) {
