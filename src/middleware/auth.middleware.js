@@ -33,6 +33,23 @@ module.exports = (req, res, next) => {
   // Strict Tenant Enforcement: Ensure token's tenant matches current domain's tenant
   // Exception for SUPER_ADMIN who has global access
   if (decoded.identity !== 'SUPER_ADMIN' && decoded.tenant_id !== req.tenant_id) {
+    const onboardingRoute = String(req.originalUrl || req.path || "").toLowerCase();
+    const allowTenantFallback = [
+      "/api/admin/business/apply",
+      "/api/admin/saathi/create-directly",
+      "/api/admin/membership/create-user",
+      "/api/applications/verify-payment"
+    ].some((route) => onboardingRoute.includes(route));
+
+    if (allowTenantFallback) {
+      console.warn(
+        `[Auth] Tenant mismatch allowed for onboarding route ${req.originalUrl || req.path}: token tenant ${decoded.tenant_id} will be used instead of request tenant ${req.tenant_id}`
+      );
+      req.tenant_id = decoded.tenant_id;
+      req.user = decoded;
+      return next();
+    }
+
     console.warn(`[Auth] Tenant mismatch: User from ${decoded.tenant_id} attempted to access ${req.tenant_id}`);
     return res.status(403).json({ 
       success: false, 

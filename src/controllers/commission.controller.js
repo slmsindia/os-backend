@@ -2,6 +2,121 @@ const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 
+const TOP_COMMISSION_VIEW_ROLES = new Set([
+  "SUPER_ADMIN",
+  "WHITE_LABEL_ADMIN",
+  "ADMIN",
+  "SUB_ADMIN",
+]);
+
+const ROLE_VISIBLE_SHARE_KEY = {
+  COUNTRY_HEAD: "statePartner",
+  STATE_PARTNER: "districtPartner",
+  DISTRICT_PARTNER: "saathi",
+  SAATHI: "member",
+};
+
+const ALL_SHARE_KEYS = [
+  "admin",
+  "countryPartner",
+  "statePartner",
+  "districtPartner",
+  "saathi",
+  "member",
+];
+
+const getVisibleShareKeyForRole = (identity) => {
+  const role = String(identity || "").toUpperCase();
+  return ROLE_VISIBLE_SHARE_KEY[role] || null;
+};
+
+const isTopCommissionViewer = (identity) => TOP_COMMISSION_VIEW_ROLES.has(String(identity || "").toUpperCase());
+
+const getEditableShareKeysForRole = (identity) => {
+  if (isTopCommissionViewer(identity)) return ALL_SHARE_KEYS;
+  const visibleKey = getVisibleShareKeyForRole(identity);
+  return visibleKey ? [visibleKey] : [];
+};
+
+const sanitizeSchemeForViewer = (scheme, identity) => {
+  if (!scheme || isTopCommissionViewer(identity)) return scheme;
+  return {
+    ...scheme,
+    targetState: null,
+    targetCity: null,
+    targetPincode: null,
+  };
+};
+
+const sanitizeShareForViewer = (share, identity) => {
+  if (!share || isTopCommissionViewer(identity)) return share;
+
+  const visibleKey = getVisibleShareKeyForRole(identity);
+  const base = {
+    id: share.id,
+    schemeId: share.schemeId,
+    subServiceId: share.subServiceId,
+    commissionType: share.commissionType,
+    baseType: share.baseType,
+    servicePrice: share.servicePrice,
+    referral: share.referral,
+    referralMinAmount: share.referralMinAmount,
+  };
+
+  if (visibleKey) {
+    base[visibleKey] = share[visibleKey];
+  }
+
+  return base;
+};
+
+const sanitizeServicesForViewer = (services, identity) => {
+  if (!Array.isArray(services) || isTopCommissionViewer(identity)) return services;
+  return services.map((service) => ({
+    ...service,
+    subServices: Array.isArray(service.subServices)
+      ? service.subServices.map((subService) => ({
+          ...subService,
+          shares: Array.isArray(subService.shares)
+            ? subService.shares.map((share) => sanitizeShareForViewer(share, identity))
+            : [],
+        }))
+      : [],
+  }));
+};
+
+const normalizeShareValue = (value, fallback = 0) => {
+  if (value === undefined || value === null || value === "") return Number(fallback ?? 0);
+  return Number(value);
+};
+
+const buildRestrictedSharePayload = (incomingShare, existingShare, identity) => {
+  const editableKeys = new Set(getEditableShareKeysForRole(identity));
+  const payload = {
+    commissionType: incomingShare.commissionType !== undefined || incomingShare.type !== undefined
+      ? (parseInt(incomingShare.commissionType ?? incomingShare.type, 10) || 1)
+      : (existingShare?.commissionType ?? 1),
+    baseType: incomingShare.baseType !== undefined
+      ? (parseInt(incomingShare.baseType, 10) || 1)
+      : (existingShare?.baseType ?? 1),
+    servicePrice: normalizeShareValue(incomingShare.servicePrice, existingShare?.servicePrice ?? 0),
+    referral: normalizeShareValue(incomingShare.referral, existingShare?.referral ?? 0),
+    referralMinAmount: normalizeShareValue(incomingShare.referralMinAmount, existingShare?.referralMinAmount ?? 0),
+  };
+
+  for (const key of ALL_SHARE_KEYS) {
+    if (editableKeys.has(key)) {
+      payload[key] = incomingShare[key] !== undefined
+        ? normalizeShareValue(incomingShare[key], existingShare?.[key] ?? 0)
+        : normalizeShareValue(existingShare?.[key] ?? 0);
+    } else {
+      payload[key] = normalizeShareValue(existingShare?.[key] ?? 0);
+    }
+  }
+
+  return payload;
+};
+
 async function cloneCommissionSchemeForUser(sourceSchemeId, userId, tenantId) {
   const sourceScheme = await prisma.commissionScheme.findFirst({
     where: { id: sourceSchemeId, tenantId },
@@ -67,6 +182,7 @@ const commissionController = {
    */
   getCommissionSchemes: async (req, res) => {
     const { tenant_id: tenantId } = req.user || {};
+    const { identity } = req.user || {};
     const { isActive, userId } = req.query;
 
     try {
@@ -79,7 +195,7 @@ const commissionController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      res.json({ success: true, data: schemes });
+      res.json({ success: true, data: schemes.map((scheme) => sanitizeSchemeForViewer(scheme, identity)) });
     } catch (err) {
       console.error("GET SCHEMES ERROR:", err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
@@ -91,13 +207,14 @@ const commissionController = {
    */
   getCommissionSchemeById: async (req, res) => {
     const { Id } = req.query;
+    const { identity } = req.user || {};
     try {
       const scheme = await prisma.commissionScheme.findUnique({
         where: { id: Id },
         include: { shares: true }
       });
       if (!scheme) return res.status(404).json({ success: false, message: "Scheme not found" });
-      res.json({ success: true, data: scheme });
+      res.json({ success: true, data: sanitizeSchemeForViewer(scheme, identity) });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -454,6 +571,7 @@ const commissionController = {
    */
   getServiceSubServiceBySchemeId: async (req, res) => {
     const { SchemeID } = req.query;
+    const { identity } = req.user || {};
     if (!SchemeID) return res.status(400).json({ success: false, message: "SchemeID is required" });
 
     try {
@@ -484,7 +602,7 @@ const commissionController = {
         }
       });
 
-      res.json({ success: true, data });
+      res.json({ success: true, data: sanitizeServicesForViewer(data, identity) });
     } catch (err) {
       console.error("GET SERVICE BY SCHEME ERROR:", err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message || err.toString() });
@@ -509,21 +627,15 @@ const commissionController = {
       const shares = [];
       for (const service of services) {
         for (const sub of service.subServices) {
+          const existing = await prisma.commissionShare.findUnique({
+            where: { schemeId_subServiceId: { schemeId, subServiceId: sub.id } }
+          });
+
           shares.push({
             id: generateUuid(),
             schemeId,
             subServiceId: sub.id,
-            commissionType: parseInt(sub.type) || parseInt(sub.commissionType) || 1,
-            baseType: parseInt(sub.baseType) || 1,
-            admin: Number(sub.admin) || 0,
-            countryPartner: Number(sub.countryPartner) || 0,
-            statePartner: Number(sub.statePartner) || 0,
-            districtPartner: Number(sub.districtPartner) || 0,
-            saathi: Number(sub.saathi) || 0,
-            member: Number(sub.member) || 0,
-            servicePrice: Number(sub.servicePrice) || 0,
-            referral: Number(sub.referral) || 0,
-            referralMinAmount: Number(sub.referralMinAmount) || 0
+            ...buildRestrictedSharePayload(sub, existing, identity),
           });
         }
       }
@@ -552,13 +664,12 @@ const commissionController = {
     const { id, subServiceId, schemeId, commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member, servicePrice } = req.body || {};
     if (!subServiceId || !schemeId) return res.status(400).json({ success: false, message: "subServiceId and schemeId are required" });
     try {
+      const existing = await prisma.commissionShare.findUnique({
+        where: { schemeId_subServiceId: { schemeId, subServiceId } }
+      });
       const share = await prisma.commissionShare.upsert({
         where: { schemeId_subServiceId: { schemeId, subServiceId } },
-        update: { commissionType, admin, countryPartner, statePartner, districtPartner, saathi, member, servicePrice },
-        create: {
-          id: id || generateUuid(),
-          schemeId,
-          subServiceId,
+        update: buildRestrictedSharePayload({
           commissionType,
           admin,
           countryPartner,
@@ -567,6 +678,21 @@ const commissionController = {
           saathi,
           member,
           servicePrice
+        }, existing, req.user?.identity),
+        create: {
+          id: id || generateUuid(),
+          schemeId,
+          subServiceId,
+          ...buildRestrictedSharePayload({
+            commissionType,
+            admin,
+            countryPartner,
+            statePartner,
+            districtPartner,
+            saathi,
+            member,
+            servicePrice
+          }, existing, req.user?.identity)
         }
       });
       res.json({ success: true, data: share });

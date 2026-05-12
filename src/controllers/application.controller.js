@@ -584,23 +584,22 @@ const applicationController = {
         const slug = slugMap[app.targetIdentity];
         if (slug) {
           try {
-            await prisma.$transaction(async (tx) => {
-              const subService = await tx.commissionSubService.findFirst({
-                where: { OR: [{ slug }, { name: { contains: slug.replace('_fee', ''), mode: 'insensitive' } }] }
-              });
-              if (!subService) return;
-              await commissionService.processCommission(
-                settlementAmount,
-                subService.id,
-                app.userId,
-                null,
-                tx,
-                {
-                  referenceId: app.id,
-                  referenceType: `${app.targetIdentity}_APPLICATION`
-                }
-              );
+            const subService = await prisma.commissionSubService.findFirst({
+              where: { OR: [{ slug }, { name: { contains: slug.replace('_fee', ''), mode: 'insensitive' } }] }
             });
+            if (!subService) return;
+            await commissionService.processCommission(
+              settlementAmount,
+              subService.id,
+              app.userId,
+              null,
+              null,
+              {
+                referenceId: app.id,
+                referenceType: `${app.targetIdentity}_APPLICATION`,
+                stopAtUserId: app.createdById || null
+              }
+            );
           } catch (commErr) {
             console.error('[Commission] Failed after wallet settlement:', commErr);
           }

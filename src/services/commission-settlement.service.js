@@ -534,6 +534,7 @@ async function runSettlement(db, options) {
     transactionAmount,
     subServiceId,
     userId,
+    stopAtUserId,
     customDescription,
     referenceId,
     referenceType,
@@ -567,6 +568,21 @@ async function runSettlement(db, options) {
   console.log(
     `[Commission-Debug] Settlement start: user=${joiner.fullName} (${joiner.identity}), userId=${joiner.id}, tenantId=${tenantId}, amount=${transactionAmount}, subServiceId=${subService.id}, referenceType=${referenceType || "COMMISSION"}`
   );
+
+  let payoutLimitIndex = chain.length - 1;
+  if (stopAtUserId) {
+    const creatorIndex = chain.findIndex((node) => node.id === stopAtUserId);
+    if (creatorIndex >= 0) {
+      payoutLimitIndex = Math.max(0, creatorIndex);
+      console.log(
+        `[Commission-Debug] Creator boundary detected: stopAtUserId=${stopAtUserId}, creatorIndex=${creatorIndex}, payout will stop at this creator node and will not continue below it.`
+      );
+    } else {
+      console.log(
+        `[Commission-Debug] Creator boundary not found in chain for stopAtUserId=${stopAtUserId}. Falling back to full chain payout behavior.`
+      );
+    }
+  }
 
   if (chain.length < 2) {
     console.log(`[Commission-Debug] Chain too short for payout. Skipping.`);
@@ -607,7 +623,7 @@ async function runSettlement(db, options) {
   const transfers = [];
 
   try {
-    for (let index = 0; index < chain.length - 1; index += 1) {
+    for (let index = 0; index < payoutLimitIndex; index += 1) {
       const sender = chain[index];
       const receiver = chain[index + 1];
       console.log(
@@ -702,11 +718,12 @@ const commissionSettlementService = {
     options = {}
   ) => {
     const normalizedAmount = normalizeAmount(transactionAmount);
-    const run = async (db) =>
+  const run = async (db) =>
       runSettlement(db, {
         transactionAmount: normalizedAmount,
         subServiceId,
         userId,
+        stopAtUserId: options.stopAtUserId || options.creatorId || null,
         customDescription,
         referenceId: options.referenceId || options.reference || null,
         referenceType: options.referenceType || "COMMISSION",

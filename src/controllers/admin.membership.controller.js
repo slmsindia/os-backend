@@ -840,7 +840,8 @@ const adminMembershipController = {
               tx,
               {
                 referenceId: application.id,
-                referenceType: "MEMBERSHIP_APPLICATION"
+                referenceType: "MEMBERSHIP_APPLICATION",
+                stopAtUserId: application.createdById || null
               }
             );
             console.log(

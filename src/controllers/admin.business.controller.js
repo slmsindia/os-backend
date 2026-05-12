@@ -6,6 +6,39 @@ const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
 const commissionService = require("../services/commission.service");
 
+const resolveWhiteLabelRootId = async (adminId, adminIdentity, tenantId) => {
+  if (String(adminIdentity || "").toUpperCase() === "WHITE_LABEL_ADMIN") {
+    return adminId;
+  }
+
+  const admin = await prisma.user.findUnique({
+    where: { id: adminId },
+    select: { path: true }
+  });
+
+  const pathIds = String(admin?.path || "")
+    .split("/")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (pathIds.length === 0) {
+    return adminId;
+  }
+
+  const whiteLabelAncestors = await prisma.user.findMany({
+    where: {
+      tenantId,
+      identity: "WHITE_LABEL_ADMIN",
+      id: { in: pathIds }
+    },
+    select: { id: true }
+  });
+
+  const ancestorSet = new Set(whiteLabelAncestors.map((row) => row.id));
+  const rootId = pathIds.find((id) => ancestorSet.has(id));
+  return rootId || adminId;
+};
+
 const businessPartnerController = {
   /**
    * Add a business facility (e.g. WiFi, Parking) - Placeholder
@@ -151,23 +184,57 @@ const businessPartnerController = {
     try {
       let targetUserId = body.userId;
       let targetUser = null;
+      const whiteLabelRootId = await resolveWhiteLabelRootId(adminId, adminIdentity, tenantId);
+      const ignoreSelfUserId = Boolean(body.userId && body.userId === adminId && body.contactNumber1);
+      const effectiveProvidedUserId = ignoreSelfUserId ? null : body.userId;
+      const isProvidedUser = Boolean(effectiveProvidedUserId);
+      const requestMode = ignoreSelfUserId
+        ? "IGNORED_SELF_USER_ID"
+        : (isProvidedUser ? "EXISTING_USER" : (body.contactNumber1 ? "NEW_MOBILE" : "INVALID"));
+
+      console.log(
+        `[BusinessDirect-Debug] Mode=${requestMode} | admin=${adminId} (${adminIdentity}) | tenant=${tenantId} | providedUserId=${body.userId || "none"} | mobile=${body.contactNumber1 || "none"} | whiteLabelRootId=${whiteLabelRootId}`
+      );
+      if (ignoreSelfUserId) {
+        console.log(
+          "[BusinessDirect-Debug] Ignoring provided userId because it matches the current admin and this is a fresh mobile-based creation."
+        );
+      }
 
       if (!prisma.user) {
         throw new Error("Prisma Client is not fully initialized. Models (user) not found.");
       }
 
       // Case 1: Existing User ID provided
-      if (targetUserId) {
+      if (effectiveProvidedUserId) {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
         if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
+        console.log(
+          `[BusinessDirect-Debug] Existing user loaded: user=${targetUser.id}, identity=${targetUser.identity}, parentId=${targetUser.parentId || "none"}, path=${targetUser.path || "none"}`
+        );
       } 
       // Case 2: No User ID provided, creating for a NEW person (Admin/Partner led)
       else if (body.contactNumber1 && body.ownerName) {
-        targetUser = await prisma.user.findFirst({ where: { mobile: body.contactNumber1, tenantId } });
+        targetUser = await prisma.user.findFirst({
+          where: {
+            mobile: body.contactNumber1,
+            tenantId,
+            OR: [
+              { id: whiteLabelRootId },
+              { path: { contains: whiteLabelRootId } }
+            ]
+          }
+        });
+        console.log(
+          `[BusinessDirect-Debug] Mobile lookup result: ${targetUser ? `found user=${targetUser.id}, identity=${targetUser.identity}, parentId=${targetUser.parentId || "none"}, path=${targetUser.path || "none"}` : "no existing user found in this white-label tree"}`
+        );
         
         if (targetUser) {
-          if (targetUser.identity === 'BUSINESS_PARTNER') return res.status(400).json({ success: false, message: "User is already a BUSINESS_PARTNER" });
+          return res.status(400).json({
+            success: false,
+            message: "This mobile number already exists in your white label hierarchy. Use the existing user or choose another mobile number."
+          });
         } else {
           // BRAND NEW USER CREATION
           if (body.flowType === "ADMIN_CREATE_NEW_USER" && !body.password) {
@@ -217,13 +284,21 @@ const businessPartnerController = {
       }
 
       const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER', 'SAATHI'];
-      if (partnerRoles.includes(adminIdentity)) {
+      if (isProvidedUser && partnerRoles.includes(adminIdentity)) {
+        console.log(
+          `[BusinessDirect-Debug] Hierarchy validation for existing-user attach: targetParentId=${targetUser.parentId || "none"}, adminId=${adminId}, targetPath=${targetUser.path || "none"}`
+        );
         if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
+          console.log(
+            `[BusinessDirect-Debug] Hierarchy blocked: existing user is not inside admin branch. This only applies when userId is supplied.`
+          );
           return res.status(403).json({ 
             success: false, 
             message: "You can only create Business Partner applications for users in your own hierarchy." 
           });
         }
+      } else if (!isProvidedUser) {
+        console.log("[BusinessDirect-Debug] Fresh mobile creation detected, hierarchy attach check skipped.");
       }
 
       const existingApplication = await prisma.businessPartnerApplication.findFirst({
@@ -649,16 +724,14 @@ const businessPartnerController = {
               console.log(
                 `[Commission-Debug][BUSINESS] Commission distribution start: applicationId=${application.id}, userId=${application.userId}, amount=${application.amount}, subServiceId=${subService.id}, subServiceSlug=${subService.slug || "N/A"}`
               );
-              await prisma.$transaction(async (tx) => {
-                await commissionService.processCommission(
-                  application.amount,
-                  subService.id,
-                  application.userId,
-                  null,
-                  tx,
-                  { referenceId: application.id, referenceType: "BUSINESS_APPLICATION" }
-                );
-              });
+              await commissionService.processCommission(
+                application.amount,
+                subService.id,
+                application.userId,
+                null,
+                null,
+                { referenceId: application.id, referenceType: "BUSINESS_APPLICATION", stopAtUserId: application.createdById || null }
+              );
               console.log(
                 `[Commission-Debug][BUSINESS] Commission distribution finished: applicationId=${application.id}, userId=${application.userId}, amount=${application.amount}`
               );

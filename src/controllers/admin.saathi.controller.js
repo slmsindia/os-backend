@@ -6,6 +6,39 @@ const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
 const commissionService = require("../services/commission.service");
 
+const resolveWhiteLabelRootId = async (adminId, adminIdentity, tenantId) => {
+  if (String(adminIdentity || "").toUpperCase() === "WHITE_LABEL_ADMIN") {
+    return adminId;
+  }
+
+  const admin = await prisma.user.findUnique({
+    where: { id: adminId },
+    select: { path: true }
+  });
+
+  const pathIds = String(admin?.path || "")
+    .split("/")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (pathIds.length === 0) {
+    return adminId;
+  }
+
+  const whiteLabelAncestors = await prisma.user.findMany({
+    where: {
+      tenantId,
+      identity: "WHITE_LABEL_ADMIN",
+      id: { in: pathIds }
+    },
+    select: { id: true }
+  });
+
+  const ancestorSet = new Set(whiteLabelAncestors.map((row) => row.id));
+  const rootId = pathIds.find((id) => ancestorSet.has(id));
+  return rootId || adminId;
+};
+
 const adminSaathiController = {
   /**
    * Set Saathi Fee
@@ -120,72 +153,91 @@ const adminSaathiController = {
       // 1. Get Target User (or create if new)
       let targetUserId = providedUserId;
       let targetUser = null;
+      const whiteLabelRootId = await resolveWhiteLabelRootId(adminId, adminIdentity, tenantId);
+      const ignoreSelfUserId = Boolean(providedUserId && providedUserId === adminId && mobile);
+      const effectiveProvidedUserId = ignoreSelfUserId ? null : providedUserId;
+      const isProvidedUser = Boolean(effectiveProvidedUserId);
+      const requestMode = ignoreSelfUserId
+        ? "IGNORED_SELF_USER_ID"
+        : (isProvidedUser ? "EXISTING_USER" : (mobile ? "NEW_MOBILE" : "INVALID"));
 
-      if (targetUserId) {
+      console.log(
+        `[SaathiDirect-Debug] Mode=${requestMode} | admin=${adminId} (${adminIdentity}) | tenant=${tenantId} | providedUserId=${providedUserId || "none"} | mobile=${mobile || "none"} | whiteLabelRootId=${whiteLabelRootId}`
+      );
+
+      if (ignoreSelfUserId) {
+        console.log(
+          "[SaathiDirect-Debug] Ignoring provided userId because it matches the current admin and this is a fresh mobile-based creation."
+        );
+      }
+
+      if (effectiveProvidedUserId) {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
         if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
-        
-        // No immediate upgrade, wait for admin approval
+        console.log(
+          `[SaathiDirect-Debug] Existing user loaded: user=${targetUser.id}, identity=${targetUser.identity}, parentId=${targetUser.parentId || "none"}, path=${targetUser.path || "none"}`
+        );
       } else if (mobile) {
-        targetUser = await prisma.user.findFirst({ where: { mobile, tenantId } });
+        targetUser = await prisma.user.findFirst({
+          where: {
+            mobile,
+            tenantId,
+            OR: [
+              { id: whiteLabelRootId },
+              { path: { contains: whiteLabelRootId } }
+            ]
+          }
+        });
+        console.log(
+          `[SaathiDirect-Debug] Mobile lookup result: ${targetUser ? `found user=${targetUser.id}, identity=${targetUser.identity}, parentId=${targetUser.parentId || "none"}, path=${targetUser.path || "none"}` : "no existing user found in this white-label tree"}`
+        );
         if (targetUser) {
-          if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
-          
-          // Update email and password if provided
-          const updateData = {};
-          if (!targetUser.email && email) updateData.email = email;
-          if (req.body.password) {
-            updateData.password = await bcrypt.hash(req.body.password, 10);
-          }
-
-          if (Object.keys(updateData).length > 0) {
-            targetUser = await prisma.user.update({
-              where: { id: targetUser.id },
-              data: updateData
-            });
-          }
-        } else {
-          // BRAND NEW USER CREATION
-          if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password && !mobile) {
-             return res.status(400).json({ success: false, message: "Password is required for new accounts" });
-          }
-
-          const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
-          const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-          
-          // Use provided password or fallback to mobile last 4 digits
-          const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
-          const passwordToHash = req.body.password || defaultPassword;
-          const hashedPassword = await bcrypt.hash(passwordToHash, 10);
-
-          targetUser = await prisma.user.create({
-            data: {
-              id: generateUuid(),
-              mobile,
-              fullName,
-              email: email || null,
-              gender: (gender || 'OTHER').toUpperCase(),
-              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-              password: hashedPassword,
-              identity: 'USER',   // Wait for admin approval to become SAATHI
-              tenantId,
-              parentId: adminId,
-              path,
-              registrationState: liveState || null,
-              registrationCity: liveCity || null,
-              registrationPincode: livePincode || null,
-              registrationAddress: liveAddress ? {
-                addressType: "URBAN",
-                country: liveCountry || "India",
-                state: liveState,
-                city: liveCity,
-                pinCode: livePincode,
-                addressLine1: liveAddress
-              } : undefined
-            }
+          return res.status(400).json({
+            success: false,
+            message: "This mobile number already exists in your white label hierarchy. Use the existing user or choose another mobile number."
           });
         }
+
+        // BRAND NEW USER CREATION
+        if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password && !mobile) {
+           return res.status(400).json({ success: false, message: "Password is required for new accounts" });
+        }
+
+        const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
+        const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+        
+        // Use provided password or fallback to mobile last 4 digits
+        const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
+        const passwordToHash = req.body.password || defaultPassword;
+        const hashedPassword = await bcrypt.hash(passwordToHash, 10);
+
+        targetUser = await prisma.user.create({
+          data: {
+            id: generateUuid(),
+            mobile,
+            fullName,
+            email: email || null,
+            gender: (gender || 'OTHER').toUpperCase(),
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+            password: hashedPassword,
+            identity: 'USER',   // Wait for admin approval to become SAATHI
+            tenantId,
+            parentId: adminId,
+            path,
+            registrationState: liveState || null,
+            registrationCity: liveCity || null,
+            registrationPincode: livePincode || null,
+            registrationAddress: liveAddress ? {
+              addressType: "URBAN",
+              country: liveCountry || "India",
+              state: liveState,
+              city: liveCity,
+              pinCode: livePincode,
+              addressLine1: liveAddress
+            } : undefined
+          }
+        });
         targetUserId = targetUser?.id;
       }
 
@@ -194,12 +246,20 @@ const adminSaathiController = {
       }
 
       // 2. Hierarchy and Role Validation
-
+      // Only validate hierarchy when we are attaching an already-existing user.
       const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
-      if (partnerRoles.includes(adminIdentity)) {
+      if (isProvidedUser && partnerRoles.includes(adminIdentity)) {
+        console.log(
+          `[SaathiDirect-Debug] Hierarchy validation for existing-user attach: targetParentId=${targetUser.parentId || "none"}, adminId=${adminId}, targetPath=${targetUser.path || "none"}`
+        );
         if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
+          console.log(
+            `[SaathiDirect-Debug] Hierarchy blocked: existing user is not inside admin branch. This only applies when userId is supplied.`
+          );
           return res.status(403).json({ success: false, message: "You can only onboard Saathi in your own hierarchy" });
         }
+      } else if (!isProvidedUser) {
+        console.log("[SaathiDirect-Debug] Fresh mobile creation detected, hierarchy attach check skipped.");
       }
 
       // 3. Payment Validation & Transaction
@@ -780,19 +840,18 @@ const adminSaathiController = {
               console.log(
                 `[Commission-Debug][SAATHI] Commission distribution start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, subServiceId=${subService.id}, subServiceSlug=${subService.slug || "N/A"}`
               );
-              await prisma.$transaction(async (tx) => {
-                await commissionService.processCommission(
-                  settlementAmount,
-                  subService.id,
-                  application.userId,
-                  null,
-                  tx,
-                  {
-                    referenceId: application.id,
-                    referenceType: "SAATHI_APPLICATION"
-                  }
-                );
-              });
+              await commissionService.processCommission(
+                settlementAmount,
+                subService.id,
+                application.userId,
+                null,
+                null,
+                {
+                  referenceId: application.id,
+                  referenceType: "SAATHI_APPLICATION",
+                  stopAtUserId: application.createdById || null
+                }
+              );
               console.log(
                 `[Commission-Debug][SAATHI] Commission distribution finished: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}`
               );
