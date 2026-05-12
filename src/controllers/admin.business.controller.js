@@ -592,6 +592,9 @@ const businessPartnerController = {
         if (application.amount > 0) {
           const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
           const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
+          console.log(
+            `[Commission-Debug][BUSINESS] Admin wallet credit start: applicationId=${application.id}, userId=${application.userId}, amount=${application.amount}, mode=${modeLabel}, subServiceLookup=business_partner_fee`
+          );
 
           await prisma.$transaction(async (tx) => {
             const adminWallet = await tx.wallet.findFirst({
@@ -612,6 +615,9 @@ const businessPartnerController = {
               where: { id: adminWallet.id },
               data: { balance: { increment: application.amount } }
             });
+            console.log(
+              `[Commission-Debug][BUSINESS] Admin wallet credited: applicationId=${application.id}, walletId=${adminWallet.id}, amount=${application.amount}`
+            );
 
             await tx.walletTransaction.create({
               data: {
@@ -640,6 +646,9 @@ const businessPartnerController = {
             });
 
             if (subService) {
+              console.log(
+                `[Commission-Debug][BUSINESS] Commission distribution start: applicationId=${application.id}, userId=${application.userId}, amount=${application.amount}, subServiceId=${subService.id}, subServiceSlug=${subService.slug || "N/A"}`
+              );
               await prisma.$transaction(async (tx) => {
                 await commissionService.processCommission(
                   application.amount,
@@ -650,6 +659,13 @@ const businessPartnerController = {
                   { referenceId: application.id, referenceType: "BUSINESS_APPLICATION" }
                 );
               });
+              console.log(
+                `[Commission-Debug][BUSINESS] Commission distribution finished: applicationId=${application.id}, userId=${application.userId}, amount=${application.amount}`
+              );
+            } else {
+              console.log(
+                `[Commission-Debug][BUSINESS] Commission distribution skipped: subService not found for applicationId=${application.id}`
+              );
             }
           } catch (commissionErr) {
             console.error("[Business] Commission processing failed after wallet credit:", commissionErr);

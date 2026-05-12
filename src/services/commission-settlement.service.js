@@ -88,22 +88,28 @@ async function loadHierarchyChain(joinerId, tenantId, db) {
 
 async function findExistingSettlementLog({
   client,
-  referenceId,
-  referenceType,
   subServiceId,
   transactionDoneById,
+  transactionDoneForId,
+  amount,
 }) {
-  if (!referenceId || !referenceType || !subServiceId) {
+  if (!subServiceId || !transactionDoneById || !transactionDoneForId) {
     return null;
   }
 
-  const settlementFingerprint = `${referenceType}:${referenceId}:${subServiceId}:${transactionDoneById}`;
+  const recentWindowStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
   return client.transactionLog.findFirst({
     where: {
-      metadata: {
-        path: ["settlementFingerprint"],
-        equals: settlementFingerprint,
+      subServiceId,
+      transactionDoneById,
+      transactionDoneForId,
+      amount,
+      status: {
+        in: ["PENDING", "SUCCESS"],
+      },
+      createdAt: {
+        gte: recentWindowStart,
       },
     },
     select: {
@@ -228,14 +234,30 @@ async function findTenantDefaultActiveScheme(tenantId, db) {
   const client = asDb(db);
   if (!tenantId) return null;
 
-  return client.commissionScheme.findFirst({
+  const activeSchemes = await client.commissionScheme.findMany({
     where: {
       tenantId,
       isActive: true,
-      isDefault: true,
     },
     orderBy: { createdAt: "asc" },
   });
+
+  const isGeneralScheme = (scheme) =>
+    [scheme.targetState, scheme.targetCity, scheme.targetPincode].every(
+      (value) => value === null || value === ""
+    );
+
+  const generalScheme = activeSchemes.find(isGeneralScheme);
+  if (generalScheme) {
+    return generalScheme;
+  }
+
+  const defaultScheme = activeSchemes.find((scheme) => scheme.isDefault);
+  if (defaultScheme) {
+    return defaultScheme;
+  }
+
+  return activeSchemes[0] || null;
 }
 
 async function resolveSchemeForHierarchyStep({
@@ -292,7 +314,7 @@ async function resolveSchemeForHierarchyStep({
   const defaultScheme = await findTenantDefaultActiveScheme(tenantId, client);
   if (defaultScheme) {
     console.log(
-      `[Commission-Debug] Step ${senderIndex}: tenant default scheme found (${defaultScheme.id})`
+      `[Commission-Debug] Step ${senderIndex}: tenant fallback scheme found (${defaultScheme.id}${defaultScheme.isDefault ? ", default" : ", general"})`
     );
     const share = await findShareInScheme(defaultScheme.id, subService, client);
     console.log(
@@ -439,6 +461,9 @@ async function postLedgerMovement({
     `Commission received from ${sender.fullName} for ${subService?.name || "service"}`;
 
   console.log(`[Commission-Debug] Posting Movement: ${sender.identity} -> ${receiver.identity} | Amount: ${amount} | ShareKey: ${shareKey}`);
+  console.log(
+    `[Commission-Debug] Step ${stepIndex}: debit wallet=${senderWallet.id} (${sender.fullName}) -> credit wallet=${receiverWallet.id} (${receiver.fullName})`
+  );
   
   await client.wallet.update({
     where: { id: senderWallet.id },
@@ -499,7 +524,9 @@ async function postLedgerMovement({
       accountType: "commission",
     },
   });
-  console.log(`[Commission-Debug] Successfully credited ${amount} to ${receiver.fullName} (${receiver.identity})`);
+  console.log(
+    `[Commission-Debug] Successfully distributed ${amount} from ${sender.fullName} (${sender.identity}) to ${receiver.fullName} (${receiver.identity})`
+  );
 }
 
 async function runSettlement(db, options) {
@@ -548,10 +575,10 @@ async function runSettlement(db, options) {
 
   const existing = await findExistingSettlementLog({
     client,
-    referenceId,
-    referenceType: referenceType || "COMMISSION",
     subServiceId: subService.id,
     transactionDoneById: userId,
+    transactionDoneForId: joiner.id,
+    amount: transactionAmount,
   });
 
   if (existing) {
@@ -563,24 +590,13 @@ async function runSettlement(db, options) {
     };
   }
 
-  const settlementFingerprint = referenceId
-    ? `${referenceType || "COMMISSION"}:${referenceId}:${subService.id}:${userId}`
-    : null;
-
   const txLog = await client.transactionLog.create({
     data: {
       id: generateUuid(),
       subServiceId: subService.id,
       amount: transactionAmount,
       transactionDoneById: userId,
-      transactionDoneForId: null,
-      metadata: {
-        joinerUserId: joiner.id,
-        hierarchyDepth: chain.length,
-        subServiceSlug: subService.slug || null,
-        customDescription: customDescription || null,
-        settlementFingerprint,
-      },
+      transactionDoneForId: joiner.id,
       status: "PENDING",
     },
     select: {
@@ -666,10 +682,6 @@ async function runSettlement(db, options) {
       where: { id: txLog.id },
       data: {
         status: "FAILED",
-        metadata: {
-          settlementFingerprint,
-          error: err.message,
-        },
       },
       select: {
         id: true,
@@ -717,10 +729,10 @@ const commissionSettlementService = {
       if (isPrismaKnownError(err, "P2002")) {
         const existing = await findExistingSettlementLog({
           client: prisma,
-          referenceId: options.referenceId,
-          referenceType: options.referenceType || "COMMISSION",
           subServiceId,
           transactionDoneById: userId,
+          transactionDoneForId: userId,
+          amount: normalizedAmount,
         });
 
         if (existing) {

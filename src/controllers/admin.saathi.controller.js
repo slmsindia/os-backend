@@ -718,6 +718,9 @@ const adminSaathiController = {
 
         if (settlementAmount > 0) {
           const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
+          console.log(
+            `[Commission-Debug][SAATHI] Admin wallet credit start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, mode=${modeLabel}, subServiceLookup=saathi_fee`
+          );
 
           await prisma.$transaction(async (tx) => {
             const adminWallet = await tx.wallet.findFirst({
@@ -738,6 +741,9 @@ const adminSaathiController = {
               where: { id: adminWallet.id },
               data: { balance: { increment: settlementAmount } }
             });
+            console.log(
+              `[Commission-Debug][SAATHI] Admin wallet credited: applicationId=${application.id}, walletId=${adminWallet.id}, amount=${settlementAmount}`
+            );
 
             await tx.walletTransaction.create({
               data: {
@@ -771,6 +777,9 @@ const adminSaathiController = {
             });
 
             if (subService) {
+              console.log(
+                `[Commission-Debug][SAATHI] Commission distribution start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, subServiceId=${subService.id}, subServiceSlug=${subService.slug || "N/A"}`
+              );
               await prisma.$transaction(async (tx) => {
                 await commissionService.processCommission(
                   settlementAmount,
@@ -784,6 +793,13 @@ const adminSaathiController = {
                   }
                 );
               });
+              console.log(
+                `[Commission-Debug][SAATHI] Commission distribution finished: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}`
+              );
+            } else {
+              console.log(
+                `[Commission-Debug][SAATHI] Commission distribution skipped: subService not found for applicationId=${application.id}`
+              );
             }
           } catch (commissionErr) {
             console.error("[Saathi] Commission processing failed after wallet credit:", commissionErr);

@@ -789,6 +789,9 @@ const adminMembershipController = {
 
         if (adminWallet && settlementAmount > 0) {
           const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
+          console.log(
+            `[Commission-Debug][MEMBERSHIP] Admin wallet credit start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, walletId=${adminWallet.id}, mode=${modeLabel}, subServiceLookup=membership_fee`
+          );
 
           await tx.wallet.update({
             where: { id: adminWallet.id },
@@ -826,6 +829,9 @@ const adminMembershipController = {
           });
 
           if (subService) {
+            console.log(
+              `[Commission-Debug][MEMBERSHIP] Commission distribution start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, subServiceId=${subService.id}, subServiceSlug=${subService.slug || "N/A"}`
+            );
             await commissionService.processCommission(
               settlementAmount,
               subService.id,
@@ -836,6 +842,13 @@ const adminMembershipController = {
                 referenceId: application.id,
                 referenceType: "MEMBERSHIP_APPLICATION"
               }
+            );
+            console.log(
+              `[Commission-Debug][MEMBERSHIP] Commission distribution finished: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}`
+            );
+          } else {
+            console.log(
+              `[Commission-Debug][MEMBERSHIP] Commission distribution skipped: subService not found for applicationId=${application.id}`
             );
           }
         }
