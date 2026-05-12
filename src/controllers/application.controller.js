@@ -148,7 +148,7 @@ async function createLayeredProfile(app, tx) {
 async function upgradeUserIdentity(userId, targetIdentity, applicationData, tenantId, tx, options = {}) {
   const db = tx || prisma;
   const skipWalletCreation = options.skipWalletCreation === true;
-  await db.user.update({
+  const updatedUser = await db.user.update({
     where: { id: userId },
     data: {
       identity: targetIdentity,
@@ -165,6 +165,7 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
   if (!skipWalletCreation) {
     try { await walletService.createWallet(userId, tenantId, false); } catch {}
   }
+  return updatedUser;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -340,6 +341,49 @@ const applicationController = {
       }
 
       // ── 8. PARTNER/SAATHI/SELF: Wallet first, Razorpay fallback ────────────
+      if (creatorIdentity === 'USER') {
+        const method = (formData.paymentMethod || '').toUpperCase();
+        if (fee > 0 && method !== 'RAZORPAY') {
+          return res.status(400).json({ success: false, message: "SELF_APPLY users can only use RAZORPAY." });
+        }
+
+        const app = await prisma.application.create({
+          data: {
+            id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
+            targetIdentity, status: fee > 0 ? 'PAYMENT_PENDING' : 'PENDING',
+            paymentMethod: 'RAZORPAY',
+            paymentStatus: fee === 0 ? 'SUCCESS' : 'NONE', paymentAmount: fee,
+            submittedData: formData,
+            geoLat: geolocation?.lat, geoLng: geolocation?.lng,
+            geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
+            geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+          }
+        });
+
+        if (fee === 0) {
+          await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'FREE' } });
+          return res.status(201).json({ success: true, message: "Application submitted (no fee).", data: { applicationId: app.id } });
+        }
+
+        try {
+          const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${app.id.slice(0, 20)}`);
+          await prisma.application.update({ where: { id: app.id }, data: { razorpayOrderId: order.id, paymentStatus: 'PENDING', paymentMethod: 'RAZORPAY' } });
+          return res.status(201).json({
+            success: true,
+            message: "Please complete payment via Razorpay.",
+            paymentMethod: 'RAZORPAY',
+            data: { applicationId: app.id, orderId: order.id, amount: fee, key: await razorpayService.getKeyId(tenantId) }
+          });
+        } catch (rzpErr) {
+          console.error('[SelfApplyPayment] Razorpay failed:', rzpErr.message);
+          return res.status(400).json({
+            success: false,
+            message: "Razorpay initialization failed. Please try again.",
+            error: rzpErr.message
+          });
+        }
+      }
+
       const app = await prisma.application.create({
         data: {
           id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
@@ -493,71 +537,75 @@ const applicationController = {
       await createLayeredProfile(app);
 
 
-      // Commission distribution
-      try {
-        if (app.paymentAmount > 0) {
-          const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };
-          const slug = slugMap[app.targetIdentity];
+      // Settlement and commission distribution
+      const settlementAmount = Number(app.paymentAmount || 0);
+      if (settlementAmount > 0) {
+        // 1) Always credit tenant corporate wallet first.
+        await prisma.$transaction(async (tx) => {
+          const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
+            data: {
+              id: generateUuid(),
+              userId: null,
+              tenantId: app.tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
+            }
+          });
 
-          await prisma.$transaction(async (tx) => {
-            const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
-              data: {
-                id: generateUuid(),
-                userId: null,
-                tenantId: app.tenantId,
-                isCorporate: true,
-                balance: 0,
-                currency: "INR",
-                isActive: true
-              }
-            });
+          await tx.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: settlementAmount } }
+          });
 
-            await tx.wallet.update({
-              where: { id: adminWallet.id },
-              data: { balance: { increment: app.paymentAmount } }
-            });
-
-            await tx.walletTransaction.create({
-              data: {
-                id: generateUuid(),
-                walletId: adminWallet.id,
-                amount: app.paymentAmount,
-                type: "CREDIT",
-                category: "SERVICE_CHARGE",
-                status: "SUCCESS",
-                referenceId: app.id,
-                description: `${app.targetIdentity} application fee received from user ${app.userId}`,
-                tenantId: app.tenantId,
-                metadata: {
-                  trigger: "APPLICATION_APPROVAL",
-                  applicationId: app.id,
-                  userId: app.userId
-                }
-              }
-            });
-
-
-            if (slug) {
-              const subService = await tx.commissionSubService.findFirst({
-                where: { OR: [{ slug }, { name: { contains: slug.replace('_fee', ''), mode: 'insensitive' } }] }
-              });
-              if (subService) {
-                await commissionService.processCommission(
-                  app.paymentAmount,
-                  subService.id,
-                  app.userId,
-                  null,
-                  tx,
-                  {
-                    referenceId: app.id,
-                    referenceType: `${app.targetIdentity}_APPLICATION`
-                  }
-                );
+          await tx.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: settlementAmount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              status: "SUCCESS",
+              referenceId: app.id,
+              description: `${app.targetIdentity} application fee received from user ${app.userId}`,
+              tenantId: app.tenantId,
+              metadata: {
+                trigger: "APPLICATION_APPROVAL",
+                applicationId: app.id,
+                userId: app.userId
               }
             }
           });
+        });
+
+        // 2) Commission should not rollback wallet settlement.
+        const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };
+        const slug = slugMap[app.targetIdentity];
+        if (slug) {
+          try {
+            await prisma.$transaction(async (tx) => {
+              const subService = await tx.commissionSubService.findFirst({
+                where: { OR: [{ slug }, { name: { contains: slug.replace('_fee', ''), mode: 'insensitive' } }] }
+              });
+              if (!subService) return;
+              await commissionService.processCommission(
+                settlementAmount,
+                subService.id,
+                app.userId,
+                null,
+                tx,
+                {
+                  referenceId: app.id,
+                  referenceType: `${app.targetIdentity}_APPLICATION`
+                }
+              );
+            });
+          } catch (commErr) {
+            console.error('[Commission] Failed after wallet settlement:', commErr);
+          }
         }
-      } catch (commErr) { console.error('[Commission] Failed:', commErr); }
+      }
 
       await logAction({ userId: adminId, action: `${app.targetIdentity}_APPROVED`, targetId: applicationId, tenantId, metadata: { userId: app.userId } });
       res.json({ success: true, message: `${app.targetIdentity} application approved. Identity upgraded.`, data: { applicationId, userId: app.userId } });
@@ -603,16 +651,24 @@ const applicationController = {
     if (!targetIdentity || !targetUserId) {
       return res.status(400).json({ success: false, message: "targetIdentity and targetUserId are required." });
     }
+    const normalizedTargetIdentity = String(targetIdentity || '').trim().toUpperCase();
+    const allowedTargets = new Set(['MEMBER', 'SAATHI', 'BUSINESS_PARTNER', 'BUSINESS_USER']);
+    if (!allowedTargets.has(normalizedTargetIdentity)) {
+      return res.status(400).json({ success: false, message: `Unsupported targetIdentity: ${targetIdentity}` });
+    }
 
     try {
       const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
       if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found." });
+      if (targetUser.tenantId !== tenantId) {
+        return res.status(403).json({ success: false, message: "Target user does not belong to your tenant." });
+      }
 
-      const app = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
         const newApp = await tx.application.create({
           data: {
             id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
-            targetIdentity, status: 'APPROVED', paymentMethod: 'FREE', paymentStatus: 'SUCCESS',
+            targetIdentity: normalizedTargetIdentity, status: 'APPROVED', paymentMethod: 'FREE', paymentStatus: 'SUCCESS',
             paymentAmount: 0, approvedBy: creatorId, approvedAt: new Date(),
             submittedData: formData,
             geoLat: geolocation?.lat, geoLng: geolocation?.lng,
@@ -620,18 +676,38 @@ const applicationController = {
             geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
           }
         });
-        await upgradeUserIdentity(targetUser.id, targetIdentity, formData, tenantId, tx, { skipWalletCreation: true });
-        await createLayeredProfile(newApp, tx);
-        return newApp;
+        const updatedUser = await upgradeUserIdentity(targetUser.id, normalizedTargetIdentity, formData, tenantId, tx, { skipWalletCreation: true });
+        if (updatedUser.identity !== normalizedTargetIdentity || updatedUser.userType !== normalizedTargetIdentity) {
+          throw new Error(`Identity persistence mismatch inside transaction: expected ${normalizedTargetIdentity}, got identity=${updatedUser.identity}, userType=${updatedUser.userType}`);
+        }
+        return { app: newApp, updatedUser };
       });
+
+      // Keep profile creation outside transaction.
+      // Profile FK mismatch should never rollback identity conversion.
+      await createLayeredProfile(result.app);
+
+      const persistedUser = await prisma.user.findUnique({
+        where: { id: targetUser.id },
+        select: { id: true, identity: true, userType: true, tenantId: true }
+      });
+      if (!persistedUser || persistedUser.identity !== normalizedTargetIdentity || persistedUser.userType !== normalizedTargetIdentity) {
+        throw new Error(`Identity not persisted after conversion: expected ${normalizedTargetIdentity}, got identity=${persistedUser?.identity}, userType=${persistedUser?.userType}`);
+      }
 
       try { await walletService.createWallet(targetUser.id, tenantId, false); } catch {}
 
-      await logAction({ userId: creatorId, action: `${targetIdentity}_DIRECT_CONVERSION`, targetId: app.id, tenantId, metadata: { targetUserId } });
+      await logAction({ userId: creatorId, action: `${normalizedTargetIdentity}_DIRECT_CONVERSION`, targetId: result.app.id, tenantId, metadata: { targetUserId } });
       return res.status(201).json({
         success: true,
-        message: `User instantly converted to ${targetIdentity}.`,
-        data: { applicationId: app.id, status: 'APPROVED', userId: targetUser.id }
+        message: `User instantly converted to ${normalizedTargetIdentity}.`,
+        data: {
+          applicationId: result.app.id,
+          status: 'APPROVED',
+          userId: targetUser.id,
+          identity: normalizedTargetIdentity,
+          userType: normalizedTargetIdentity
+        }
       });
     } catch (err) {
       console.error('[Application.convert]', err);

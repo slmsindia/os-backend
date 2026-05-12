@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const SECRET = process.env.JWT_SECRET || "dev_secret";
-const EXPIRES = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE_IN || "1d";
+const EXPIRES = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE_IN || "";
 
 const generateToken = (user) => {
   const roles = Array.isArray(user?.roles) ? user.roles.map((ur) => ur.role?.name).filter(Boolean) : [];

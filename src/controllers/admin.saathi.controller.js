@@ -211,7 +211,24 @@ const adminSaathiController = {
       });
 
       // BLOCK if already PENDING or APPROVED
-      if (existingApplication && (existingApplication.status === 'PENDING' || existingApplication.status === 'APPROVED')) {
+      const existingPaymentStatus = String(existingApplication?.payment?.status || '').toUpperCase();
+      const existingPaymentMethod = String(existingApplication?.paymentType || existingApplication?.payment?.method || '').toUpperCase();
+      const isLegacyRazorpayDraft =
+        existingApplication?.status === 'PENDING' &&
+        existingPaymentMethod === 'RAZORPAY' &&
+        existingPaymentStatus !== 'SUCCESS';
+      const isAwaitingPaymentDraft =
+        existingApplication?.status === 'PAYMENT_PENDING' || isLegacyRazorpayDraft;
+
+      if (existingApplication && existingApplication.status === 'APPROVED') {
+        return res.status(400).json({
+          success: false,
+          message: `Saathi application already exists. Status: ${existingApplication.status}. You cannot re-apply unless rejected.`,
+          status: existingApplication.status
+        });
+      }
+
+      if (existingApplication && existingApplication.status === 'PENDING' && !isLegacyRazorpayDraft) {
         return res.status(400).json({
           success: false,
           message: `Saathi application already exists. Status: ${existingApplication.status}. You cannot re-apply unless rejected.`,
@@ -223,8 +240,8 @@ const adminSaathiController = {
                                 existingApplication.status === 'REJECTED' && 
                                 (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID');
 
-      // We update the existing record ONLY if it is REJECTED but already paid (Resubmission)
-      const shouldUpdateExisting = isPaidResubmission;
+      // Update stale Razorpay drafts in place so users can switch payment methods safely.
+      const shouldUpdateExisting = isPaidResubmission || isAwaitingPaymentDraft;
 
       // 4. Payment Validation & Transaction
       const feeSetting = await prisma.globalSetting.findFirst({ 
@@ -242,6 +259,22 @@ const adminSaathiController = {
         } catch (e) {
           amount = parseFloat(feeSetting.value);
         }
+      }
+
+      const isWhiteLabelAdmin = String(adminIdentity || '').toUpperCase() === 'WHITE_LABEL_ADMIN';
+      const allowedPaymentMethods = adminIdentity === 'USER'
+        ? ['RAZORPAY']
+        : (isWhiteLabelAdmin ? ['CASH', 'RAZORPAY'] : ['WALLET', 'RAZORPAY']);
+
+      if (amount > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
+        return res.status(400).json({
+          success: false,
+          message: adminIdentity === 'USER'
+            ? 'SELF_APPLY users can only use RAZORPAY for saathi registration.'
+            : isWhiteLabelAdmin
+            ? 'WHITE_LABEL_ADMIN can only use CASH or RAZORPAY for saathi registration.'
+            : 'This role can only use WALLET or RAZORPAY for saathi registration.'
+        });
       }
 
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
@@ -310,7 +343,7 @@ const adminSaathiController = {
           documentsJson: req.body.documents || null,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: 'PENDING'   // Send to Admin for approval
+          status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING'
         };
 
         let appResult;
@@ -320,20 +353,20 @@ const adminSaathiController = {
             data: { 
               ...appData, 
               rejectionReason: null,
-              payment: {
-                upsert: {
-                  create: {
-                    id: generateUuid(),
-                    amount,
-                    method: paymentMethod,
-                    razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
-                  },
-                  update: {
-                    amount,
-                    method: paymentMethod,
-                    razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                payment: {
+                  upsert: {
+                    create: {
+                      id: generateUuid(),
+                      amount,
+                      method: paymentMethod,
+                      razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                    },
+                    update: {
+                      amount,
+                      method: paymentMethod,
+                      razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
                     status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
                     paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
                   }
@@ -348,19 +381,19 @@ const adminSaathiController = {
               ...appData,
               id: generateUuid(),
               userId: targetUserId,
-              payment: {
-                create: {
-                  id: generateUuid(),
-                  amount,
-                  method: paymentMethod,
-                  razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                  status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                  paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                payment: {
+                  create: {
+                    id: generateUuid(),
+                    amount,
+                    method: paymentMethod,
+                    razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                  }
                 }
-              }
-            },
-            include: { payment: true }
-          });
+              },
+              include: { payment: true }
+            });
         }
 
         // Record history for Wallet/Cash payments immediately
@@ -617,55 +650,59 @@ const adminSaathiController = {
         })
       ]);
 
-      await prisma.saathiProfile.upsert({
-        where: { userId: application.userId },
-        create: {
-          id: generateUuid(),
-          userId: application.userId,
-          applicationId: application.id,
-          shopName: application.shopName || '',
-          shopType: application.shopType || null,
-          gstNumber: application.gstNumber || null,
-          businessRegNumber: application.businessRegNumber || null,
-          yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
-          shopOpeningTime: application.shopOpeningTime || null,
-          shopClosingTime: application.shopClosingTime || null,
-          shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
-          shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
-          shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
-          shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
-          shopCountry: application.addressesJson?.[0]?.country || 'India',
-          shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
-            ? String(application.addressesJson[0].addressType)
-            : null,
-          shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
-          serviceCategory: application.sector || null,
-          serviceType: application.jobRole || null,
-          serviceName: application.membershipNumber || null
-        },
-        update: {
-          applicationId: application.id,
-          shopName: application.shopName || '',
-          shopType: application.shopType || null,
-          gstNumber: application.gstNumber || null,
-          businessRegNumber: application.businessRegNumber || null,
-          yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
-          shopOpeningTime: application.shopOpeningTime || null,
-          shopClosingTime: application.shopClosingTime || null,
-          shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
-          shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
-          shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
-          shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
-          shopCountry: application.addressesJson?.[0]?.country || 'India',
-          shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
-            ? String(application.addressesJson[0].addressType)
-            : null,
-          shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
-          serviceCategory: application.sector || null,
-          serviceType: application.jobRole || null,
-          serviceName: application.membershipNumber || null
-        }
-      });
+      try {
+        await prisma.saathiProfile.upsert({
+          where: { userId: application.userId },
+          create: {
+            id: generateUuid(),
+            userId: application.userId,
+            applicationId: application.id,
+            shopName: application.shopName || '',
+            shopType: application.shopType || null,
+            gstNumber: application.gstNumber || null,
+            businessRegNumber: application.businessRegNumber || null,
+            yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
+            shopOpeningTime: application.shopOpeningTime || null,
+            shopClosingTime: application.shopClosingTime || null,
+            shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
+            shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
+            shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
+            shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
+            shopCountry: application.addressesJson?.[0]?.country || 'India',
+            shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
+              ? String(application.addressesJson[0].addressType)
+              : null,
+            shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
+            serviceCategory: application.sector || null,
+            serviceType: application.jobRole || null,
+            serviceName: application.membershipNumber || null
+          },
+          update: {
+            applicationId: application.id,
+            shopName: application.shopName || '',
+            shopType: application.shopType || null,
+            gstNumber: application.gstNumber || null,
+            businessRegNumber: application.businessRegNumber || null,
+            yearsOfExperience: application.yearsOfExperience ? parseInt(application.yearsOfExperience) : null,
+            shopOpeningTime: application.shopOpeningTime || null,
+            shopClosingTime: application.shopClosingTime || null,
+            shopAddressLine: application.addressesJson?.[0]?.address || application.address || null,
+            shopCity: application.addressesJson?.[0]?.district || application.addressesJson?.[0]?.currentDistrict || null,
+            shopState: application.addressesJson?.[0]?.state || application.addressesJson?.[0]?.currentState || null,
+            shopPincode: application.addressesJson?.[0]?.pinCode || application.addressesJson?.[0]?.currentPincode || null,
+            shopCountry: application.addressesJson?.[0]?.country || 'India',
+            shopAddressType: application.addressesJson?.[0]?.addressType !== undefined && application.addressesJson?.[0]?.addressType !== null
+              ? String(application.addressesJson[0].addressType)
+              : null,
+            shopMunicipality: application.addressesJson?.[0]?.municipalityId || application.addressesJson?.[0]?.currentMunicipality || null,
+            serviceCategory: application.sector || null,
+            serviceType: application.jobRole || null,
+            serviceName: application.membershipNumber || null
+          }
+        });
+      } catch (profileErr) {
+        console.error(`[Saathi] Profile upsert failed for application ${application.id}:`, profileErr);
+      }
 
       // 4. Ensure Personal Wallet exists for the new Saathi
       try {
@@ -677,25 +714,25 @@ const adminSaathiController = {
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
-        await prisma.$transaction(async (tx) => {
-          const adminWallet = await tx.wallet.findFirst({
-            where: { tenantId, isCorporate: true }
-          }) || await tx.wallet.create({
-            data: {
-              id: generateUuid(),
-              userId: null,
-              tenantId,
-              isCorporate: true,
-              balance: 0,
-              currency: "INR",
-              isActive: true
-            }
-          });
+        const settlementAmount = Number(application.payment?.amount || application.amount || 0);
 
-          const settlementAmount = Number(application.payment?.amount || application.amount || 0);
+        if (settlementAmount > 0) {
+          const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
 
-          if (adminWallet && settlementAmount > 0) {
-            const modeLabel = application.payment?.method || application.paymentType || 'UNKNOWN';
+          await prisma.$transaction(async (tx) => {
+            const adminWallet = await tx.wallet.findFirst({
+              where: { tenantId, isCorporate: true }
+            }) || await tx.wallet.create({
+              data: {
+                id: generateUuid(),
+                userId: null,
+                tenantId,
+                isCorporate: true,
+                balance: 0,
+                currency: "INR",
+                isActive: true
+              }
+            });
 
             await tx.wallet.update({
               where: { id: adminWallet.id },
@@ -721,8 +758,10 @@ const adminSaathiController = {
                 }
               }
             });
+          });
 
-            const subService = await tx.commissionSubService.findFirst({
+          try {
+            const subService = await prisma.commissionSubService.findFirst({
               where: {
                 OR: [
                   { slug: "saathi_fee" },
@@ -732,20 +771,24 @@ const adminSaathiController = {
             });
 
             if (subService) {
-              await commissionService.processCommission(
-                settlementAmount,
-                subService.id,
-                application.userId,
-                null,
-                tx,
-                {
-                  referenceId: application.id,
-                  referenceType: "SAATHI_APPLICATION"
-                }
-              );
+              await prisma.$transaction(async (tx) => {
+                await commissionService.processCommission(
+                  settlementAmount,
+                  subService.id,
+                  application.userId,
+                  null,
+                  tx,
+                  {
+                    referenceId: application.id,
+                    referenceType: "SAATHI_APPLICATION"
+                  }
+                );
+              });
             }
+          } catch (commissionErr) {
+            console.error("[Saathi] Commission processing failed after wallet credit:", commissionErr);
           }
-        });
+        }
       } catch (commErr) {
         console.error("Saathi commission failed:", commErr);
       }
@@ -889,6 +932,11 @@ const adminSaathiController = {
           razorpaySignature: razorpay_signature,
           paidAt: new Date()
         }
+      });
+
+      await prisma.saathiApplication.update({
+        where: { id: application.id },
+        data: { status: 'PENDING' }
       });
 
       // Log in Wallet History & Credit Admin Corporate Wallet

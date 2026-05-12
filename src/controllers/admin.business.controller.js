@@ -231,7 +231,7 @@ const businessPartnerController = {
         orderBy: { createdAt: 'desc' }
       });
 
-      if (existingApplication && (existingApplication.status === 'PENDING' || existingApplication.status === 'APPROVED')) {
+      if (existingApplication && existingApplication.status === 'APPROVED') {
         return res.status(400).json({
           success: false,
           message: `Business Partner application already exists. Status: ${existingApplication.status}.`,
@@ -239,7 +239,26 @@ const businessPartnerController = {
         });
       }
 
-      const shouldUpdateExisting = existingApplication && existingApplication.status === 'REJECTED';
+      const existingPaymentMethod = Number(existingApplication?.paymentMode) === 1
+        ? 'RAZORPAY'
+        : (Number(existingApplication?.paymentMode) === 2 ? 'WALLET' : 'CASH');
+      const isLegacyRazorpayDraft =
+        existingApplication?.status === 'PENDING' &&
+        existingPaymentMethod === 'RAZORPAY' &&
+        String(existingApplication?.razorPayReferenceNo || '').startsWith('order_');
+      const isAwaitingPaymentDraft =
+        existingApplication?.status === 'PAYMENT_PENDING' || isLegacyRazorpayDraft;
+
+      if (existingApplication && existingApplication.status === 'PENDING' && !isLegacyRazorpayDraft) {
+        return res.status(400).json({
+          success: false,
+          message: `Business Partner application already exists. Status: ${existingApplication.status}.`,
+          status: existingApplication.status
+        });
+      }
+
+      const shouldUpdateExisting =
+        (existingApplication && existingApplication.status === 'REJECTED') || isAwaitingPaymentDraft;
       const isPaidResubmission = existingApplication && existingApplication.status === 'REJECTED';
 
       const feeSetting = await prisma.globalSetting.findFirst({ 
@@ -259,6 +278,22 @@ const businessPartnerController = {
       }
       
       let paymentMethod = body.paymentMode === 1 ? 'RAZORPAY' : (body.paymentMode === 2 ? 'WALLET' : 'CASH');
+      const isWhiteLabelAdmin = String(adminIdentity || '').toUpperCase() === 'WHITE_LABEL_ADMIN';
+      const allowedPaymentMethods = adminIdentity === 'USER'
+        ? ['RAZORPAY']
+        : (isWhiteLabelAdmin ? ['CASH', 'RAZORPAY'] : ['WALLET', 'RAZORPAY']);
+
+      if (amount > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
+        return res.status(400).json({
+          success: false,
+          message: adminIdentity === 'USER'
+            ? 'SELF_APPLY users can only use RAZORPAY for business registration.'
+            : isWhiteLabelAdmin
+            ? 'WHITE_LABEL_ADMIN can only use CASH or RAZORPAY for business registration.'
+            : 'This role can only use WALLET or RAZORPAY for business registration.'
+        });
+      }
+
       let razorpayOrder = null;
 
       if (paymentMethod === 'RAZORPAY') {
@@ -313,7 +348,7 @@ const businessPartnerController = {
           paymentMode: paymentMethod === 'RAZORPAY' ? 1 : (paymentMethod === 'WALLET' ? 2 : 3),
           addressJson: body.address || null,
           documentsJson: body.documents || null,
-          status: 'PENDING',
+          status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING',
           createdById: adminId
         };
 
@@ -502,43 +537,47 @@ const businessPartnerController = {
         })
       ]);
 
-      await prisma.businessProfile.upsert({
-        where: { userId: application.userId },
-        create: {
-          id: generateUuid(),
-          userId: application.userId,
-          businessName: application.businessName || 'Business',
-          brandName: application.brandName || application.businessName || 'Business',
-          ownerName: application.ownerName || '',
-          email: application.email || '',
-          contactNumber1: application.contactNumber1 || '',
-          contactNumber2: application.contactNumber2 || null,
-          companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
-          sectorId: application.sectorId,
-          businessType: Number(application.bussinessType || 0),
-          employerType: Number(application.employeerType || 0),
-          serviceCharges: Number(application.serviceCharges || 0),
-          gst: Number(application.gst || 0),
-          platformFees: Number(application.platformFees || 0),
-          address: application.addressJson || null
-        },
-        update: {
-          businessName: application.businessName || 'Business',
-          brandName: application.brandName || application.businessName || 'Business',
-          ownerName: application.ownerName || '',
-          email: application.email || '',
-          contactNumber1: application.contactNumber1 || '',
-          contactNumber2: application.contactNumber2 || null,
-          companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
-          sectorId: application.sectorId,
-          businessType: Number(application.bussinessType || 0),
-          employerType: Number(application.employeerType || 0),
-          serviceCharges: Number(application.serviceCharges || 0),
-          gst: Number(application.gst || 0),
-          platformFees: Number(application.platformFees || 0),
-          address: application.addressJson || null
-        }
-      });
+      try {
+        await prisma.businessProfile.upsert({
+          where: { userId: application.userId },
+          create: {
+            id: generateUuid(),
+            userId: application.userId,
+            businessName: application.businessName || 'Business',
+            brandName: application.brandName || application.businessName || 'Business',
+            ownerName: application.ownerName || '',
+            email: application.email || '',
+            contactNumber1: application.contactNumber1 || '',
+            contactNumber2: application.contactNumber2 || null,
+            companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
+            sectorId: application.sectorId,
+            businessType: Number(application.bussinessType || 0),
+            employerType: Number(application.employeerType || 0),
+            serviceCharges: Number(application.serviceCharges || 0),
+            gst: Number(application.gst || 0),
+            platformFees: Number(application.platformFees || 0),
+            address: application.addressJson || null
+          },
+          update: {
+            businessName: application.businessName || 'Business',
+            brandName: application.brandName || application.businessName || 'Business',
+            ownerName: application.ownerName || '',
+            email: application.email || '',
+            contactNumber1: application.contactNumber1 || '',
+            contactNumber2: application.contactNumber2 || null,
+            companyLogoUrl: application.companyLogoUrl || application.companyLogoBase64 || null,
+            sectorId: application.sectorId,
+            businessType: Number(application.bussinessType || 0),
+            employerType: Number(application.employeerType || 0),
+            serviceCharges: Number(application.serviceCharges || 0),
+            gst: Number(application.gst || 0),
+            platformFees: Number(application.platformFees || 0),
+            address: application.addressJson || null
+          }
+        });
+      } catch (profileErr) {
+        console.error(`[Business] Profile upsert failed for application ${application.id}:`, profileErr);
+      }
 
       // 4. Ensure Personal Wallet exists for the new Business Partner
       try {
@@ -550,24 +589,24 @@ const businessPartnerController = {
 
       // --- COMMISSION DISTRIBUTION & ADMIN CREDIT ---
       try {
-        await prisma.$transaction(async (tx) => {
-          const adminWallet = await tx.wallet.findFirst({
-            where: { tenantId, isCorporate: true }
-          }) || await tx.wallet.create({
-            data: {
-              id: generateUuid(),
-              userId: null,
-              tenantId,
-              isCorporate: true,
-              balance: 0,
-              currency: "INR",
-              isActive: true
-            }
-          });
+        if (application.amount > 0) {
+          const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
+          const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
 
-          if (adminWallet && application.amount > 0) {
-            const modeMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
-            const modeLabel = modeMap[application.paymentMode] || 'UNKNOWN';
+          await prisma.$transaction(async (tx) => {
+            const adminWallet = await tx.wallet.findFirst({
+              where: { tenantId, isCorporate: true }
+            }) || await tx.wallet.create({
+              data: {
+                id: generateUuid(),
+                userId: null,
+                tenantId,
+                isCorporate: true,
+                balance: 0,
+                currency: "INR",
+                isActive: true
+              }
+            });
 
             await tx.wallet.update({
               where: { id: adminWallet.id },
@@ -588,8 +627,10 @@ const businessPartnerController = {
                 metadata: { trigger: "BUSINESS_APPROVAL", applicationId: application.id, userId: application.userId }
               }
             });
+          });
 
-            const subService = await tx.commissionSubService.findFirst({
+          try {
+            const subService = await prisma.commissionSubService.findFirst({
               where: {
                 OR: [
                   { slug: "business_partner_fee" },
@@ -599,13 +640,21 @@ const businessPartnerController = {
             });
 
             if (subService) {
-              await commissionService.processCommission(
-                application.amount, subService.id, application.userId, null, tx,
-                { referenceId: application.id, referenceType: "BUSINESS_APPLICATION" }
-              );
+              await prisma.$transaction(async (tx) => {
+                await commissionService.processCommission(
+                  application.amount,
+                  subService.id,
+                  application.userId,
+                  null,
+                  tx,
+                  { referenceId: application.id, referenceType: "BUSINESS_APPLICATION" }
+                );
+              });
             }
+          } catch (commissionErr) {
+            console.error("[Business] Commission processing failed after wallet credit:", commissionErr);
           }
-        });
+        }
       } catch (commErr) {
         console.error("BP commission failed:", commErr);
       }
@@ -693,7 +742,11 @@ const businessPartnerController = {
 
       await prisma.businessPartnerApplication.update({
         where: { id: applicationId },
-        data: { razorPayReferenceNo: razorpay_payment_id, paymentMode: 1 }
+        data: {
+          razorPayReferenceNo: razorpay_payment_id,
+          paymentMode: 1,
+          status: 'PENDING'
+        }
       });
 
       res.json({ success: true, message: "Payment verified successfully." });

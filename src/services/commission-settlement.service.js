@@ -86,6 +86,31 @@ async function loadHierarchyChain(joinerId, tenantId, db) {
   return chain;
 }
 
+async function findExistingSettlementLog({
+  client,
+  referenceId,
+  referenceType,
+  subServiceId,
+  transactionDoneById,
+}) {
+  if (!referenceId || !referenceType || !subServiceId) {
+    return null;
+  }
+
+  return client.transactionLog.findFirst({
+    where: {
+      referenceId,
+      referenceType,
+      subServiceId,
+      transactionDoneById,
+    },
+    select: {
+      id: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 async function findShareInScheme(schemeId, subService, db) {
   if (!schemeId || !subService) return null;
 
@@ -197,6 +222,20 @@ async function findWhiteLabelBaseNode(tenantId, db) {
   });
 }
 
+async function findTenantDefaultActiveScheme(tenantId, db) {
+  const client = asDb(db);
+  if (!tenantId) return null;
+
+  return client.commissionScheme.findFirst({
+    where: {
+      tenantId,
+      isActive: true,
+      isDefault: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 async function resolveSchemeForHierarchyStep({
   chain,
   senderIndex,
@@ -207,29 +246,58 @@ async function resolveSchemeForHierarchyStep({
 }) {
   const client = asDb(db);
 
-  for (let i = senderIndex; i >= 0; i -= 1) {
-    const candidate = chain[i];
-    const scheme = await findActiveSchemeForUser(candidate.id, tenantId, client);
-    if (!scheme) continue;
-
-    const share = await findShareInScheme(scheme.id, subService, client);
-    if (!share) continue;
-
-    const amount = calculateAmount(1, share, shareKey);
-    if (amount > 0) {
-      return { scheme, share, sourceNode: candidate };
+  const sender = chain[senderIndex];
+  if (sender) {
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: resolving for sender=${sender.fullName} (${sender.identity}) -> shareKey=${shareKey}, tenant=${tenantId}, subService=${subService?.slug || subService?.name || subService?.id || "UNKNOWN"}`
+    );
+    const senderScheme = await findActiveSchemeForUser(sender.id, tenantId, client);
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: sender scheme ${senderScheme ? `found (${senderScheme.id}${senderScheme.isDefault ? ", default" : ""})` : "not found"}`
+    );
+    if (senderScheme) {
+      const share = await findShareInScheme(senderScheme.id, subService, client);
+      console.log(
+        `[Commission-Debug] Step ${senderIndex}: sender share ${share ? `found (commissionType=${share.commissionType}, value=${share[shareKey] ?? 0})` : "not found"}`
+      );
+      // A node-specific scheme wins even when the configured payout is 0.
+      if (share) {
+        return { scheme: senderScheme, share, sourceNode: sender };
+      }
     }
   }
 
   const whiteLabelNode = await findWhiteLabelBaseNode(tenantId, client);
   if (whiteLabelNode) {
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: white-label base node=${whiteLabelNode.fullName} (${whiteLabelNode.id})`
+    );
     const scheme = await findActiveSchemeForUser(whiteLabelNode.id, tenantId, client);
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: white-label scheme ${scheme ? `found (${scheme.id}${scheme.isDefault ? ", default" : ""})` : "not found"}`
+    );
     if (scheme) {
       const share = await findShareInScheme(scheme.id, subService, client);
-      const amount = calculateAmount(1, share, shareKey);
-      if (amount > 0) {
+      console.log(
+        `[Commission-Debug] Step ${senderIndex}: white-label share ${share ? `found (commissionType=${share.commissionType}, value=${share[shareKey] ?? 0})` : "not found"}`
+      );
+      if (share) {
         return { scheme, share, sourceNode: whiteLabelNode };
       }
+    }
+  }
+
+  const defaultScheme = await findTenantDefaultActiveScheme(tenantId, client);
+  if (defaultScheme) {
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: tenant default scheme found (${defaultScheme.id})`
+    );
+    const share = await findShareInScheme(defaultScheme.id, subService, client);
+    console.log(
+      `[Commission-Debug] Step ${senderIndex}: tenant default share ${share ? `found (commissionType=${share.commissionType}, value=${share[shareKey] ?? 0})` : "not found"}`
+    );
+    if (share) {
+      return { scheme: defaultScheme, share, sourceNode: null };
     }
   }
 
@@ -266,8 +334,13 @@ async function resolveShareAmountWithFallback({
     return { amount: 0, shareKey, scheme: null, sourceNode: null };
   }
 
+  const amount = calculateAmount(totalAmount, resolution.share, shareKey);
+  console.log(
+    `[Commission-Debug] Step ${senderIndex}: resolved amount=${amount} for receiver=${receiver.fullName} (${receiver.identity}) using scheme=${resolution.scheme.id} from=${resolution.sourceNode?.fullName || "TENANT_DEFAULT"}`
+  );
+
   return {
-    amount: calculateAmount(totalAmount, resolution.share, shareKey),
+    amount,
     shareKey,
     scheme: resolution.scheme,
     sourceNode: resolution.sourceNode,
@@ -462,35 +535,35 @@ async function runSettlement(db, options) {
   const tenantId = joiner.tenantId;
   const chain = await loadHierarchyChain(joiner.id, tenantId, client);
   console.log(`[Commission-Debug] Resolved Hierarchy Chain (${chain.length} nodes):`, chain.map(u => `${u.fullName} (${u.identity})`).join(' -> '));
+  console.log(
+    `[Commission-Debug] Settlement start: user=${joiner.fullName} (${joiner.identity}), userId=${joiner.id}, tenantId=${tenantId}, amount=${transactionAmount}, subServiceId=${subService.id}, referenceType=${referenceType || "COMMISSION"}`
+  );
 
   if (chain.length < 2) {
     console.log(`[Commission-Debug] Chain too short for payout. Skipping.`);
     return { success: true, skipped: true, reason: "No payout chain" };
   }
 
-  const settlementKey = referenceId
-    ? `${referenceType || "COMMISSION"}:${referenceId}:${subService.id}`
-    : null;
+  const existing = await findExistingSettlementLog({
+    client,
+    referenceId,
+    referenceType: referenceType || "COMMISSION",
+    subServiceId: subService.id,
+    transactionDoneById: userId,
+  });
 
-  if (settlementKey) {
-    const existing = await client.transactionLog.findUnique({
-      where: { settlementKey },
-    });
-
-    if (existing) {
-      return {
-        success: true,
-        duplicate: true,
-        transactionLogId: existing.id,
-        transfers: [],
-      };
-    }
+  if (existing) {
+    return {
+      success: true,
+      duplicate: true,
+      transactionLogId: existing.id,
+      transfers: [],
+    };
   }
 
   const txLog = await client.transactionLog.create({
     data: {
       id: generateUuid(),
-      settlementKey,
       subServiceId: subService.id,
       amount: transactionAmount,
       transactionDoneById: userId,
@@ -505,6 +578,9 @@ async function runSettlement(db, options) {
       },
       status: "PENDING",
     },
+    select: {
+      id: true,
+    },
   });
 
   const transfers = [];
@@ -513,6 +589,9 @@ async function runSettlement(db, options) {
     for (let index = 0; index < chain.length - 1; index += 1) {
       const sender = chain[index];
       const receiver = chain[index + 1];
+      console.log(
+        `[Commission-Debug] Step ${index}: evaluating ${sender.fullName} (${sender.identity}) -> ${receiver.fullName} (${receiver.identity})`
+      );
       const resolution = await resolveShareAmountWithFallback({
         totalAmount: transactionAmount,
         chain,
@@ -524,7 +603,9 @@ async function runSettlement(db, options) {
       });
 
       if (!resolution.shareKey || resolution.amount <= 0 || !resolution.scheme) {
-        console.log(`[Commission-Debug] Step ${index}: Skipping ${receiver.identity} (No valid share or amount is 0)`);
+        console.log(
+          `[Commission-Debug] Step ${index}: Skipping ${receiver.identity} (shareKey=${resolution.shareKey || "N/A"}, amount=${resolution.amount}, scheme=${resolution.scheme?.id || "N/A"})`
+        );
         continue;
       }
 
@@ -564,6 +645,9 @@ async function runSettlement(db, options) {
       data: {
         status: transfers.length > 0 ? "SUCCESS" : "SKIPPED",
       },
+      select: {
+        id: true,
+      },
     });
 
     return {
@@ -581,6 +665,9 @@ async function runSettlement(db, options) {
           ...(txLog.metadata || {}),
           error: err.message,
         },
+      },
+      select: {
+        id: true,
       },
     }).catch(() => {});
 
@@ -623,23 +710,21 @@ const commissionSettlementService = {
       }
 
       if (isPrismaKnownError(err, "P2002")) {
-        const settlementKey = options.referenceId
-          ? `${options.referenceType || "COMMISSION"}:${options.referenceId}:${subServiceId}`
-          : null;
+        const existing = await findExistingSettlementLog({
+          client: prisma,
+          referenceId: options.referenceId,
+          referenceType: options.referenceType || "COMMISSION",
+          subServiceId,
+          transactionDoneById: userId,
+        });
 
-        if (settlementKey) {
-          const existing = await prisma.transactionLog.findUnique({
-            where: { settlementKey },
-          });
-
-          if (existing) {
-            return {
-              success: true,
-              duplicate: true,
-              transactionLogId: existing.id,
-              transfers: [],
-            };
-          }
+        if (existing) {
+          return {
+            success: true,
+            duplicate: true,
+            transactionLogId: existing.id,
+            transfers: [],
+          };
         }
       }
 
