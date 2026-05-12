@@ -8,6 +8,48 @@ class RazorpayService {
     this.secrets = new Map();
   }
 
+  isDevelopment() {
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  shouldUseMockOrder(error) {
+    if (!this.isDevelopment()) return false;
+
+    const statusCode = error?.statusCode || error?.error?.statusCode;
+    const description = String(
+      error?.error?.description ||
+      error?.description ||
+      error?.message ||
+      ''
+    ).toLowerCase();
+
+    return (
+      statusCode === 401 ||
+      description.includes('authentication failed') ||
+      description.includes('credentials') ||
+      description.includes('unauthorized') ||
+      description.includes('network') ||
+      description.includes('timeout') ||
+      description.includes('fetch')
+    );
+  }
+
+  buildMockOrder(amount, currency = 'INR', receipt) {
+    const id = `mock_order_${Date.now()}`;
+    return {
+      id,
+      entity: 'order',
+      amount: Math.round(amount * 100),
+      amount_paid: 0,
+      amount_due: Math.round(amount * 100),
+      currency,
+      receipt: receipt || `mock_receipt_${Date.now()}`,
+      status: 'created',
+      attempts: 0,
+      mock: true
+    };
+  }
+
   /**
    * Get or create a Razorpay instance for a specific tenant
    * @param {string} tenantId 
@@ -81,6 +123,13 @@ class RazorpayService {
       return order;
     } catch (error) {
       console.error('Razorpay order creation error:', error);
+
+      if (this.shouldUseMockOrder(error)) {
+        const mockOrder = this.buildMockOrder(amount, currency, receipt);
+        console.warn(`[Razorpay] Falling back to mock order in development: ${mockOrder.id}`);
+        return mockOrder;
+      }
+
       // Ensure we have a string message
       const errorMsg = error.message || error.description || JSON.stringify(error);
       throw new Error(errorMsg);

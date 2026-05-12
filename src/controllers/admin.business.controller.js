@@ -507,7 +507,6 @@ const businessPartnerController = {
         create: {
           id: generateUuid(),
           userId: application.userId,
-          applicationId: application.id,
           businessName: application.businessName || 'Business',
           brandName: application.brandName || application.businessName || 'Business',
           ownerName: application.ownerName || '',
@@ -524,7 +523,6 @@ const businessPartnerController = {
           address: application.addressJson || null
         },
         update: {
-          applicationId: application.id,
           businessName: application.businessName || 'Business',
           brandName: application.brandName || application.businessName || 'Business',
           ownerName: application.ownerName || '',
@@ -684,7 +682,13 @@ const businessPartnerController = {
         return res.status(400).json({ success: false, message: "Order ID mismatch" });
       }
 
-      const isValid = await razorpayService.verifyPaymentSignature(tenantId, { razorpay_order_id, razorpay_payment_id, razorpay_signature });
+      const isMockPayment =
+        process.env.NODE_ENV !== 'production' &&
+        String(razorpay_order_id || '').startsWith('mock_order_');
+
+      const isValid = isMockPayment
+        ? true
+        : await razorpayService.verifyPaymentSignature(tenantId, { razorpay_order_id, razorpay_payment_id, razorpay_signature });
       if (!isValid) return res.status(400).json({ success: false, message: "Invalid signature" });
 
       await prisma.businessPartnerApplication.update({

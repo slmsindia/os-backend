@@ -90,6 +90,85 @@ async function main() {
   });
   console.log(`✅ SuperAdmin user created: ${mobile}`);
 
+  // 3.1 Create White Label Admin for Vite dev tenant (localhost:5173)
+  const wlTenant = seededTenants.find((tenant) => tenant.domain === "localhost:5173");
+  const wlAdminMobile = "9876543210";
+  const wlAdminPassword = "123";
+  const wlAdminHashedPassword = await bcrypt.hash(wlAdminPassword, 10);
+
+  if (wlTenant) {
+    const wlAdmin = await prisma.user.upsert({
+      where: {
+        mobile_tenantId: {
+          mobile: wlAdminMobile,
+          tenantId: wlTenant.id
+        }
+      },
+      update: {
+        password: wlAdminHashedPassword,
+        fullName: "5173 White Label Admin",
+        identity: "WHITE_LABEL_ADMIN",
+        approvalStatus: "APPROVED",
+        approvedAt: new Date(),
+        gender: "MALE",
+        dateOfBirth: new Date("1990-01-01"),
+        parentId: null,
+        path: ""
+      },
+      create: {
+        id: generateUuid(),
+        mobile: wlAdminMobile,
+        password: wlAdminHashedPassword,
+        fullName: "5173 White Label Admin",
+        identity: "WHITE_LABEL_ADMIN",
+        approvalStatus: "APPROVED",
+        approvedAt: new Date(),
+        gender: "MALE",
+        dateOfBirth: new Date("1990-01-01"),
+        tenantId: wlTenant.id,
+        path: "",
+        roles: {
+          create: {
+            id: generateUuid(),
+            roleId: seededRoles["WHITE_LABEL_ADMIN"].id
+          }
+        }
+      }
+    });
+
+    await prisma.userRole.upsert({
+      where: {
+        userId_roleId: {
+          userId: wlAdmin.id,
+          roleId: seededRoles["WHITE_LABEL_ADMIN"].id
+        }
+      },
+      update: {},
+      create: {
+        id: generateUuid(),
+        userId: wlAdmin.id,
+        roleId: seededRoles["WHITE_LABEL_ADMIN"].id
+      }
+    });
+
+    await prisma.wallet.upsert({
+      where: { userId: wlAdmin.id },
+      update: {
+        tenantId: wlTenant.id,
+        isCorporate: true
+      },
+      create: {
+        id: generateUuid(),
+        userId: wlAdmin.id,
+        tenantId: wlTenant.id,
+        balance: 5000,
+        isCorporate: true
+      }
+    });
+
+    console.log(`White Label Admin created for localhost:5173: ${wlAdminMobile} / ${wlAdminPassword}`);
+  }
+
   // 4. Ensure Wallet for SuperAdmin
   const existingWallet = await prisma.wallet.findFirst({
     where: { userId: superAdmin.id }

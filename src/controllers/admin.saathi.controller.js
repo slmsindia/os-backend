@@ -389,11 +389,12 @@ const adminSaathiController = {
         data: { 
           applicationId: application.id, 
           userId: targetUserId,
-          razorpayOrder: application.payment?.razorpayOrderId ? {
-            id: application.payment.razorpayOrderId,
-            amount: application.payment.amount,
-            currency: application.payment.currency,
-            key: await razorpayService.getKeyId(tenantId)
+          razorpayOrder: razorpayOrder ? {
+            id: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency || application.payment?.currency || 'INR',
+            key: razorpayOrder.mock ? 'MOCK_RAZORPAY_KEY' : await razorpayService.getKeyId(tenantId),
+            mock: Boolean(razorpayOrder.mock)
           } : null
         }
       });
@@ -409,6 +410,7 @@ const adminSaathiController = {
    */
   getSaathiApplications: async (req, res) => {
     const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
+    const { page = 1, limit = 10, status, search } = req.query;
     
     try {
       const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
@@ -419,14 +421,32 @@ const adminSaathiController = {
         return res.status(403).json({ success: false, message: "Permission denied" });
       }
 
+      const legacyWhere = {
+        user: { tenantId },
+        ...(status ? { status } : {}),
+        ...(search ? {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { mobile: { contains: search } }
+          ]
+        } : {})
+      };
+
       const legacyApps = await prisma.saathiApplication.findMany({
-        where: { user: { tenantId } },
+        where: legacyWhere,
         include: { user: true, payment: true },
         orderBy: { createdAt: 'desc' }
       });
 
       const unifiedWhere = {
-        targetIdentity: 'SAATHI'
+        targetIdentity: 'SAATHI',
+        ...(status ? { status } : {}),
+        ...(search ? {
+          OR: [
+            { user: { fullName: { contains: search, mode: 'insensitive' } } },
+            { user: { mobile: { contains: search } } }
+          ]
+        } : {})
       };
       if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
@@ -461,8 +481,23 @@ const adminSaathiController = {
       });
 
       const allApps = [...legacyApps, ...mappedUnified].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+      const start = (pageNum - 1) * limitNum;
+      const pagedApps = allApps.slice(start, start + limitNum);
 
-      res.json({ success: true, data: allApps });
+      res.json({
+        success: true,
+        data: {
+          applications: pagedApps,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: allApps.length,
+            totalPages: Math.max(Math.ceil(allApps.length / limitNum), 1)
+          }
+        }
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
@@ -821,15 +856,21 @@ const adminSaathiController = {
         return res.status(400).json({ success: false, message: "Order ID mismatch" });
       }
 
+      const isMockPayment =
+        process.env.NODE_ENV !== 'production' &&
+        String(razorpay_order_id || '').startsWith('mock_order_');
+
       // Verify signature
-      const isValid = await razorpayService.verifyPaymentSignature(
-        application.user.tenantId,
-        {
-          razorpay_order_id,
-          razorpay_payment_id,
-          razorpay_signature
-        }
-      );
+      const isValid = isMockPayment
+        ? true
+        : await razorpayService.verifyPaymentSignature(
+            application.user.tenantId,
+            {
+              razorpay_order_id,
+              razorpay_payment_id,
+              razorpay_signature
+            }
+          );
 
       if (!isValid) {
         await prisma.saathiPayment.update({
