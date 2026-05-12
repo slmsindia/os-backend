@@ -97,12 +97,14 @@ async function findExistingSettlementLog({
     return null;
   }
 
+  const settlementFingerprint = `${referenceType}:${referenceId}:${subServiceId}:${transactionDoneById}`;
+
   return client.transactionLog.findFirst({
     where: {
-      referenceId,
-      referenceType,
-      subServiceId,
-      transactionDoneById,
+      metadata: {
+        path: ["settlementFingerprint"],
+        equals: settlementFingerprint,
+      },
     },
     select: {
       id: true,
@@ -561,6 +563,10 @@ async function runSettlement(db, options) {
     };
   }
 
+  const settlementFingerprint = referenceId
+    ? `${referenceType || "COMMISSION"}:${referenceId}:${subService.id}:${userId}`
+    : null;
+
   const txLog = await client.transactionLog.create({
     data: {
       id: generateUuid(),
@@ -568,13 +574,12 @@ async function runSettlement(db, options) {
       amount: transactionAmount,
       transactionDoneById: userId,
       transactionDoneForId: null,
-      referenceId: referenceId || null,
-      referenceType: referenceType || null,
       metadata: {
         joinerUserId: joiner.id,
         hierarchyDepth: chain.length,
         subServiceSlug: subService.slug || null,
         customDescription: customDescription || null,
+        settlementFingerprint,
       },
       status: "PENDING",
     },
@@ -662,7 +667,7 @@ async function runSettlement(db, options) {
       data: {
         status: "FAILED",
         metadata: {
-          ...(txLog.metadata || {}),
+          settlementFingerprint,
           error: err.message,
         },
       },
