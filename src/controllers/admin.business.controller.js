@@ -474,8 +474,13 @@ const businessPartnerController = {
   },
 
   getApplications: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
+    const { tenant_id: tenantId, identity: adminIdentity } = req.user;
+    const { page = 1, limit = 10, status, search } = req.query;
     try {
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+      const skip = (pageNum - 1) * limitNum;
+
       const legacyApps = await prisma.businessPartnerApplication.findMany({
         where: { user: { tenantId } },
         include: { user: true },
@@ -485,7 +490,7 @@ const businessPartnerController = {
       const unifiedWhere = {
         targetIdentity: 'BUSINESS_PARTNER'
       };
-      if (req.user.identity !== 'SUPER_ADMIN') {
+      if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
       }
 
@@ -510,9 +515,36 @@ const businessPartnerController = {
         };
       });
 
-      const allApps = [...legacyApps, ...mappedUnified].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const normalizedSearch = String(search || '').trim().toLowerCase();
+      const normalizedStatus = String(status || '').trim().toUpperCase();
+      const allApps = [...legacyApps, ...mappedUnified]
+        .filter((app) => {
+          if (normalizedStatus && String(app.status || '').toUpperCase() !== normalizedStatus) return false;
+          if (!normalizedSearch) return true;
+          return [
+            app.businessName,
+            app.brandName,
+            app.ownerName,
+            app.contactNumber1,
+            app.user?.fullName,
+            app.user?.mobile
+          ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+        })
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const paginatedApps = allApps.slice(skip, skip + limitNum);
 
-      res.json({ success: true, data: allApps });
+      res.json({
+        success: true,
+        data: {
+          applications: paginatedApps,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: allApps.length,
+            totalPages: Math.max(Math.ceil(allApps.length / limitNum), 1)
+          }
+        }
+      });
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error", error: err.message });

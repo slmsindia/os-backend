@@ -511,14 +511,6 @@ const adminSaathiController = {
     const { page = 1, limit = 10, status, search } = req.query;
     
     try {
-      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
-      const admin = await prisma.user.findUnique({ where: { id: adminId } });
-      const canView = topRoles.includes(adminIdentity) || admin.canApproveSaathi;
-
-      if (!canView) {
-        return res.status(403).json({ success: false, message: "Permission denied" });
-      }
-
       const legacyWhere = {
         user: { tenantId },
         ...(status ? { status } : {}),
@@ -549,7 +541,6 @@ const adminSaathiController = {
       if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
       }
-
 
       const unifiedApps = await prisma.application.findMany({
         where: unifiedWhere,

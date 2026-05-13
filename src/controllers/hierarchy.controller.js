@@ -1,6 +1,49 @@
 const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
 
+const HIERARCHY_VIEW_PERMISSIONS = new Set([
+  "PERM_VIEW_HIERARCHY",
+  "PERM_MANAGE_HIERARCHY"
+]);
+
+const getUserPermissionNames = async (userId) => {
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: { permission: true }
+          }
+        }
+      }
+    }
+  });
+
+  return [
+    ...new Set(
+      userRoles.flatMap((ur) =>
+        ur.role.permissions.map((p) => p.permission.name).filter(Boolean)
+      )
+    )
+  ];
+};
+
+const hasHierarchyViewAccess = async (userId, identity) => {
+  const normalizedIdentity = String(identity || "").toUpperCase();
+
+  if (["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(normalizedIdentity)) {
+    return true;
+  }
+
+  if (normalizedIdentity !== "SUB_ADMIN") {
+    return false;
+  }
+
+  const permissions = await getUserPermissionNames(userId);
+  return permissions.some((permission) => HIERARCHY_VIEW_PERMISSIONS.has(permission));
+};
+
 const hierarchyController = {
   /**
    * GET /api/admin/hierarchy/children
@@ -13,9 +56,11 @@ const hierarchyController = {
     try {
       let targetParentId = parentId || currentUserId;
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+      const isTenantWideHierarchyAdmin = isSuperAdmin || ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase()) || hasHierarchyAccess;
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      if (!isSuperAdmin && targetParentId !== currentUserId) {
+      if (!isSuperAdmin && !hasHierarchyAccess && targetParentId !== currentUserId) {
         const targetUser = await prisma.user.findUnique({ where: { id: targetParentId }, select: { path: true } });
         if (!targetUser || !targetUser.path || !targetUser.path.includes(currentUserId)) {
           return res.status(403).json({ success: false, message: "Permission denied." });
@@ -25,8 +70,8 @@ const hierarchyController = {
       const where = {};
       
       // If a top-level admin is checking their own root level, show both their direct children AND 'orphaned' users (no parentId)
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase());
-      const isWhiteLabel = String(creatorIdentity).toUpperCase() === 'WHITE_LABEL_ADMIN';
+      const isTopAdmin = isTenantWideHierarchyAdmin;
+      const isWhiteLabel = String(creatorIdentity).toUpperCase() === 'WHITE_LABEL_ADMIN' || (creatorIdentity === 'SUB_ADMIN' && hasHierarchyAccess);
 
       if (isTopAdmin && targetParentId === currentUserId) {
         if (isSuperAdmin && identity) {
@@ -124,6 +169,7 @@ const hierarchyController = {
     try {
       const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
       const identifier = String(targetUserId).trim();
       
       console.log(`[DEBUG] Searching for wallet history user: ${identifier} (Resolved Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
@@ -142,7 +188,7 @@ const hierarchyController = {
       if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
 
       // 2. Hierarchy Check
-      if (!isSuperAdmin && targetUser.id !== currentUserId) {
+      if (!isSuperAdmin && !hasHierarchyAccess && targetUser.id !== currentUserId) {
         if (!targetUser.path || !targetUser.path.includes(currentUserId)) {
           return res.status(403).json({ success: false, message: "Permission denied. User not in your hierarchy." });
         }
@@ -208,12 +254,13 @@ const hierarchyController = {
     try {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       const isWhiteLabel = creatorIdentity === 'WHITE_LABEL_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
 
       // 1. Define User Filter
       let userWhere = {};
       if (!isSuperAdmin) {
         userWhere.tenantId = tenantId;
-        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity)) {
+        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity) && !hasHierarchyAccess) {
           userWhere.OR = [
             { id: currentUserId },
             { path: { contains: currentUserId } }
@@ -225,7 +272,7 @@ const hierarchyController = {
       let walletWhere = { balance: { lt: 0 } };
       if (!isSuperAdmin) {
         walletWhere.tenantId = tenantId;
-        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity)) {
+        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity) && !hasHierarchyAccess) {
           walletWhere.user = {
             OR: [
               { id: currentUserId },
@@ -293,6 +340,8 @@ const hierarchyController = {
 
     try {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+      const isTenantWideHierarchyAdmin = isSuperAdmin || ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase()) || hasHierarchyAccess;
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
       const where = {};
@@ -300,24 +349,25 @@ const hierarchyController = {
 
       // 1. Hierarchy Filter: Include current user's downline, the user themselves, and their corporate wallet
       if (!isSuperAdmin) {
-        const isTopAdmin = ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity);
-        const walletConditions = [
-          {
-            user: {
-              OR: [
-                { path: { contains: currentUserId } },
-                { id: currentUserId }
-              ]
+        if (!isTenantWideHierarchyAdmin) {
+          const walletConditions = [
+            {
+              user: {
+                OR: [
+                  { path: { contains: currentUserId } },
+                  { id: currentUserId }
+                ]
+              }
             }
+          ];
+          
+          // Include corporate wallet transactions for tenant admins
+          if (['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
+            walletConditions.push({ isCorporate: true, tenantId });
           }
-        ];
-        
-        // Include corporate wallet transactions for tenant admins
-        if (isTopAdmin) {
-          walletConditions.push({ isCorporate: true, tenantId });
+          
+          where.wallet = { OR: walletConditions };
         }
-        
-        where.wallet = { OR: walletConditions };
       }
 
       // 2. Additional Filters
@@ -326,16 +376,21 @@ const hierarchyController = {
       
       if (search) {
         // Search in user's name or mobile within the hierarchy
-        where.wallet = {
-          ...where.wallet,
+        const searchFilter = {
           user: {
-            ...where.wallet?.user,
             OR: [
               { fullName: { contains: search, mode: 'insensitive' } },
               { mobile: { contains: search } }
             ]
           }
         };
+
+        where.wallet = where.wallet
+          ? {
+              ...where.wallet,
+              ...searchFilter
+            }
+          : searchFilter;
       }
 
       if (startDate || endDate) {
@@ -434,6 +489,7 @@ const hierarchyController = {
 
     try {
       const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, adminIdentity);
       const identifier = String(targetUserId).trim();
       
       console.log(`[DEBUG] Searching for user details: ${identifier} (Resolved Tenant: ${tenantId}, Admin: ${adminIdentity})`);
@@ -471,7 +527,7 @@ const hierarchyController = {
       const isInHierarchy = targetUser.path && targetUser.path.includes(currentUserId);
       const isSameTenant = targetUser.tenantId === tenantId;
 
-      if (!isTopAdmin && !isOwner && !isInHierarchy) {
+      if (!isTopAdmin && !hasHierarchyAccess && !isOwner && !isInHierarchy) {
         return res.status(403).json({ success: false, message: "Permission denied. User not in your hierarchy." });
       }
 

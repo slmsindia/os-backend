@@ -475,19 +475,8 @@ const adminMembershipController = {
       if (adminIdentity !== 'SUPER_ADMIN') {
         where.user = { tenantId: tenantId };
       }
-
-
       if (status) {
         where.status = status;
-      }
-
-      const topRoles = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'];
-      if (!topRoles.includes(adminIdentity)) {
-        where.OR = [
-          { user: { path: { contains: adminId } } },
-          { user: { parentId: adminId } },
-          { createdById: adminId }
-        ];
       }
 
       const legacyApps = await prisma.membershipApplication.findMany({
@@ -506,14 +495,6 @@ const adminMembershipController = {
       };
       if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
-      }
-
-      if (!topRoles.includes(adminIdentity)) {
-        unifiedWhere.OR = [
-          { user: { path: { contains: adminId } } },
-          { user: { parentId: adminId } },
-          { createdById: adminId }
-        ];
       }
 
       const unifiedApps = await prisma.application.findMany({
