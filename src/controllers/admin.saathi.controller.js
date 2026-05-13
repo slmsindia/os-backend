@@ -154,24 +154,14 @@ const adminSaathiController = {
       let targetUserId = providedUserId;
       let targetUser = null;
       const whiteLabelRootId = await resolveWhiteLabelRootId(adminId, adminIdentity, tenantId);
-      const ignoreSelfUserId = Boolean(providedUserId && providedUserId === adminId && mobile);
-      const effectiveProvidedUserId = ignoreSelfUserId ? null : providedUserId;
-      const isProvidedUser = Boolean(effectiveProvidedUserId);
-      const requestMode = ignoreSelfUserId
-        ? "IGNORED_SELF_USER_ID"
-        : (isProvidedUser ? "EXISTING_USER" : (mobile ? "NEW_MOBILE" : "INVALID"));
+      const isProvidedUser = Boolean(providedUserId);
+      const requestMode = isProvidedUser ? "EXISTING_USER" : (mobile ? "NEW_MOBILE" : "INVALID");
 
       console.log(
         `[SaathiDirect-Debug] Mode=${requestMode} | admin=${adminId} (${adminIdentity}) | tenant=${tenantId} | providedUserId=${providedUserId || "none"} | mobile=${mobile || "none"} | whiteLabelRootId=${whiteLabelRootId}`
       );
 
-      if (ignoreSelfUserId) {
-        console.log(
-          "[SaathiDirect-Debug] Ignoring provided userId because it matches the current admin and this is a fresh mobile-based creation."
-        );
-      }
-
-      if (effectiveProvidedUserId) {
+      if (isProvidedUser) {
         targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
         if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
         if (targetUser.identity === 'SAATHI') return res.status(400).json({ success: false, message: "User is already a SAATHI" });
@@ -193,52 +183,52 @@ const adminSaathiController = {
           `[SaathiDirect-Debug] Mobile lookup result: ${targetUser ? `found user=${targetUser.id}, identity=${targetUser.identity}, parentId=${targetUser.parentId || "none"}, path=${targetUser.path || "none"}` : "no existing user found in this white-label tree"}`
         );
         if (targetUser) {
-          return res.status(400).json({
-            success: false,
-            message: "This mobile number already exists in your white label hierarchy. Use the existing user or choose another mobile number."
-          });
-        }
-
-        // BRAND NEW USER CREATION
-        if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password && !mobile) {
-           return res.status(400).json({ success: false, message: "Password is required for new accounts" });
-        }
-
-        const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
-        const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
-        
-        // Use provided password or fallback to mobile last 4 digits
-        const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
-        const passwordToHash = req.body.password || defaultPassword;
-        const hashedPassword = await bcrypt.hash(passwordToHash, 10);
-
-        targetUser = await prisma.user.create({
-          data: {
-            id: generateUuid(),
-            mobile,
-            fullName,
-            email: email || null,
-            gender: (gender || 'OTHER').toUpperCase(),
-            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-            password: hashedPassword,
-            identity: 'USER',   // Wait for admin approval to become SAATHI
-            tenantId,
-            parentId: adminId,
-            path,
-            registrationState: liveState || null,
-            registrationCity: liveCity || null,
-            registrationPincode: livePincode || null,
-            registrationAddress: liveAddress ? {
-              addressType: "URBAN",
-              country: liveCountry || "India",
-              state: liveState,
-              city: liveCity,
-              pinCode: livePincode,
-              addressLine1: liveAddress
-            } : undefined
+          if (targetUser.identity === 'SAATHI') {
+            return res.status(400).json({ success: false, message: "User is already a SAATHI" });
           }
-        });
-        targetUserId = targetUser?.id;
+          targetUserId = targetUser.id;
+        } else {
+          // BRAND NEW USER CREATION
+          if (req.body.flowType === "ADMIN_CREATE_NEW_USER" && !req.body.password && !mobile) {
+             return res.status(400).json({ success: false, message: "Password is required for new accounts" });
+          }
+
+          const creator = await prisma.user.findUnique({ where: { id: adminId }, select: { id: true, path: true } });
+          const path = creator.path ? `${creator.path}/${creator.id}` : `/${creator.id}`;
+          
+          // Use provided password or fallback to mobile last 4 digits
+          const defaultPassword = (mobile && mobile.length >= 4) ? mobile.slice(-4) : "1234";
+          const passwordToHash = req.body.password || defaultPassword;
+          const hashedPassword = await bcrypt.hash(passwordToHash, 10);
+
+          targetUser = await prisma.user.create({
+            data: {
+              id: generateUuid(),
+              mobile,
+              fullName,
+              email: email || null,
+              gender: (gender || 'OTHER').toUpperCase(),
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              password: hashedPassword,
+              identity: 'USER',   // Wait for admin approval to become SAATHI
+              tenantId,
+              parentId: adminId,
+              path,
+              registrationState: liveState || null,
+              registrationCity: liveCity || null,
+              registrationPincode: livePincode || null,
+              registrationAddress: liveAddress ? {
+                addressType: "URBAN",
+                country: liveCountry || "India",
+                state: liveState,
+                city: liveCity,
+                pinCode: livePincode,
+                addressLine1: liveAddress
+              } : undefined
+            }
+          });
+          targetUserId = targetUser?.id;
+        }
       }
 
       if (!targetUserId) {
