@@ -360,6 +360,21 @@ const adminSaathiController = {
         console.log(`[SaathiDirect-Debug] partnerWallet resolved:`, partnerWallet ? `id=${partnerWallet.id}, balance=${partnerWallet.balance}` : 'NULL');
         console.log(`[SaathiDirect-Debug] Required amount: ${amount}`);
 
+        if (paymentMethod === 'WALLET' && (!partnerWallet || partnerWallet.balance < amount)) {
+          paymentMethod = 'RAZORPAY';
+          try {
+            const receiptId = `saathi_fb_${(targetUserId || 'new').slice(0, 8)}_${Date.now()}`;
+            razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', receiptId);
+          } catch (err) {
+            const errorMsg = err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+            console.error("[SaathiDirect] Razorpay Fallback Initialization Failed:", errorMsg);
+            return res.status(400).json({
+              success: false,
+              message: `Insufficient wallet balance and failed to initialize Razorpay fallback: ${errorMsg}`
+            });
+          }
+        }
+
         if (paymentMethod === 'WALLET') {
           if (!partnerWallet) {
             return res.status(400).json({ success: false, message: "Wallet not found for your account. Please contact admin." });
