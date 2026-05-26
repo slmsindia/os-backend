@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const { normalizeIdentity } = require("../utils/identity");
 
 const createWalletError = (code, message, meta = {}) => {
   const error = new Error(message);
@@ -52,11 +53,16 @@ const walletService = {
    */
   resolveWallet: async (userId, tenantId, identity) => {
     try {
+      const idNorm = normalizeIdentity(identity);
       // Shared Corporate Wallet logic
-      if (['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(identity)) {
+      if (["WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"].includes(idNorm)) {
+        if (!tenantId) {
+          console.warn("[WalletService] resolve corporate wallet skipped: missing tenantId");
+          return null;
+        }
         console.log(`[WalletService] Resolving corporate wallet for tenant: ${tenantId}`);
         let corporateWallet = await prisma.wallet.findFirst({
-          where: { 
+          where: {
             tenantId,
             isCorporate: true
           }
@@ -66,12 +72,12 @@ const walletService = {
         if (!corporateWallet) {
           corporateWallet = await walletService.createWallet(null, tenantId, true);
         }
-        
+
         return corporateWallet;
       }
 
       // Individual Wallet logic
-      if (identity === 'USER') return null; // Users have no wallet
+      if (idNorm === "USER") return null; // Users have no wallet
 
       return await prisma.wallet.findUnique({
         where: { userId }
@@ -512,8 +518,12 @@ const walletService = {
       // 4. Trigger Cascading Commission (CH -> SP -> DP)
       // Slug format: ime-transfer, prabhu-transfer
       const slug = `${serviceType.toLowerCase()}-transfer`;
-      const subService = await db.commissionSubService.findUnique({
-        where: { slug }
+      const subService = await db.commissionSubService.findFirst({
+        where: {
+          slug,
+          tenantId
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
       if (subService && userId) {

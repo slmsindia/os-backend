@@ -32,6 +32,7 @@ model Tenant {
 
   // Master Data & Config
   bankDetails     BankDetails[]
+  bankPincodeVisibility BankPincodeVisibility[]
   documentTypes   DocumentType[]
   educations      Education[]
   sectors         Sector[]
@@ -1219,10 +1220,30 @@ model BankDetails {
   updatedAt       DateTime @updatedAt
 
   topUpRequests   WalletTopUpRequest[]
+  pincodeVisibility BankPincodeVisibility[]
 
   @@index([isActive])
   @@index([tenantId])
 }
+
+model BankPincodeVisibility {
+  id            String      @id @default(uuid())
+  bankDetailsId String
+  bankDetails   BankDetails @relation(fields: [bankDetailsId], references: [id], onDelete: Cascade)
+  tenantId      String?
+  tenant        Tenant?     @relation(fields: [tenantId], references: [id])
+  pincode       String
+  locationName  String?
+  isActive      Boolean     @default(true)
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([tenantId, bankDetailsId, pincode])
+  @@index([tenantId, pincode, isActive])
+  @@index([bankDetailsId])
+ }
 
 model WalletTopUpRequest {
   id              String   @id @default(uuid())
@@ -1452,7 +1473,7 @@ model CommissionSubService {
   @@index([serviceId])
   @@index([schemeId])
   @@index([tenantId])
-  @@unique([slug, schemeId])
+  @@unique([serviceId, slug, schemeId])
 }
 
 model CommissionShare {

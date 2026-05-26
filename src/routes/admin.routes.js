@@ -15,6 +15,9 @@ router.use(authMiddleware);
 // Get dashboard statistics (Moved to top for priority)
 router.get("/stats", checkPermission("PERM_VIEW_REPORTS"), adminController.getStats);
 
+// Get top 10 active users
+router.get("/top-users", checkPermission("PERM_VIEW_REPORTS"), adminController.getTopUsers);
+
 router.post("/create-white-label-admin", checkIdentity(["SUPER_ADMIN"]), adminController.createWhiteLabelAdmin);
 router.post("/create-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN"]), adminController.createAdmin);
 router.post("/create-sub-admin", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.createSubAdmin);
@@ -31,7 +34,7 @@ router.get("/users", checkPermission("PERM_MANAGE_HIERARCHY"), adminController.g
 router.get("/users/:id", checkPermission("PERM_MANAGE_HIERARCHY"), adminController.getUserById);
 
 // Get membership applications for approve/reject flow
-router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), adminMembershipController.getMembershipApplications);
+router.get("/members", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission(["PERM_VIEW_APPLICATIONS", "PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), adminMembershipController.getMembershipApplications);
 
 // Toggle user status (Activate/Deactivate)
 router.post("/users/:userId/toggle-status", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_HIERARCHY"), adminController.toggleUserStatus);

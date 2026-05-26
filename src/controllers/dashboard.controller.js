@@ -1,4 +1,18 @@
 const prisma = require("../lib/prisma");
+const { normalizeIdentity } = require("../utils/identity");
+
+const resolveTenantId = async (req) => {
+  let tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
+  const userId = req.user?.user_id;
+  if (!tenantId && userId) {
+    const row = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { tenantId: true }
+    });
+    tenantId = row?.tenantId || null;
+  }
+  return tenantId;
+};
 
 const dashboardController = {
   /**
@@ -72,8 +86,15 @@ const dashboardController = {
    * 2. WHITE_LABEL_ADMIN / ADMIN Dashboard
    */
   getAdminStats: async (req, res) => {
-    const { tenant_id: tenantId } = req.user;
     try {
+      const tenantId = await resolveTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing tenant context for dashboard stats."
+        });
+      }
+
       const [userStats, appStats, corporateWallet] = await Promise.all([
         dashboardController.getUserStats({ tenantId }),
         dashboardController.getApplicationStats({
@@ -110,35 +131,37 @@ const dashboardController = {
    * 4. Partner Dashboard (COUNTRY_HEAD, STATE_PARTNER, DISTRICT_PARTNER)
    */
   getPartnerStats: async (req, res) => {
-    const { user_id: partnerId, tenant_id: tenantId, identity } = req.user;
-    
+    const { user_id: partnerId, identity: rawIdentity } = req.user;
+    const identity = normalizeIdentity(rawIdentity);
+
     try {
-      // Find all users in this partner's hierarchy using path search
+      const tenantId = await resolveTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing tenant context for dashboard stats."
+        });
+      }
+
       const hierarchyScope = {
-        OR: [
-          { path: { contains: partnerId } },
-          { parentId: partnerId }
-        ]
+        tenantId,
+        OR: [{ path: { contains: partnerId } }, { parentId: partnerId }]
       };
 
-      const [userStats, appStats, personalWallet, recentCommissions] = await Promise.all([
-        dashboardController.getUserStats({ ...hierarchyScope, tenantId }),
-        dashboardController.getApplicationStats({
-          membership: { OR: [ { user: hierarchyScope }, { createdById: partnerId } ] },
-          saathi: { OR: [ { user: hierarchyScope }, { createdById: partnerId } ] },
-          business: { OR: [ { createdById: partnerId } ] }
-        }),
-        prisma.wallet.findUnique({ where: { userId: partnerId } }),
-        prisma.walletTransaction.findMany({
-          where: { wallet: { userId: partnerId }, category: 'COMMISSION' },
-          take: 5,
-          orderBy: { createdAt: 'desc' }
-        })
-      ]);
-
-      // Calculate total earnings (commission)
+      const userStats = await dashboardController.getUserStats(hierarchyScope);
+      const appStats = await dashboardController.getApplicationStats({
+        membership: { OR: [{ user: hierarchyScope }, { createdById: partnerId }] },
+        saathi: { OR: [{ user: hierarchyScope }, { createdById: partnerId }] },
+        business: { OR: [{ createdById: partnerId }] }
+      });
+      const personalWallet = await prisma.wallet.findUnique({ where: { userId: partnerId } });
+      const recentCommissions = await prisma.walletTransaction.findMany({
+        where: { wallet: { userId: partnerId }, category: "COMMISSION" },
+        take: 5,
+        orderBy: { createdAt: "desc" }
+      });
       const earnings = await prisma.walletTransaction.aggregate({
-        where: { wallet: { userId: partnerId }, category: 'COMMISSION', type: 'CREDIT' },
+        where: { wallet: { userId: partnerId }, category: "COMMISSION", type: "CREDIT" },
         _sum: { amount: true }
       });
 
@@ -154,8 +177,16 @@ const dashboardController = {
         }
       });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      console.error("getPartnerStats error:", err);
+      const isPoolExhausted =
+        err?.code === "P2037" || String(err?.message || "").includes("too many clients");
+      res.status(isPoolExhausted ? 503 : 500).json({
+        success: false,
+        message: isPoolExhausted
+          ? "Database is busy. Please restart the API server and try again."
+          : "Internal server error",
+        ...(process.env.NODE_ENV === "development" && { details: err.message })
+      });
     }
   }
 };

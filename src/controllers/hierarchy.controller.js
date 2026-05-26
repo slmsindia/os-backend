@@ -1,5 +1,14 @@
 const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
+const { normalizeIdentity } = require("../utils/identity");
+const {
+  buildLogMap,
+  buildUserMap,
+  buildWalletBalanceMap,
+  buildStyledLedgerExportHtml,
+  enrichLedgerTransactions,
+  getLedgerMetadataUserIds
+} = require("../utils/ledger");
 
 const HIERARCHY_VIEW_PERMISSIONS = new Set([
   "PERM_VIEW_HIERARCHY",
@@ -30,7 +39,7 @@ const getUserPermissionNames = async (userId) => {
 };
 
 const hasHierarchyViewAccess = async (userId, identity) => {
-  const normalizedIdentity = String(identity || "").toUpperCase();
+  const normalizedIdentity = normalizeIdentity(identity);
 
   if (["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(normalizedIdentity)) {
     return true;
@@ -57,8 +66,28 @@ const hierarchyController = {
       let targetParentId = parentId || currentUserId;
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
-      const isTenantWideHierarchyAdmin = isSuperAdmin || ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase()) || hasHierarchyAccess;
+      const isTenantWideHierarchyAdmin =
+        isSuperAdmin ||
+        ["WHITE_LABEL_ADMIN", "ADMIN"].includes(normalizeIdentity(creatorIdentity)) ||
+        hasHierarchyAccess;
       const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      let effectiveTenantId = tenantId || null;
+      if (!isSuperAdmin) {
+        if (!effectiveTenantId && currentUserId) {
+          const u = await prisma.user.findUnique({
+            where: { id: currentUserId },
+            select: { tenantId: true }
+          });
+          effectiveTenantId = u?.tenantId || null;
+        }
+        if (!effectiveTenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy children."
+          });
+        }
+      }
 
       if (!isSuperAdmin && !hasHierarchyAccess && targetParentId !== currentUserId) {
         const targetUser = await prisma.user.findUnique({ where: { id: targetParentId }, select: { path: true } });
@@ -71,7 +100,9 @@ const hierarchyController = {
       
       // If a top-level admin is checking their own root level, show both their direct children AND 'orphaned' users (no parentId)
       const isTopAdmin = isTenantWideHierarchyAdmin;
-      const isWhiteLabel = String(creatorIdentity).toUpperCase() === 'WHITE_LABEL_ADMIN' || (creatorIdentity === 'SUB_ADMIN' && hasHierarchyAccess);
+      const isWhiteLabel =
+        normalizeIdentity(creatorIdentity) === "WHITE_LABEL_ADMIN" ||
+        (normalizeIdentity(creatorIdentity) === "SUB_ADMIN" && hasHierarchyAccess);
 
       if (isTopAdmin && targetParentId === currentUserId) {
         if (isSuperAdmin && identity) {
@@ -88,8 +119,8 @@ const hierarchyController = {
         where.parentId = targetParentId;
       }
 
-      if (!isSuperAdmin) where.tenantId = tenantId;
-      if (identity) where.identity = identity.toUpperCase();
+      if (!isSuperAdmin) where.tenantId = effectiveTenantId;
+      if (identity) where.identity = normalizeIdentity(identity);
       
       console.log('[DEBUG] Hierarchy Children Query:', {
         currentUser: currentUserId,
@@ -122,8 +153,6 @@ const hierarchyController = {
             wallet: { select: { balance: true } },
             _count: { select: { children: true } }
           },
-          skip,
-          take: parseInt(limit),
           orderBy: { createdAt: 'desc' }
         }),
         prisma.user.count({ where })
@@ -135,8 +164,12 @@ const hierarchyController = {
       const cityIds = [...new Set(children.map(c => c.registrationCity).filter(id => id && uuidRegex.test(id)))];
 
       const [states, cities] = await Promise.all([
-        prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
-        prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+        stateIds.length === 0
+          ? Promise.resolve([])
+          : prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        cityIds.length === 0
+          ? Promise.resolve([])
+          : prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
       ]);
 
       const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
@@ -220,22 +253,68 @@ const hierarchyController = {
         }
       }
 
-      const skip = (parseInt(page) - 1) * parseInt(limit);
       const [txns, total] = await Promise.all([
         prisma.walletTransaction.findMany({
           where,
-          skip,
-          take: parseInt(limit),
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          include: {
+            wallet: {
+              select: {
+                id: true,
+                balance: true,
+                isCorporate: true,
+                user: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    mobile: true,
+                    identity: true
+                  }
+                }
+              }
+            }
+          }
         }),
         prisma.walletTransaction.count({ where })
       ]);
 
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({
+            where: { id: { in: referenceIds } }
+          })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+              id: true,
+              fullName: true,
+              mobile: true,
+              identity: true
+            }
+          })
+        : [];
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: buildWalletBalanceMap(txns.map((txn) => txn.wallet).filter(Boolean)),
+        logMap: buildLogMap(logs),
+        userMap: buildUserMap(involvedUsers)
+      });
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const skip = (pageNumber - 1) * pageSize;
+      const pagedTxns = enrichedTxns.slice(skip, skip + pageSize);
+
       res.json({
         success: true,
-        data: txns,
+        data: pagedTxns,
         balance: targetWallet.balance,
-        pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) }
+        pagination: { total, page: pageNumber, limit: pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) }
       });
     } catch (err) {
       console.error(err);
@@ -248,19 +327,41 @@ const hierarchyController = {
    * Returns high-level metrics for the user's hierarchy
    */
   getHierarchySummary: async (req, res) => {
-    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
-    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const { user_id: currentUserId, identity: rawIdentity } = req.user;
+    const creatorIdentity = normalizeIdentity(rawIdentity);
+    let tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
 
     try {
-      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
-      const isWhiteLabel = creatorIdentity === 'WHITE_LABEL_ADMIN';
+      const isSuperAdmin = creatorIdentity === "SUPER_ADMIN";
+      const isWhiteLabel = creatorIdentity === "WHITE_LABEL_ADMIN";
       const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+
+      if (!isSuperAdmin) {
+        if (!tenantId && currentUserId) {
+          const u = await prisma.user.findUnique({
+            where: { id: currentUserId },
+            select: { tenantId: true }
+          });
+          tenantId = u?.tenantId || null;
+        }
+        if (!tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy summary."
+          });
+        }
+      }
+
+      const isTenantWideAdmin =
+        isWhiteLabel ||
+        ["ADMIN", "SUB_ADMIN"].includes(creatorIdentity) ||
+        hasHierarchyAccess;
 
       // 1. Define User Filter
       let userWhere = {};
       if (!isSuperAdmin) {
         userWhere.tenantId = tenantId;
-        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity) && !hasHierarchyAccess) {
+        if (!isTenantWideAdmin) {
           userWhere.OR = [
             { id: currentUserId },
             { path: { contains: currentUserId } }
@@ -272,7 +373,7 @@ const hierarchyController = {
       let walletWhere = { balance: { lt: 0 } };
       if (!isSuperAdmin) {
         walletWhere.tenantId = tenantId;
-        if (!isWhiteLabel && !['ADMIN', 'SUB_ADMIN'].includes(creatorIdentity) && !hasHierarchyAccess) {
+        if (!isTenantWideAdmin) {
           walletWhere.user = {
             OR: [
               { id: currentUserId },
@@ -282,19 +383,16 @@ const hierarchyController = {
         }
       }
 
-      // Calculate Metrics
-      const [walletSummary, identityCounts] = await Promise.all([
-        prisma.wallet.aggregate({
-          where: walletWhere,
-          _sum: { balance: true },
-          _count: { id: true }
-        }),
-        prisma.user.groupBy({
-          by: ['identity'],
-          where: userWhere,
-          _count: { id: true }
-        })
-      ]);
+      const walletSummary = await prisma.wallet.aggregate({
+        where: walletWhere,
+        _sum: { balance: true },
+        _count: { id: true }
+      });
+      const identityCounts = await prisma.user.groupBy({
+        by: ["identity"],
+        where: userWhere,
+        _count: { id: true }
+      });
 
       const counts = Object.fromEntries(identityCounts.map(i => [i.identity, i._count.id]));
 
@@ -315,7 +413,14 @@ const hierarchyController = {
       });
     } catch (err) {
       console.error("Hierarchy Summary Error:", err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      const isPoolExhausted =
+        err?.code === "P2037" || String(err?.message || "").includes("too many clients");
+      res.status(isPoolExhausted ? 503 : 500).json({
+        success: false,
+        message: isPoolExhausted
+          ? "Database is busy. Please restart the API server and try again."
+          : "Internal server error"
+      });
     }
   },
 
@@ -342,40 +447,33 @@ const hierarchyController = {
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
       const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
       const isTenantWideHierarchyAdmin = isSuperAdmin || ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase()) || hasHierarchyAccess;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
 
       const where = {};
       if (!isSuperAdmin) where.tenantId = tenantId;
 
-      // 1. Hierarchy Filter: Include current user's downline, the user themselves, and their corporate wallet
-      if (!isSuperAdmin) {
-        if (!isTenantWideHierarchyAdmin) {
-          const walletConditions = [
-            {
-              user: {
-                OR: [
-                  { path: { contains: currentUserId } },
-                  { id: currentUserId }
-                ]
-              }
+      if (!isSuperAdmin && !isTenantWideHierarchyAdmin) {
+        const walletConditions = [
+          {
+            user: {
+              OR: [
+                { path: { contains: currentUserId } },
+                { id: currentUserId }
+              ]
             }
-          ];
-          
-          // Include corporate wallet transactions for tenant admins
-          if (['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
-            walletConditions.push({ isCorporate: true, tenantId });
           }
-          
-          where.wallet = { OR: walletConditions };
+        ];
+
+        if (['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
+          walletConditions.push({ isCorporate: true, tenantId });
         }
+
+        where.wallet = { OR: walletConditions };
       }
 
-      // 2. Additional Filters
       if (type) where.type = type;
       if (category) where.category = category;
-      
+
       if (search) {
-        // Search in user's name or mobile within the hierarchy
         const searchFilter = {
           user: {
             OR: [
@@ -386,10 +484,7 @@ const hierarchyController = {
         };
 
         where.wallet = where.wallet
-          ? {
-              ...where.wallet,
-              ...searchFilter
-            }
+          ? { ...where.wallet, ...searchFilter }
           : searchFilter;
       }
 
@@ -397,80 +492,94 @@ const hierarchyController = {
         where.createdAt = {};
         if (startDate) where.createdAt.gte = new Date(startDate);
         if (endDate) {
-           const end = new Date(endDate);
-           end.setHours(23, 59, 59, 999);
-           where.createdAt.lte = end;
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt.lte = end;
         }
       }
 
       const [txns, total] = await Promise.all([
         prisma.walletTransaction.findMany({
           where,
+          orderBy: { createdAt: 'desc' },
           include: {
             wallet: {
-              include: {
+              select: {
+                id: true,
+                balance: true,
+                isCorporate: true,
                 user: {
                   select: { id: true, fullName: true, mobile: true, identity: true }
                 }
               }
             }
-          },
-          skip,
-          take: parseInt(limit),
-          orderBy: { createdAt: 'desc' }
+          }
         }),
         prisma.walletTransaction.count({ where })
       ]);
 
-      const mappedTxns = txns.map(t => ({
-        ...t,
-        transactionAmount: t.amount,
-        transactionDateTime: t.createdAt,
-        tnxDoneBy: t.wallet?.user?.fullName || "N/A",
-        roleForDoneBy: t.wallet?.user?.identity || "N/A",
-        userMobile: t.wallet?.user?.mobile || "N/A",
-        serviceName: t.category === 'COMMISSION' ? 'Commission' : (t.category === 'SERVICE_CHARGE' ? 'Service Fee' : 'Wallet'),
-        subServiceName: t.category,
-        transactionMethod: t.type === 'CREDIT' ? 'Credit' : 'Debit',
-        description: t.description || '—'
-      }));
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({ where: { id: { in: referenceIds } } })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, fullName: true, mobile: true, identity: true }
+          })
+        : [];
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: buildWalletBalanceMap(txns.map((txn) => txn.wallet).filter(Boolean)),
+        logMap: buildLogMap(logs),
+        userMap: buildUserMap(involvedUsers)
+      });
 
-      // --- CSV Export Logic ---
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const offset = (pageNumber - 1) * pageSize;
+      const mappedTxns = enrichedTxns.slice(offset, offset + pageSize);
+
       if (req.query.exportCsv === "true") {
-        const headers = [
-          "Timestamp", "User Name", "Mobile", "Role", "Service", "Category", 
-          "Description", "Type", "Amount", "Method"
-        ];
-        
-        let csv = headers.join(",") + "\n";
-        mappedTxns.forEach(tx => {
-          const row = [
-            new Date(tx.transactionDateTime).toLocaleString('en-IN'),
-            tx.tnxDoneBy,
-            tx.userMobile,
-            tx.roleForDoneBy,
-            tx.serviceName,
-            tx.subServiceName,
-            tx.description,
-            tx.type,
-            tx.transactionAmount,
-            tx.transactionMethod
-          ];
-          csv += row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
+        const exportHtml = buildStyledLedgerExportHtml({
+          title: 'User Ledger Export',
+          subtitle: 'Hierarchy and wallet audit with balance movement',
+          columns: [
+            { key: 'transactionDateTime', label: 'Timestamp', value: (row) => new Date(row.transactionDateTime).toLocaleString('en-IN') },
+            { key: 'tnxDoneBy', label: 'Done By' },
+            { key: 'tnxDoneFor', label: 'Done For' },
+            { key: 'roleForDoneBy', label: 'Role (By)' },
+            { key: 'roleForDoneFor', label: 'Role (For)' },
+            { key: 'userMobile', label: 'Mobile' },
+            { key: 'serviceName', label: 'Service' },
+            { key: 'subServiceName', label: 'Category' },
+            { key: 'description', label: 'Description' },
+            { key: 'type', label: 'Type' },
+            { key: 'transactionAmount', label: 'Amount', align: 'right' },
+            { key: 'walletBalance', label: 'Wallet Balance', align: 'right' },
+            { key: 'closingBalance', label: 'Closing Balance', align: 'right' },
+            { key: 'transactionMethod', label: 'Method' }
+          ],
+          rows: mappedTxns
         });
 
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename=user_ledger.csv');
-        return res.status(200).send(csv);
+        res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename=user_ledger.xls');
+        return res.status(200).send(`\ufeff${exportHtml}`);
       }
 
       res.json({
         success: true,
         data: mappedTxns,
-        pagination: { 
-          total, 
-          page: parseInt(page), 
-          totalPages: Math.ceil(total / parseInt(limit)) 
+        pagination: {
+          total,
+          page: pageNumber,
+          limit: pageSize,
+          totalPages: Math.max(1, Math.ceil(total / pageSize))
         }
       });
     } catch (err) {
@@ -480,6 +589,7 @@ const hierarchyController = {
   },
 
   /**
+   * GET /api/admin/hierarchy/user-details/:targetUserId  /**
    * GET /api/admin/hierarchy/user-details/:targetUserId
    * Complete User Info for Hierarchy Explorer (360-degree view)
    */
@@ -648,9 +758,25 @@ const hierarchyController = {
       const skip = (parseInt(page) - 1) * parseInt(limit);
       let baseId = parentId || userId;
       const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
-      
+
       const conditions = [];
-      if (!isSuperAdmin) conditions.push({ tenantId });
+      let effectiveTenantId = tenantId || null;
+      if (!isSuperAdmin) {
+        if (!effectiveTenantId && userId) {
+          const u = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { tenantId: true }
+          });
+          effectiveTenantId = u?.tenantId || null;
+        }
+        if (!effectiveTenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy members."
+          });
+        }
+        conditions.push({ tenantId: effectiveTenantId });
+      }
 
       if (baseId !== userId || !['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
           conditions.push({
@@ -664,7 +790,7 @@ const hierarchyController = {
           conditions.push({ id: { not: userId } });
       }
 
-      if (identity) conditions.push({ identity });
+      if (identity) conditions.push({ identity: normalizeIdentity(identity) });
       if (status) conditions.push({ approvalStatus: status });
       
       if (search) {
@@ -712,7 +838,12 @@ const hierarchyController = {
       const allPathIds = new Set();
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       users.forEach(u => { if (u.path) u.path.split('/').forEach(id => { if (id && uuidRegex.test(id)) allPathIds.add(id); }); });
-      const pathUsers = await prisma.user.findMany({ where: { id: { in: Array.from(allPathIds) } }, select: { id: true, fullName: true, identity: true } });
+      const pathUsers = allPathIds.size === 0
+        ? []
+        : await prisma.user.findMany({
+            where: { id: { in: Array.from(allPathIds) } },
+            select: { id: true, fullName: true, identity: true }
+          });
       const userMap = Object.fromEntries(pathUsers.map(u => [u.id, u]));
 
       const enrichedUsers = users.map(u => {
@@ -731,14 +862,17 @@ const hierarchyController = {
       });
 
       // Fetch last login for each user from AuditLog
-      const auditLogins = await prisma.auditLog.groupBy({
-        by: ['userId'],
-        where: {
-          userId: { in: users.map(u => u.id) },
-          action: 'USER_LOGIN'
-        },
-        _max: { createdAt: true }
-      });
+      const auditLogins =
+        users.length === 0
+          ? []
+          : await prisma.auditLog.groupBy({
+              by: ["userId"],
+              where: {
+                userId: { in: users.map((u) => u.id) },
+                action: "USER_LOGIN"
+              },
+              _max: { createdAt: true }
+            });
       const loginMap = Object.fromEntries(auditLogins.map(l => [l.userId, l._max.createdAt]));
 
       const finalUsers = enrichedUsers.map(u => ({
@@ -751,8 +885,12 @@ const hierarchyController = {
       const cityIds = [...new Set(finalUsers.map(u => u.registrationCity).filter(id => id && uuidRegex.test(id)))];
 
       const [states, cities] = await Promise.all([
-        prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
-        prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+        stateIds.length === 0
+          ? Promise.resolve([])
+          : prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        cityIds.length === 0
+          ? Promise.resolve([])
+          : prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
       ]);
 
       const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
@@ -1083,3 +1221,4 @@ const hierarchyController = {
 };
 
 module.exports = hierarchyController;
+

@@ -5,6 +5,7 @@ const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
 const razorpayService = require("../services/razorpay.service");
 const commissionService = require("../services/commission.service");
+const { normalizeIdentity } = require("../utils/identity");
 
 const resolveWhiteLabelRootId = async (adminId, adminIdentity, tenantId) => {
   if (String(adminIdentity || "").toUpperCase() === "WHITE_LABEL_ADMIN") {
@@ -37,6 +38,87 @@ const resolveWhiteLabelRootId = async (adminId, adminIdentity, tenantId) => {
   const ancestorSet = new Set(whiteLabelAncestors.map((row) => row.id));
   const rootId = pathIds.find((id) => ancestorSet.has(id));
   return rootId || adminId;
+};
+
+const recordTargetWalletFeeFlow = async ({ db, tenantId, userId, applicationId, amount, paymentMethod, label }) => {
+  const feeAmount = Number(amount || 0);
+  if (!tenantId || !userId || !applicationId || feeAmount <= 0) return null;
+
+  const targetWallet =
+    (await db.wallet.findUnique({ where: { userId } })) ||
+    (await db.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId,
+        tenantId,
+        isCorporate: false,
+        balance: 0,
+        currency: "INR",
+        isActive: true
+      }
+    }));
+
+  const existingCredit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: targetWallet.id,
+      referenceId: applicationId,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingCredit) {
+    await db.wallet.update({
+      where: { id: targetWallet.id },
+      data: { balance: { increment: feeAmount } }
+    });
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: targetWallet.id,
+        amount: feeAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        description: `${label} payment received via ${paymentMethod}`,
+        referenceId: applicationId,
+        tenantId,
+        metadata: { trigger: `${label.toUpperCase().replace(/\s+/g, "_")}_TARGET_CREDIT`, applicationId, userId }
+      }
+    });
+  }
+
+  const existingDebit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: targetWallet.id,
+      referenceId: applicationId,
+      type: "DEBIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingDebit) {
+    await db.wallet.update({
+      where: { id: targetWallet.id },
+      data: { balance: { decrement: feeAmount } }
+    });
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: targetWallet.id,
+        amount: feeAmount,
+        type: "DEBIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        description: `${label} Application Fee (Paid via ${paymentMethod})`,
+        referenceId: applicationId,
+        tenantId,
+        metadata: { trigger: `${label.toUpperCase().replace(/\s+/g, "_")}_TARGET_DEBIT`, applicationId, userId }
+      }
+    });
+  }
+
+  return targetWallet;
 };
 
 const businessPartnerController = {
@@ -445,6 +527,18 @@ const businessPartnerController = {
             appResult.id, tenantId, paymentMethod, tx, false
           );
         }
+
+        if (paymentMethod === 'WALLET' || paymentMethod === 'CASH') {
+          await recordTargetWalletFeeFlow({
+            db: tx,
+            tenantId,
+            userId: targetUserId,
+            applicationId: appResult.id,
+            amount,
+            paymentMethod,
+            label: "Business Partner"
+          });
+        }
         return appResult;
       }, { timeout: 30000 });
 
@@ -596,6 +690,7 @@ const businessPartnerController = {
   approveApplication: async (req, res) => {
     const { applicationId } = req.params;
     const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const normalizedAdminIdentity = normalizeIdentity(adminIdentity);
 
     try {
       const unifiedApp = await prisma.application.findUnique({ where: { id: applicationId } });
@@ -616,7 +711,7 @@ const businessPartnerController = {
       }
 
       // 1. Permission Check (Admin or Delegated Partner)
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity);
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(normalizedAdminIdentity);
       if (!isTopAdmin) {
         const approver = await prisma.user.findUnique({ where: { id: adminId } });
         if (!approver.canApproveSaathi) { 
@@ -791,6 +886,7 @@ const businessPartnerController = {
   rejectApplication: async (req, res) => {
     const { applicationId } = req.params;
     const { user_id: adminId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const normalizedAdminIdentity = normalizeIdentity(adminIdentity);
     const { reason } = req.body;
 
     try {
@@ -808,7 +904,7 @@ const businessPartnerController = {
 
       if (!application) return res.status(404).json({ success: false, message: "Application not found" });
 
-      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity);
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(normalizedAdminIdentity);
       if (!isTopAdmin) {
         const approver = await prisma.user.findUnique({ where: { id: adminId } });
         if (!approver.canApproveSaathi) {
@@ -861,13 +957,25 @@ const businessPartnerController = {
         : await razorpayService.verifyPaymentSignature(tenantId, { razorpay_order_id, razorpay_payment_id, razorpay_signature });
       if (!isValid) return res.status(400).json({ success: false, message: "Invalid signature" });
 
-      await prisma.businessPartnerApplication.update({
-        where: { id: applicationId },
-        data: {
-          razorPayReferenceNo: razorpay_payment_id,
-          paymentMode: 1,
-          status: 'PENDING'
-        }
+      await prisma.$transaction(async (tx) => {
+        await tx.businessPartnerApplication.update({
+          where: { id: applicationId },
+          data: {
+            razorPayReferenceNo: razorpay_payment_id,
+            paymentMode: 1,
+            status: 'PENDING'
+          }
+        });
+
+        await recordTargetWalletFeeFlow({
+          db: tx,
+          tenantId,
+          userId: application.userId,
+          applicationId: application.id,
+          amount: application.amount,
+          paymentMethod: "RAZORPAY",
+          label: "Business Partner"
+        });
       });
 
       res.json({ success: true, message: "Payment verified successfully." });

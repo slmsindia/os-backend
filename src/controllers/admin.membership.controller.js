@@ -774,30 +774,41 @@ const adminMembershipController = {
             `[Commission-Debug][MEMBERSHIP] Admin wallet credit start: applicationId=${application.id}, userId=${application.userId}, amount=${settlementAmount}, walletId=${adminWallet.id}, mode=${modeLabel}, subServiceLookup=membership_fee`
           );
 
-          await tx.wallet.update({
-            where: { id: adminWallet.id },
-            data: { balance: { increment: settlementAmount } }
-          });
-
-          await tx.walletTransaction.create({
-            data: {
-              id: generateUuid(),
+          const existingAdminCredit = await tx.walletTransaction.findFirst({
+            where: {
               walletId: adminWallet.id,
-              amount: settlementAmount,
-              type: "CREDIT",
-              category: "SERVICE_CHARGE",
-              status: "SUCCESS",
               referenceId: application.id,
-              description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
-              tenantId,
-              metadata: {
-                trigger: "MEMBERSHIP_APPROVAL",
-                applicationId,
-                userId: application.userId,
-                paymentId: application.payment?.id
-              }
+              type: "CREDIT",
+              category: "SERVICE_CHARGE"
             }
           });
+
+          if (!existingAdminCredit) {
+            await tx.wallet.update({
+              where: { id: adminWallet.id },
+              data: { balance: { increment: settlementAmount } }
+            });
+
+            await tx.walletTransaction.create({
+              data: {
+                id: generateUuid(),
+                walletId: adminWallet.id,
+                amount: settlementAmount,
+                type: "CREDIT",
+                category: "SERVICE_CHARGE",
+                status: "SUCCESS",
+                referenceId: application.id,
+                description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
+                tenantId,
+                metadata: {
+                  trigger: "MEMBERSHIP_APPROVAL",
+                  applicationId,
+                  userId: application.userId,
+                  paymentId: application.payment?.id
+                }
+              }
+            });
+          }
 
           const subService = await tx.commissionSubService.findFirst({
             where: {

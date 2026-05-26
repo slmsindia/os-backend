@@ -26,10 +26,10 @@ router.post("/apply", businessPartnerController.createApplication);
 const { checkPermission } = require("../middleware/permission.middleware");
 
 // Admin controls
-router.get("/applications", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), businessPartnerController.getApplications);
-router.get("/applications/:applicationId", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), businessPartnerController.getApplicationById);
+router.get("/applications", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission(["PERM_VIEW_APPLICATIONS", "PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), businessPartnerController.getApplications);
+router.get("/applications/:applicationId", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission(["PERM_VIEW_APPLICATIONS", "PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), businessPartnerController.getApplicationById);
 router.post("/verify-payment", businessPartnerController.verifyPayment);
-router.post("/applications/:applicationId/approve", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), businessPartnerController.approveApplication);
-router.post("/applications/:applicationId/reject", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_APPLICATIONS"), businessPartnerController.rejectApplication);
+router.post("/applications/:applicationId/approve", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission(["PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), businessPartnerController.approveApplication);
+router.post("/applications/:applicationId/reject", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission(["PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), businessPartnerController.rejectApplication);
 
 module.exports = router;

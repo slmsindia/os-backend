@@ -607,6 +607,23 @@ const applicationController = {
       }
 
       await logAction({ userId: adminId, action: `${app.targetIdentity}_APPROVED`, targetId: applicationId, tenantId, metadata: { userId: app.userId } });
+
+      try {
+        await prisma.notification.create({
+          data: {
+            id: generateUuid(),
+            userId: app.userId,
+            tenantId,
+            title: `${app.targetIdentity} Application Approved`,
+            message: `Congratulations! Your ${app.targetIdentity} application has been approved. Your account will be upgraded shortly.`,
+            type: "APPLICATION_APPROVED",
+            metadata: { applicationId: app.id, targetIdentity: app.targetIdentity, approvedAt: new Date() }
+          }
+        });
+      } catch (notifErr) {
+        console.error('[Application.approve] Notification creation failed:', notifErr);
+      }
+
       res.json({ success: true, message: `${app.targetIdentity} application approved. Identity upgraded.`, data: { applicationId, userId: app.userId } });
     } catch (err) {
       console.error('[Application.approve]', err);
@@ -630,6 +647,23 @@ const applicationController = {
       if (!app) return res.status(404).json({ success: false, message: "Application not found" });
       await prisma.application.update({ where: { id: applicationId }, data: { status: 'REJECTED', rejectionReason: reason } });
       await logAction({ userId: adminId, action: `${app.targetIdentity}_REJECTED`, targetId: applicationId, tenantId });
+
+      try {
+        await prisma.notification.create({
+          data: {
+            id: generateUuid(),
+            userId: app.userId,
+            tenantId,
+            title: `${app.targetIdentity} Application Rejected`,
+            message: `Your ${app.targetIdentity} application has been rejected. Reason: ${reason}`,
+            type: "APPLICATION_REJECTED",
+            metadata: { applicationId: app.id, targetIdentity: app.targetIdentity, rejectionReason: reason }
+          }
+        });
+      } catch (notifErr) {
+        console.error('[Application.reject] Notification creation failed:', notifErr);
+      }
+
       res.json({ success: true, message: "Application rejected." });
     } catch (err) {
       res.status(500).json({ success: false, message: "Internal server error" });

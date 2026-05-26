@@ -1,4 +1,3 @@
-const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("./id");
 const prisma = require("../lib/prisma");
 

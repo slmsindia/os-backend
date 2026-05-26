@@ -1,3 +1,5 @@
+const { normalizeIdentity } = require("../utils/identity");
+
 const checkIdentity = (allowedIdentities) => {
   return async (req, res, next) => {
     if (!req.user || !req.user.user_id) {
@@ -14,14 +16,8 @@ const checkIdentity = (allowedIdentities) => {
     }
 
     // Clean up identity (remove spaces, convert to underscores for enum match)
-    const userIdentity = String(identity || "")
-      .trim()
-      .toUpperCase()
-      .replace(/\s+/g, '_');
-
-    const normalizedAllowed = allowedIdentities.map(id => 
-      String(id).trim().toUpperCase().replace(/\s+/g, '_')
-    );
+    const userIdentity = normalizeIdentity(identity);
+    const normalizedAllowed = allowedIdentities.map(normalizeIdentity);
 
     console.log(`[IdentityCheck] User: ${userIdentity} | Allowed: ${normalizedAllowed.join(', ')}`);
 
@@ -35,7 +31,7 @@ const checkIdentity = (allowedIdentities) => {
 };
 
 const isWhiteLabelAdmin = (req, res, next) => {
-  const identity = String(req.user?.identity || "").toUpperCase();
+  const identity = normalizeIdentity(req.user?.identity);
   if (identity !== 'WHITE_LABEL_ADMIN' && identity !== 'SUPER_ADMIN') {
     return res.status(403).json({ success: false, message: "Forbidden: White Label Admin access required" });
   }
@@ -43,10 +39,10 @@ const isWhiteLabelAdmin = (req, res, next) => {
 };
 
 const isSuperAdmin = (req, res, next) => {
-  if (String(req.user?.identity || "").toUpperCase() !== 'SUPER_ADMIN') {
+  if (normalizeIdentity(req.user?.identity) !== 'SUPER_ADMIN') {
     return res.status(403).json({ success: false, message: "Forbidden: Super Admin access required" });
   }
   next();
 };
 
-module.exports = { checkIdentity, isWhiteLabelAdmin, isSuperAdmin };
+module.exports = { checkIdentity, isWhiteLabelAdmin, isSuperAdmin, normalizeIdentity };

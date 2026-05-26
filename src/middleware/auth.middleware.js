@@ -1,4 +1,5 @@
 const { verifyToken } = require("../utils/jwt");
+const { normalizeIdentity } = require("../utils/identity");
 
 module.exports = (req, res, next) => {
   const header = req.headers.authorization;
@@ -28,6 +29,10 @@ module.exports = (req, res, next) => {
   if (!decoded) {
     console.log(`[Auth] Invalid token attempt for path: ${req.path}`);
     return res.status(401).json({ success: false, message: "invalid token" });
+  }
+
+  if (decoded.identity != null) {
+    decoded.identity = normalizeIdentity(decoded.identity);
   }
 
   // Strict Tenant Enforcement: Ensure token's tenant matches current domain's tenant

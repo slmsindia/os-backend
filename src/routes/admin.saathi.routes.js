@@ -33,11 +33,11 @@ router.post("/create-directly",
 const { checkPermission } = require("../middleware/permission.middleware");
 
 // Management routes
-router.get("/applications", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.getSaathiApplications);
-router.get("/applications/:applicationId", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.getSaathiApplicationById);
+router.get("/applications", checkPermission(["PERM_VIEW_APPLICATIONS", "PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), adminSaathiController.getSaathiApplications);
+router.get("/applications/:applicationId", checkPermission(["PERM_VIEW_APPLICATIONS", "PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), adminSaathiController.getSaathiApplicationById);
 router.post("/verify-payment", adminSaathiController.verifyPayment);
-router.post("/applications/:applicationId/approve", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.approveApplication);
-router.post("/applications/:applicationId/reject", checkPermission("PERM_MANAGE_APPLICATIONS"), adminSaathiController.rejectApplication);
+router.post("/applications/:applicationId/approve", checkPermission(["PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), adminSaathiController.approveApplication);
+router.post("/applications/:applicationId/reject", checkPermission(["PERM_APPROVE_APPLICATIONS", "PERM_MANAGE_APPLICATIONS"]), adminSaathiController.rejectApplication);
 
 // Delegation (Top Admins only)
 router.post("/delegate-approval",

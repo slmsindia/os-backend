@@ -15,6 +15,158 @@ const AUTHORIZED_CREATOR_ROLES = [
   'DISTRICT_PARTNER'
 ];
 
+const creditMembershipFeeToAdminWallet = async ({ db, tenantId, application, amount, modeLabel, trigger }) => {
+  const settlementAmount = Number(amount || 0);
+  if (!tenantId || !application?.id || settlementAmount <= 0) return null;
+
+  const adminWallet =
+    (await db.wallet.findFirst({
+      where: { tenantId, isCorporate: true }
+    })) ||
+    (await db.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId: null,
+        tenantId,
+        isCorporate: true,
+        balance: 0,
+        currency: "INR",
+        isActive: true
+      }
+    }));
+
+  const existingCredit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: adminWallet.id,
+      referenceId: application.id,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (existingCredit) return existingCredit;
+
+  await db.wallet.update({
+    where: { id: adminWallet.id },
+    data: { balance: { increment: settlementAmount } }
+  });
+
+  return db.walletTransaction.create({
+    data: {
+      id: generateUuid(),
+      walletId: adminWallet.id,
+      amount: settlementAmount,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE",
+      status: "SUCCESS",
+      referenceId: application.id,
+      description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
+      tenantId,
+      metadata: {
+        trigger,
+        applicationId: application.id,
+        userId: application.userId,
+        paymentId: application.payment?.id
+      }
+    }
+  });
+};
+
+const recordMemberRazorpayWalletFlow = async ({ db, tenantId, application, amount }) => {
+  const settlementAmount = Number(amount || 0);
+  if (!tenantId || !application?.userId || !application?.id || settlementAmount <= 0) return null;
+
+  const memberWallet =
+    (await db.wallet.findUnique({
+      where: { userId: application.userId }
+    })) ||
+    (await db.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId: application.userId,
+        tenantId,
+        isCorporate: false,
+        balance: 0,
+        currency: "INR",
+        isActive: true
+      }
+    }));
+
+  const existingCredit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: memberWallet.id,
+      referenceId: application.id,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingCredit) {
+    await db.wallet.update({
+      where: { id: memberWallet.id },
+      data: { balance: { increment: settlementAmount } }
+    });
+
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: memberWallet.id,
+        amount: settlementAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        referenceId: application.id,
+        description: "Membership payment received via RAZORPAY",
+        tenantId,
+        metadata: {
+          trigger: "MEMBERSHIP_RAZORPAY_WALLET_CREDIT",
+          applicationId: application.id,
+          userId: application.userId,
+          paymentId: application.payment?.id
+        }
+      }
+    });
+  }
+
+  const existingDebit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: memberWallet.id,
+      referenceId: application.id,
+      type: "DEBIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingDebit) {
+    await db.wallet.update({
+      where: { id: memberWallet.id },
+      data: { balance: { decrement: settlementAmount } }
+    });
+
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: memberWallet.id,
+        amount: settlementAmount,
+        type: "DEBIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        referenceId: application.id,
+        description: "Membership Application Fee (Paid via RAZORPAY)",
+        tenantId,
+        metadata: {
+          trigger: "MEMBERSHIP_RAZORPAY_WALLET_DEBIT",
+          applicationId: application.id,
+          userId: application.userId,
+          paymentId: application.payment?.id
+        }
+      }
+    });
+  }
+
+  return memberWallet;
+};
+
 const membershipController = {
   /**
    * Get membership price
@@ -582,46 +734,40 @@ const membershipController = {
         return res.status(400).json({ success: false, message: "Invalid payment signature" });
       }
 
-      // Update payment record
-      await prisma.membershipPayment.update({
-        where: { id: application.payment.id },
-        data: {
-          status: 'SUCCESS',
-          razorpayPaymentId: razorpay_payment_id,
-          razorpaySignature: razorpay_signature,
-          paidAt: new Date()
-        }
-      });
+      await prisma.$transaction(async (tx) => {
+        // Update payment record
+        await tx.membershipPayment.update({
+          where: { id: application.payment.id },
+          data: {
+            status: 'SUCCESS',
+            razorpayPaymentId: razorpay_payment_id,
+            razorpaySignature: razorpay_signature,
+            paidAt: new Date()
+          }
+        });
 
-      // Update application status to PENDING (submitted for review)
-      await prisma.membershipApplication.update({
-        where: { id: application.id },
-        data: { status: 'PENDING' }
-      });
+        // Update application status to PENDING (submitted for review)
+        await tx.membershipApplication.update({
+          where: { id: application.id },
+          data: { status: 'PENDING' }
+        });
 
-      // Log Razorpay payment in Wallet History
-      try {
-        const partnerId = application.createdById || application.userId;
-        const partner = await prisma.user.findUnique({ where: { id: partnerId } });
-        const partnerWallet = await walletService.resolveWallet(partnerId, tenantId, partner?.identity);
-        
-        if (partnerWallet) {
-          await prisma.walletTransaction.create({
-            data: {
-              id: generateUuid(),
-              walletId: partnerWallet.id,
-              amount: application.payment.amount,
-              type: "DEBIT",
-              category: "SERVICE_CHARGE",
-              description: `Membership Application Fee (Paid via RAZORPAY - Pending Approval)`,
-              referenceId: application.id,
-              tenantId: tenantId
-            }
-          });
-        }
-      } catch (logErr) {
-        console.error("Failed to log Membership Razorpay log:", logErr);
-      }
+        await creditMembershipFeeToAdminWallet({
+          db: tx,
+          tenantId,
+          application,
+          amount: application.payment.amount,
+          modeLabel: 'RAZORPAY',
+          trigger: 'MEMBERSHIP_PAYMENT_SUCCESS'
+        });
+
+        await recordMemberRazorpayWalletFlow({
+          db: tx,
+          tenantId,
+          application,
+          amount: application.payment.amount
+        });
+      });
 
       await logAction({
         userId,

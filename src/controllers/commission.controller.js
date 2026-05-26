@@ -71,8 +71,35 @@ const sanitizeShareForViewer = (share, identity) => {
 };
 
 const sanitizeServicesForViewer = (services, identity) => {
-  if (!Array.isArray(services) || isTopCommissionViewer(identity)) return services;
-  return services.map((service) => ({
+  if (!Array.isArray(services)) return services;
+
+  const role = String(identity || "").toUpperCase();
+  const serviceRankByRole = {
+    COUNTRY_HEAD: 1,
+    STATE_PARTNER: 2,
+    DISTRICT_PARTNER: 3,
+    SAATHI: 4,
+  };
+  const serviceRankByName = {
+    COUNTRYPARTNER: 1,
+    COUNTRYHEAD: 1,
+    STATEPARTNER: 2,
+    DISTRICTPARTNER: 3,
+    SAATHI: 4,
+  };
+  const minVisibleRank = serviceRankByRole[role];
+
+  const visibleServices = isTopCommissionViewer(identity) || !minVisibleRank
+    ? services
+    : services.filter((service) => {
+        const normalizedName = String(service?.name || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const serviceRank = serviceRankByName[normalizedName];
+        return !serviceRank || serviceRank >= minVisibleRank;
+      });
+
+  if (isTopCommissionViewer(identity)) return visibleServices;
+
+  return visibleServices.map((service) => ({
     ...service,
     subServices: Array.isArray(service.subServices)
       ? service.subServices.map((subService) => ({
@@ -508,15 +535,57 @@ const commissionController = {
   addCommissionSubService: async (req, res) => {
     const { name, serviceId, schemeId, slug } = req.body || {};
     const { tenant_id: tenantId } = req.user || {};
+    const normalizedSlug = String(slug || "").trim() || null;
 
     if (!name || !serviceId) return res.status(400).json({ success: false, message: "Name and serviceId are required" });
     try {
+      if (schemeId && normalizedSlug) {
+        const existingSubService = await prisma.commissionSubService.findFirst({
+          where: {
+            serviceId,
+            schemeId,
+            slug: normalizedSlug,
+          },
+          select: { id: true },
+        });
+
+        if (existingSubService) {
+          await prisma.commissionShare.upsert({
+            where: {
+              schemeId_subServiceId: {
+                schemeId,
+                subServiceId: existingSubService.id,
+              },
+            },
+            update: {},
+            create: {
+              id: generateUuid(),
+              schemeId,
+              subServiceId: existingSubService.id,
+              commissionType: 2,
+              admin: 0,
+              countryPartner: 0,
+              statePartner: 0,
+              districtPartner: 0,
+              saathi: 0,
+              member: 0,
+            },
+          });
+
+          return res.status(200).json({
+            success: true,
+            message: "Sub-service already existed, commission share linked",
+            data: existingSubService,
+          });
+        }
+      }
+
       const subService = await prisma.commissionSubService.create({
         data: {
           id: generateUuid(),
           name,
           serviceId,
-          slug: slug || undefined,
+          slug: normalizedSlug || undefined,
           schemeId,
           tenantId
         }
@@ -543,6 +612,12 @@ const commissionController = {
       res.status(201).json({ success: true, message: "Sub-service added", data: subService });
     } catch (err) {
       console.error(err);
+      if (err?.code === "P2002") {
+        return res.status(409).json({
+          success: false,
+          message: "This sub-service already exists for the selected service and scheme.",
+        });
+      }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },

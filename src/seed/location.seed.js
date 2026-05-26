@@ -1,7 +1,6 @@
-const { PrismaClient } = require("@prisma/client");
 const { generateUuid } = require("../utils/id");
 
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 async function main() {
   console.log("Seeding location data...");

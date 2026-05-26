@@ -39,6 +39,87 @@ const resolveWhiteLabelRootId = async (adminId, adminIdentity, tenantId) => {
   return rootId || adminId;
 };
 
+const recordTargetWalletFeeFlow = async ({ db, tenantId, userId, applicationId, amount, paymentMethod, label }) => {
+  const feeAmount = Number(amount || 0);
+  if (!tenantId || !userId || !applicationId || feeAmount <= 0) return null;
+
+  const targetWallet =
+    (await db.wallet.findUnique({ where: { userId } })) ||
+    (await db.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId,
+        tenantId,
+        isCorporate: false,
+        balance: 0,
+        currency: "INR",
+        isActive: true
+      }
+    }));
+
+  const existingCredit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: targetWallet.id,
+      referenceId: applicationId,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingCredit) {
+    await db.wallet.update({
+      where: { id: targetWallet.id },
+      data: { balance: { increment: feeAmount } }
+    });
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: targetWallet.id,
+        amount: feeAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        description: `${label} payment received via ${paymentMethod}`,
+        referenceId: applicationId,
+        tenantId,
+        metadata: { trigger: `${label.toUpperCase().replace(/\s+/g, "_")}_TARGET_CREDIT`, applicationId, userId }
+      }
+    });
+  }
+
+  const existingDebit = await db.walletTransaction.findFirst({
+    where: {
+      walletId: targetWallet.id,
+      referenceId: applicationId,
+      type: "DEBIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (!existingDebit) {
+    await db.wallet.update({
+      where: { id: targetWallet.id },
+      data: { balance: { decrement: feeAmount } }
+    });
+    await db.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: targetWallet.id,
+        amount: feeAmount,
+        type: "DEBIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        description: `${label} Application Fee (Paid via ${paymentMethod})`,
+        referenceId: applicationId,
+        tenantId,
+        metadata: { trigger: `${label.toUpperCase().replace(/\s+/g, "_")}_TARGET_DEBIT`, applicationId, userId }
+      }
+    });
+  }
+
+  return targetWallet;
+};
+
 const adminSaathiController = {
   /**
    * Set Saathi Fee
@@ -153,6 +234,10 @@ const adminSaathiController = {
       // 1. Get Target User (or create if new)
       let targetUserId = providedUserId;
       let targetUser = null;
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminId },
+        select: { mobile: true }
+      });
       const whiteLabelRootId = await resolveWhiteLabelRootId(adminId, adminIdentity, tenantId);
       const isProvidedUser = Boolean(providedUserId);
       const requestMode = isProvidedUser ? "EXISTING_USER" : (mobile ? "NEW_MOBILE" : "INVALID");
@@ -235,12 +320,24 @@ const adminSaathiController = {
         return res.status(400).json({ success: false, message: "Either userId or mobile is required" });
       }
 
-      // 2. Hierarchy and Role Validation
+      // 2. Self-target protection and hierarchy validation
+      // Saathi direct onboarding is only meant for creating a new user under the current admin,
+      // not for converting the admin's own account in place.
+      const isSelfTarget =
+        targetUser?.id === adminId ||
+        String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
+      if (isSelfTarget) {
+        return res.status(400).json({
+          success: false,
+          message: "Use a different mobile number to create a new Saathi under your hierarchy."
+        });
+      }
+
       // Only validate hierarchy when we are attaching an already-existing user.
       const partnerRoles = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER'];
       if (isProvidedUser && partnerRoles.includes(adminIdentity)) {
         console.log(
-          `[SaathiDirect-Debug] Hierarchy validation for existing-user attach: targetParentId=${targetUser.parentId || "none"}, adminId=${adminId}, targetPath=${targetUser.path || "none"}`
+          `[SaathiDirect-Debug] Hierarchy validation for existing-user attach: targetId=${targetUser.id}, isSelfTarget=${isSelfTarget}, targetParentId=${targetUser.parentId || "none"}, adminId=${adminId}, targetPath=${targetUser.path || "none"}`
         );
         if (targetUser.parentId !== adminId && (!targetUser.path || !targetUser.path.includes(adminId))) {
           console.log(
@@ -474,6 +571,18 @@ const adminSaathiController = {
             tx,
             false // creditAdminImmediately = false
           );
+        }
+
+        if (paymentMethod === 'WALLET' || paymentMethod === 'CASH') {
+          await recordTargetWalletFeeFlow({
+            db: tx,
+            tenantId,
+            userId: targetUserId,
+            applicationId: appResult.id,
+            amount,
+            paymentMethod,
+            label: "Saathi"
+          });
         }
 
         return appResult;
@@ -994,20 +1103,31 @@ const adminSaathiController = {
         return res.status(400).json({ success: false, message: "Invalid payment signature" });
       }
 
-      // Update payment record
-      await prisma.saathiPayment.update({
-        where: { id: application.payment.id },
-        data: {
-          status: 'SUCCESS',
-          razorpayPaymentId: razorpay_payment_id,
-          razorpaySignature: razorpay_signature,
-          paidAt: new Date()
-        }
-      });
+      await prisma.$transaction(async (tx) => {
+        await tx.saathiPayment.update({
+          where: { id: application.payment.id },
+          data: {
+            status: 'SUCCESS',
+            razorpayPaymentId: razorpay_payment_id,
+            razorpaySignature: razorpay_signature,
+            paidAt: new Date()
+          }
+        });
 
-      await prisma.saathiApplication.update({
-        where: { id: application.id },
-        data: { status: 'PENDING' }
+        await tx.saathiApplication.update({
+          where: { id: application.id },
+          data: { status: 'PENDING' }
+        });
+
+        await recordTargetWalletFeeFlow({
+          db: tx,
+          tenantId,
+          userId: application.userId,
+          applicationId: application.id,
+          amount: application.payment.amount,
+          paymentMethod: "RAZORPAY",
+          label: "Saathi"
+        });
       });
 
       // Log in Wallet History & Credit Admin Corporate Wallet

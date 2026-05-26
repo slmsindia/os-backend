@@ -117,6 +117,95 @@ const extractReceiverList = (payload = {}) => {
   ].filter(Boolean);
 };
 
+const normalizeReceiverIdentity = (receiver = {}) => ({
+  receiverId: String(receiver?.receiverId || receiver?.ReceiverId || receiver?.id || '').trim(),
+  receiverName: String(
+    receiver?.name ||
+    receiver?.receiverName ||
+    receiver?.fullName ||
+    ''
+  ).trim(),
+  receiverMobile: String(receiver?.mobile || receiver?.receiverMobile || '').trim(),
+  paymentMode: String(receiver?.paymentMode || '').trim(),
+  accountNumber: String(receiver?.accountNumber || receiver?.acNumber || '').trim(),
+  bankBranchId: String(receiver?.bankBranchId || '').trim()
+});
+
+const findMatchingReceiver = (receivers = [], criteria = {}) => {
+  const normalizedReceiverId = String(criteria.receiverId || '').trim();
+  const normalizedReceiverMobile = String(criteria.receiverMobile || '').trim();
+  const normalizedReceiverName = String(criteria.receiverName || '').trim().toLowerCase();
+
+  return receivers.find((receiver) => {
+    const identity = normalizeReceiverIdentity(receiver);
+
+    if (normalizedReceiverId && identity.receiverId && identity.receiverId === normalizedReceiverId) {
+      return true;
+    }
+
+    if (normalizedReceiverMobile && identity.receiverMobile && identity.receiverMobile === normalizedReceiverMobile) {
+      return true;
+    }
+
+    if (normalizedReceiverName && identity.receiverName && identity.receiverName.toLowerCase() === normalizedReceiverName) {
+      return true;
+    }
+
+    return false;
+  }) || null;
+};
+
+const resolveReceiverDetails = async (payload = {}, context = {}) => {
+  const receiverId = String(payload?.receiverId || payload?.ReceiverId || '').trim();
+  const receiverName = String(payload?.receiverName || '').trim();
+  const receiverMobile = String(payload?.receiverMobile || '').trim();
+  const customerId = String(payload?.customerId || '').trim();
+  const senderMobile = String(payload?.senderMobile || payload?.mobile || '').trim();
+
+  const criteria = { receiverId, receiverName, receiverMobile };
+  const candidates = [];
+
+  if (senderMobile) {
+    try {
+      const lookup = await prabhuService.callEndpoint('GetCustomerByMobile', {
+        customerMobile: senderMobile
+      }, context);
+      candidates.push(...extractReceiverList(lookup?.data || {}));
+    } catch {
+      // Ignore lookup errors and fall back to our local cache below.
+    }
+  }
+
+  if (customerId || senderMobile) {
+    try {
+      const localReceivers = await prabhuReceiverService.list({
+        customerId,
+        mobile: senderMobile
+      });
+      candidates.push(...localReceivers);
+    } catch {
+      // Ignore local cache failures and keep the original payload.
+    }
+  }
+
+  const match = findMatchingReceiver(candidates, criteria);
+  if (!match) {
+    return {};
+  }
+
+  const identity = normalizeReceiverIdentity(match);
+  const resolved = {};
+
+  if (identity.receiverId) resolved.receiverId = identity.receiverId;
+  if (identity.receiverName) resolved.receiverName = identity.receiverName;
+  if (identity.receiverMobile) resolved.receiverMobile = identity.receiverMobile;
+  if (identity.paymentMode) resolved.paymentMode = identity.paymentMode;
+  if (identity.accountNumber) resolved.accountNumber = identity.accountNumber;
+  if (identity.bankBranchId) resolved.bankBranchId = identity.bankBranchId;
+
+  return resolved;
+};
+
 const extractStateDistrictRows = (payload = {}) => {
   return [
     ...toArray(payload.data),
@@ -658,12 +747,14 @@ module.exports = {
 
       const { getLocationData } = require("../../utils/location");
       const loc = getLocationData(req);
+      const resolvedReceiverDetails = await resolveReceiverDetails(req.body || {}, getRequestContext(req));
 
       await walletService.ensureSufficientBalance(appUserId, transferAmount, tenantId, identity);
       deductedWallet = await walletService.deductBalanceIfSufficient(appUserId, transferAmount, tenantId, identity, null, "Prabhu Remittance", null, loc);
 
       const payload = {
         ...req.body,
+        ...resolvedReceiverDetails,
         cspCode: req.body.cspCode || process.env.PRABHU_CSP_CODE
       };
       const result = await prabhuService.callEndpoint('SendTransaction', payload, getRequestContext(req));

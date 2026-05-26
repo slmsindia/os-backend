@@ -2,10 +2,9 @@ const axios = require('axios');
 const https = require('https');
 const crypto = require('crypto');
 const soap = require('soap');
-const { PrismaClient } = require('@prisma/client');
 const { generateUuid } = require('../../utils/id');
 
-const prisma = new PrismaClient();
+const prisma = require('../../lib/prisma');
 
 const SOAP_OPERATIONS = {
   GetStateDistrict: 'GetStateDistrict',

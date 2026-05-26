@@ -1,6 +1,94 @@
 const prisma = require("../lib/prisma");
 const walletService = require("../services/wallet.service");
 const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
+const { normalizeIdentity } = require("../utils/identity");
+const {
+  buildLogMap,
+  buildUserMap,
+  buildWalletBalanceMap,
+  enrichLedgerTransactions,
+  sortTransactionsDesc,
+  getLedgerMetadataUserIds
+} = require("../utils/ledger");
+
+const formatApplicationLedgerLabel = (targetIdentity = "") => {
+  const normalized = String(targetIdentity || "").replace(/_/g, " ").trim();
+  if (!normalized) return "Application";
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1).toLowerCase()} Application`;
+};
+
+const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
+
+const resolveUserPincode = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      registrationPincode: true,
+      registrationAddress: true,
+      membershipApplications: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          currentPincode: true,
+          permanentPincode: true
+        }
+      }
+    }
+  });
+
+  const address = user?.registrationAddress && typeof user.registrationAddress === "object"
+    ? user.registrationAddress
+    : {};
+
+  return String(
+    user?.registrationPincode ||
+    address?.pinCode ||
+    address?.pincode ||
+    user?.membershipApplications?.[0]?.currentPincode ||
+    user?.membershipApplications?.[0]?.permanentPincode ||
+    ""
+  ).trim();
+};
+
+const ensureBankVisibleForUserPincode = async ({ bankDetailsId, tenantId, userId }) => {
+  const pincode = await resolveUserPincode(userId);
+
+  if (!PINCODE_REGEX.test(pincode)) {
+    return {
+      ok: false,
+      status: 400,
+      code: "PINCODE_REQUIRED",
+      message: "Please update your valid pincode before adding money."
+    };
+  }
+
+  const rows = await prisma.$queryRaw`
+    SELECT bd.*
+    FROM "BankDetails" bd
+    INNER JOIN "BankPincodeVisibility" bpv
+      ON bpv."bankDetailsId" = bd."id"
+    WHERE bd."id" = ${bankDetailsId}
+      AND bd."isActive" = true
+      AND bpv."pincode" = ${pincode}
+      AND bpv."isActive" = true
+      AND (${tenantId}::text IS NULL OR bd."tenantId" = ${tenantId})
+      AND (${tenantId}::text IS NULL OR bpv."tenantId" = ${tenantId})
+    LIMIT 1
+  `;
+  const bankDetails = rows[0];
+
+  if (!bankDetails) {
+    return {
+      ok: false,
+      status: 404,
+      code: "BANK_NOT_AVAILABLE",
+      message: "Bank details not found or inactive."
+    };
+  }
+
+  return { ok: true, pincode, bankDetails };
+};
 
 const walletController = {
   // ==================== MEMBER ENDPOINTS ====================
@@ -10,10 +98,19 @@ const walletController = {
    */
   getMyWallet: async (req, res) => {
     try {
-      const { user_id: userId, identity, tenant_id: tenantId } = req.user || {};
+      let { user_id: userId, identity: rawIdentity, tenant_id: tenantId } = req.user || {};
+      const identity = normalizeIdentity(rawIdentity);
 
       if (!userId || !identity) {
         return res.status(400).json({ success: false, message: "Invalid user data in token" });
+      }
+
+      if (!tenantId && userId) {
+        const row = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { tenantId: true }
+        });
+        tenantId = row?.tenantId || null;
       }
 
       console.log(`[Wallet] Getting wallet for user: ${userId}, identity: ${identity}, tenant: ${tenantId}`);
@@ -28,6 +125,12 @@ const walletController = {
         }
         
         console.log(`Initializing missing wallet for ${identity}: ${userId}`);
+        if (!tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot create wallet: missing tenant for this account."
+          });
+        }
         wallet = await walletService.createWallet(userId, tenantId, false);
       }
 
@@ -51,20 +154,37 @@ const walletController = {
   getActiveBankDetails: async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
-      
-      console.log(`[WalletController] Fetching active bank details for tenant: ${tenantId}`);
+      const userId = req.user?.user_id;
+      const pincode = await resolveUserPincode(userId);
 
-      const bankDetails = await prisma.bankDetails.findMany({
-        where: { 
-          isActive: true,
-          ...(tenantId ? { tenantId } : {})
-        },
-        orderBy: { createdAt: "desc" }
-      });
+      if (!PINCODE_REGEX.test(pincode)) {
+        return res.status(400).json({
+          success: false,
+          code: "PINCODE_REQUIRED",
+          message: "Please update your valid pincode before adding money.",
+          data: { pincode: pincode || null, bankDetails: [] }
+        });
+      }
+      
+      console.log(`[WalletController] Fetching active bank details for tenant: ${tenantId}, pincode: ${pincode}`);
+
+      const bankDetails = await prisma.$queryRaw`
+        SELECT bd.*
+        FROM "BankDetails" bd
+        INNER JOIN "BankPincodeVisibility" bpv
+          ON bpv."bankDetailsId" = bd."id"
+        WHERE bd."isActive" = true
+          AND bpv."pincode" = ${pincode}
+          AND bpv."isActive" = true
+          AND (${tenantId}::text IS NULL OR bd."tenantId" = ${tenantId})
+          AND (${tenantId}::text IS NULL OR bpv."tenantId" = ${tenantId})
+        ORDER BY bd."createdAt" DESC
+      `;
 
       res.json({
         success: true,
-        data: bankDetails
+        data: bankDetails,
+        meta: { pincode }
       });
     } catch (err) {
       console.error("[WalletController] getActiveBankDetails Error:", err);
@@ -123,22 +243,12 @@ const walletController = {
         });
       }
 
-      // Check if bank details exist and are active
-      const bankDetails = await prisma.bankDetails.findUnique({
-        where: { id: bankDetailsId }
-      });
-
-      if (!bankDetails) {
-        return res.status(404).json({
+      const visibility = await ensureBankVisibleForUserPincode({ bankDetailsId, tenantId, userId });
+      if (!visibility.ok) {
+        return res.status(visibility.status).json({
           success: false,
-          message: "Bank details not found"
-        });
-      }
-
-      if (!bankDetails.isActive) {
-        return res.status(400).json({
-          success: false,
-          message: "This bank account is currently inactive. Please select another."
+          code: visibility.code,
+          message: visibility.message
         });
       }
 
@@ -378,6 +488,140 @@ const walletController = {
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  getBankPincodeVisibility: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
+      const { pincode } = req.query;
+
+      const bank = await prisma.bankDetails.findFirst({
+        where: {
+          id,
+          ...(tenantId ? { tenantId } : {})
+        }
+      });
+
+      if (!bank) {
+        return res.status(404).json({ success: false, message: "Bank details not found" });
+      }
+
+      const where = {
+        bankDetailsId: id,
+        ...(tenantId ? { tenantId } : {}),
+        ...(pincode ? { pincode: String(pincode).trim() } : {})
+      };
+
+      const visibility = await prisma.$queryRaw`
+        SELECT
+          "id",
+          "bankDetailsId",
+          "tenantId",
+          "pincode",
+          "locationName",
+          "isActive",
+          "createdBy",
+          "updatedBy",
+          "createdAt",
+          "updatedAt"
+        FROM "BankPincodeVisibility"
+        WHERE "bankDetailsId" = ${id}
+          AND (${tenantId}::text IS NULL OR "tenantId" = ${tenantId})
+          AND (${pincode ? String(pincode).trim() : null}::text IS NULL OR "pincode" = ${pincode ? String(pincode).trim() : null})
+        ORDER BY "pincode" ASC, "createdAt" DESC
+      `;
+
+      res.json({
+        success: true,
+        data: {
+          bank,
+          visibility
+        }
+      });
+    } catch (err) {
+      console.error("[WalletController] getBankPincodeVisibility Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
+    }
+  },
+
+  upsertBankPincodeVisibility: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tenantId = req.user?.tenant_id || req.user?.tenantId;
+      const userId = req.user?.user_id;
+      const pincode = String(req.body.pincode || "").trim();
+      const locationName = String(req.body.locationName || "").trim() || null;
+      const isActive = Boolean(req.body.isActive);
+
+      if (!PINCODE_REGEX.test(pincode)) {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PINCODE",
+          message: "Valid 6 digit pincode is required."
+        });
+      }
+
+      const bank = await prisma.bankDetails.findFirst({
+        where: {
+          id,
+          ...(tenantId ? { tenantId } : {})
+        }
+      });
+
+      if (!bank) {
+        return res.status(404).json({ success: false, message: "Bank details not found" });
+      }
+
+      const existingRows = await prisma.$queryRaw`
+        SELECT "id"
+        FROM "BankPincodeVisibility"
+        WHERE "bankDetailsId" = ${id}
+          AND "pincode" = ${pincode}
+          AND (${tenantId}::text IS NULL OR "tenantId" = ${tenantId})
+        LIMIT 1
+      `;
+      const existingVisibility = existingRows[0];
+
+      const visibility = existingVisibility
+        ? (await prisma.$queryRaw`
+          UPDATE "BankPincodeVisibility"
+          SET "isActive" = ${isActive},
+              "locationName" = ${locationName},
+              "updatedBy" = ${userId},
+              "updatedAt" = NOW()
+          WHERE "id" = ${existingVisibility.id}
+          RETURNING *
+        `)[0]
+        : (await prisma.$queryRaw`
+          INSERT INTO "BankPincodeVisibility" (
+            "id", "bankDetailsId", "tenantId", "pincode", "locationName",
+            "isActive", "createdBy", "updatedBy", "createdAt", "updatedAt"
+          )
+          VALUES (
+            ${generateUuid()}, ${id}, ${tenantId}, ${pincode}, ${locationName},
+            ${isActive}, ${userId}, ${userId}, NOW(), NOW()
+          )
+          RETURNING *
+        `)[0];
+
+      await logAction({
+        userId,
+        action: "BANK_PINCODE_VISIBILITY_UPDATE",
+        targetId: id,
+        tenantId,
+        metadata: { bankName: bank.bankName, pincode, locationName, isActive }
+      });
+
+      res.json({
+        success: true,
+        message: `Bank ${isActive ? "enabled" : "disabled"} for pincode ${pincode}.`,
+        data: visibility
+      });
+    } catch (err) {
+      console.error("[WalletController] upsertBankPincodeVisibility Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error", error: err.message });
     }
   },
 
@@ -820,18 +1064,19 @@ const walletController = {
       const [txns, total] = await Promise.all([
         prisma.walletTransaction.findMany({
           where,
-          skip: (parseInt(page) - 1) * parseInt(limit),
-          take: parseInt(limit),
           orderBy: { createdAt: "desc" },
-          // Include wallet user info for reference (if it's not our own wallet)
           include: {
             wallet: {
               select: {
+                id: true,
+                balance: true,
                 isCorporate: true,
                 user: {
                   select: {
+                    id: true,
                     fullName: true,
-                    identity: true
+                    identity: true,
+                    mobile: true
                   }
                 }
               }
@@ -841,17 +1086,322 @@ const walletController = {
         prisma.walletTransaction.count({ where })
       ]);
 
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({
+            where: { id: { in: referenceIds } }
+          })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+              id: true,
+              fullName: true,
+              identity: true,
+              mobile: true
+            }
+          })
+        : [];
+
+      const logMap = buildLogMap(logs);
+      const userMap = buildUserMap(involvedUsers);
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: buildWalletBalanceMap([wallet]),
+        logMap,
+        userMap
+      });
+
+      const existingCreditReferenceIds = new Set(
+        txns
+          .filter((txn) => txn.type === 'CREDIT')
+          .map((txn) => txn.referenceId)
+          .filter(Boolean)
+      );
+      const missingRazorpayCreditRows = txns
+        .filter((txn) => {
+          if (type && type !== 'CREDIT') return false;
+          const description = String(txn.description || '').toLowerCase();
+          return (
+            txn.type === 'DEBIT' &&
+            txn.referenceId &&
+            txn.category === 'SERVICE_CHARGE' &&
+            (
+              description.includes('membership') ||
+              description.includes('saathi') ||
+              description.includes('business')
+            ) &&
+            (
+              description.includes('razorpay') ||
+              description.includes('wallet') ||
+              description.includes('cash')
+            ) &&
+            !existingCreditReferenceIds.has(txn.referenceId)
+          );
+        })
+        .map((txn) => {
+          const amount = Number(txn.amount || 0);
+          const description = String(txn.description || '').toLowerCase();
+          const serviceName = description.includes('saathi')
+            ? 'Saathi Application'
+            : (description.includes('business') ? 'Business Partner Application' : 'Member Application');
+          const method = description.includes('cash')
+            ? 'CASH'
+            : (description.includes('wallet') ? 'WALLET' : 'RAZORPAY');
+          return {
+            id: `missing-credit-${txn.referenceId}`,
+            walletId: wallet.id,
+            amount,
+            type: 'CREDIT',
+            category: txn.category,
+            status: txn.status || 'SUCCESS',
+            referenceId: txn.referenceId,
+            description: 'Membership payment received via RAZORPAY',
+            tenantId,
+            createdAt: txn.createdAt,
+            transactionDateTime: txn.createdAt,
+            transactionMethod: method,
+            serviceName,
+            subServiceName: `${serviceName} Fee`,
+            tnxDoneBy: txn.wallet?.user?.fullName || 'N/A',
+            roleForDoneBy: txn.wallet?.user?.identity || identity || 'MEMBER',
+            tnxDoneFor: txn.wallet?.user?.fullName || 'N/A',
+            roleForDoneFor: txn.wallet?.user?.identity || identity || 'MEMBER',
+            walletBalance: 0,
+            closingBalance: amount,
+            userMobile: txn.wallet?.user?.mobile || 'N/A',
+            metadata: {
+              sourceType: 'SYNTHETIC_MISSING_CREDIT',
+              referenceId: txn.referenceId
+            }
+          };
+        });
+
+      const [legacySaathiRows, legacyBusinessRows] = await Promise.all([
+        prisma.saathiApplication.findMany({
+          where: {
+            userId,
+            payment: { status: 'SUCCESS', amount: { gt: 0 } }
+          },
+          include: { payment: true, user: { select: { fullName: true, identity: true, mobile: true } } },
+          orderBy: { updatedAt: "desc" }
+        }),
+        prisma.businessPartnerApplication.findMany({
+          where: {
+            userId,
+            amount: { gt: 0 },
+            OR: [
+              { status: { in: ['PENDING', 'APPROVED'] } },
+              { razorPayReferenceNo: { not: null } }
+            ]
+          },
+          include: { user: { select: { fullName: true, identity: true, mobile: true } } },
+          orderBy: { updatedAt: "desc" }
+        })
+      ]);
+
+      const existingReferenceIds = new Set(txns.map((txn) => txn.referenceId).filter(Boolean));
+      const buildLegacyFeeRows = ({ id, amount, method, label, user, timestamp }) => {
+        if (existingReferenceIds.has(id)) return [];
+        const feeAmount = Number(amount || 0);
+        if (feeAmount <= 0) return [];
+        const baseRow = {
+          walletId: wallet.id,
+          amount: feeAmount,
+          category: 'SERVICE_CHARGE',
+          status: 'SUCCESS',
+          referenceId: id,
+          transactionDateTime: timestamp,
+          createdAt: timestamp,
+          transactionMethod: method,
+          serviceName: `${label} Application`,
+          subServiceName: `${label} Application Fee`,
+          tnxDoneBy: user?.fullName || 'N/A',
+          roleForDoneBy: user?.identity || identity || 'N/A',
+          tnxDoneFor: user?.fullName || 'N/A',
+          roleForDoneFor: user?.identity || identity || 'N/A',
+          userMobile: user?.mobile || 'N/A',
+          metadata: {
+            sourceType: 'LEGACY_APPLICATION',
+            applicationId: id,
+            paymentMethod: method
+          }
+        };
+
+        return [
+          {
+            ...baseRow,
+            id: `legacy-${id}-credit`,
+            type: 'CREDIT',
+            walletBalance: 0,
+            closingBalance: feeAmount,
+            description: `${label} payment received via ${method}`
+          },
+          {
+            ...baseRow,
+            id: `legacy-${id}-debit`,
+            type: 'DEBIT',
+            walletBalance: feeAmount,
+            closingBalance: 0,
+            description: `${label} Application Fee (Paid via ${method})`
+          }
+        ];
+      };
+
+      const legacyAppLedgerRows = [
+        ...legacySaathiRows.flatMap((app) => buildLegacyFeeRows({
+          id: app.id,
+          amount: app.payment?.amount,
+          method: app.payment?.method || app.paymentType || 'UNKNOWN',
+          label: 'Saathi',
+          user: app.user,
+          timestamp: app.payment?.paidAt || app.updatedAt || app.createdAt
+        })),
+        ...legacyBusinessRows.flatMap((app) => {
+          const methodMap = { 1: 'RAZORPAY', 2: 'WALLET', 3: 'CASH' };
+          return buildLegacyFeeRows({
+            id: app.id,
+            amount: app.amount,
+            method: methodMap[Number(app.paymentMode)] || 'UNKNOWN',
+            label: 'Business Partner',
+            user: app.user,
+            timestamp: app.updatedAt || app.createdAt
+          });
+        })
+      ];
+
+      const applicationRows = await prisma.application.findMany({
+        where: {
+          tenantId,
+          userId,
+          paymentStatus: 'SUCCESS',
+          OR: [
+            { paymentAmount: { gt: 0 } },
+            { paymentMethod: 'FREE' }
+          ]
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              identity: true,
+              mobile: true
+            }
+          },
+          creator: {
+            select: {
+              id: true,
+              fullName: true,
+              identity: true,
+              mobile: true
+            }
+          }
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+
+      const appLedgerRows = applicationRows
+        .filter((app) => !existingReferenceIds.has(app.id))
+        .flatMap((app) => {
+          const amount = Number(app.paymentAmount || 0);
+          const targetLabel = formatApplicationLedgerLabel(app.targetIdentity);
+          const actor = app.creator || app.user;
+          const timestamp = app.updatedAt || app.createdAt;
+          const method = app.paymentMethod || 'RAZORPAY';
+          const baseRow = {
+            walletId: wallet.id,
+            amount,
+            category: 'SERVICE_CHARGE',
+            status: 'SUCCESS',
+            referenceId: app.id,
+            transactionDateTime: timestamp,
+            createdAt: timestamp,
+            transactionMethod: method,
+            serviceName: targetLabel,
+            subServiceName: `${targetLabel} Fee`,
+            tnxDoneBy: actor?.fullName || app.user?.fullName || 'N/A',
+            roleForDoneBy: actor?.identity || app.user?.identity || identity || 'USER',
+            tnxDoneFor: app.user?.fullName || 'N/A',
+            roleForDoneFor: app.user?.identity || 'N/A',
+            walletBalance: null,
+            closingBalance: null,
+            userMobile: app.user?.mobile || 'N/A',
+            metadata: {
+              sourceType: 'APPLICATION',
+              targetIdentity: app.targetIdentity,
+              paymentMethod: method,
+              paymentStatus: app.paymentStatus,
+              applicationId: app.id,
+              createdById: app.createdById
+            }
+          };
+
+          if (method === 'CASH' && amount > 0) {
+            return [
+              {
+                ...baseRow,
+                id: `app-${app.id}-cash-credit`,
+                type: 'CREDIT',
+                description: `${targetLabel} (${method}) - Cash Received`
+              },
+              {
+                ...baseRow,
+                id: `app-${app.id}-cash-debit`,
+                type: 'DEBIT',
+                description: `${targetLabel} (${method}) - Fee Paid`
+              }
+            ];
+          }
+
+          if (method === 'RAZORPAY' && amount > 0) {
+            return [
+              {
+                ...baseRow,
+                id: `app-${app.id}-razorpay-credit`,
+                type: 'CREDIT',
+                walletBalance: 0,
+                closingBalance: amount,
+                description: `${targetLabel} (${method}) - Payment Received`
+              },
+              {
+                ...baseRow,
+                id: `app-${app.id}-razorpay-debit`,
+                type: 'DEBIT',
+                walletBalance: amount,
+                closingBalance: 0,
+                description: `${targetLabel} (${method}) - Fee Paid`
+              }
+            ];
+          }
+
+          return {
+            id: `app-${app.id}`,
+            ...baseRow,
+            type: 'DEBIT',
+            description: `${targetLabel} (${method})`
+          };
+        });
+
+      const combinedTxns = [...enrichedTxns, ...missingRazorpayCreditRows, ...legacyAppLedgerRows, ...appLedgerRows].sort(sortTransactionsDesc);
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const start = (pageNumber - 1) * pageSize;
+      const pagedTxns = combinedTxns.slice(start, start + pageSize);
+
       res.json({
         success: true,
-        data: txns.map(t => ({
-          ...t,
-          walletOwner: t.wallet?.user?.fullName || (t.wallet?.isCorporate ? "System Corporate" : "Unknown"),
-          ownerIdentity: t.wallet?.user?.identity || (t.wallet?.isCorporate ? "ADMIN" : "N/A")
-        })),
+        data: pagedTxns,
         pagination: {
-          page: parseInt(page),
-          total,
-          totalPages: Math.ceil(total / parseInt(limit))
+          page: pageNumber,
+          limit: pageSize,
+          total: total + missingRazorpayCreditRows.length + legacyAppLedgerRows.length + appLedgerRows.length,
+          totalPages: Math.max(1, Math.ceil((total + missingRazorpayCreditRows.length + legacyAppLedgerRows.length + appLedgerRows.length) / pageSize))
         }
       });
     } catch (err) {
@@ -941,12 +1491,13 @@ const walletController = {
       const [txns, total] = await Promise.all([
         prisma.walletTransaction.findMany({
           where,
-          skip: (parseInt(page) - 1) * parseInt(limit),
-          take: parseInt(limit),
           orderBy: { createdAt: "desc" },
           include: {
             wallet: {
-              include: {
+              select: {
+                id: true,
+                balance: true,
+                isCorporate: true,
                 user: {
                   select: {
                     id: true,
@@ -962,14 +1513,60 @@ const walletController = {
         prisma.walletTransaction.count({ where })
       ]);
 
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const walletIds = [...new Set(txns.map((txn) => txn.wallet?.id).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({
+            where: { id: { in: referenceIds } }
+          })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+              id: true,
+              fullName: true,
+              mobile: true,
+              identity: true
+            }
+          })
+        : [];
+      const wallets = walletIds.length
+        ? await prisma.wallet.findMany({
+            where: { id: { in: walletIds } },
+            select: {
+              id: true,
+              balance: true
+            }
+          })
+        : [];
+
+      const logMap = buildLogMap(logs);
+      const userMap = buildUserMap(involvedUsers);
+      const walletBalanceMap = buildWalletBalanceMap(wallets.length > 0 ? wallets : txns.map((txn) => txn.wallet).filter(Boolean));
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: walletBalanceMap,
+        logMap,
+        userMap
+      });
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const start = (pageNumber - 1) * pageSize;
+      const pagedTxns = enrichedTxns.slice(start, start + pageSize);
+
       res.json({
         success: true,
-        data: txns,
+        data: pagedTxns,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNumber,
+          limit: pageSize,
           total,
-          totalPages: Math.ceil(total / parseInt(limit))
+          totalPages: Math.max(1, Math.ceil(total / pageSize))
         }
       });
     } catch (err) {

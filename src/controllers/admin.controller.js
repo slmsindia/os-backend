@@ -4,7 +4,10 @@ const { logAction } = require("../utils/audit");
 const { generateUuid, generateReferralCode } = require("../utils/id");
 
 const hasGlobalAdminScope = (user = {}) => {
-  const identity = String(user?.identity || '').toUpperCase();
+  const identity = String(user?.identity || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
   return identity === "SUPER_ADMIN";
 };
 
@@ -1057,6 +1060,55 @@ const adminController = {
       res.json({ success: true, data: users });
     } catch (err) {
       console.error("Search Potential Parents Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Get top 10 active users
+   */
+  getTopUsers: async (req, res) => {
+    const { user_id: adminId } = req.user;
+    const myTenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id || null;
+    const useTenantScope = !hasGlobalAdminScope(req.user);
+
+    try {
+      const where = {};
+
+      if (useTenantScope && myTenantId) {
+        where.tenantId = myTenantId;
+      }
+
+      const topUsers = await prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          fullName: true,
+          mobile: true,
+          identity: true,
+          approvalStatus: true,
+          createdAt: true,
+          email: true,
+          profilePhoto: true
+        }
+      });
+
+      const normalizedUsers = topUsers.map((user) => ({
+        ...user,
+        isActive: user.approvalStatus !== "DEACTIVATED"
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          users: normalizedUsers,
+          count: normalizedUsers.length
+        }
+      });
+    } catch (err) {
+      console.error("Get Top Users Error:", err);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }

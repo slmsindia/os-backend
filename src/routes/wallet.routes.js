@@ -32,6 +32,10 @@ router.get("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", 
 // Update bank details (including activate/deactivate)
 router.put("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.updateBankDetails);
 
+// Pincode-wise bank visibility
+router.get("/admin/bank-details/:id/pincode-visibility", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getBankPincodeVisibility);
+router.put("/admin/bank-details/:id/pincode-visibility", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.upsertBankPincodeVisibility);
+
 // Delete bank details
 router.delete("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.deleteBankDetails);
 

@@ -3,7 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const swaggerUi = require("swagger-ui-express");
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const openApiSpec = require("./docs/openapi");
 
 const tenantMiddleware = require("./middleware/tenant.middleware");

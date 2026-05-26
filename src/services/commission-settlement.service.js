@@ -4,6 +4,10 @@ const { generateUuid } = require("../utils/id");
 const ADMIN_IDENTITIES = ["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"];
 
 const IDENTITY_TO_SHARE_KEY = {
+  SUPER_ADMIN: "admin",
+  WHITE_LABEL_ADMIN: "admin",
+  ADMIN: "admin",
+  SUB_ADMIN: "admin",
   COUNTRY_HEAD: "countryPartner",
   STATE_PARTNER: "statePartner",
   DISTRICT_PARTNER: "districtPartner",
@@ -92,8 +96,27 @@ async function findExistingSettlementLog({
   transactionDoneById,
   transactionDoneForId,
   amount,
+  referenceId,
 }) {
-  if (!subServiceId || !transactionDoneById || !transactionDoneForId) {
+  if (referenceId) {
+    const existingWalletTxn = await client.walletTransaction.findFirst({
+      where: {
+        referenceId,
+        status: "SUCCESS",
+        category: {
+          in: ["COMMISSION", "COMMISSION_PAYOUT"],
+        },
+      },
+      select: {
+        id: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existingWalletTxn) return existingWalletTxn;
+  }
+
+  if (!subServiceId || !transactionDoneById || !transactionDoneForId || referenceId) {
     return null;
   }
 
@@ -336,8 +359,9 @@ async function resolveShareAmountWithFallback({
   receiver,
   subService,
   db,
+  shareKeyOverride = null,
 }) {
-  const shareKey = IDENTITY_TO_SHARE_KEY[receiver.identity];
+  const shareKey = shareKeyOverride || IDENTITY_TO_SHARE_KEY[receiver.identity];
   if (!shareKey) {
     console.log(`[Commission-Debug] Step ${senderIndex}: No ShareKey defined for identity: ${receiver.identity}`);
     return { amount: 0, shareKey: null, scheme: null, sourceNode: null };
@@ -432,12 +456,19 @@ async function postLedgerMovement({
 }) {
   const client = asDb(db);
   const tenantId = joiner.tenantId;
-  const senderWallet = await ensureWalletForNode(sender, tenantId, client);
+  const payoutSource = {
+    id: null,
+    fullName: "Corporate Wallet",
+    identity: "ADMIN",
+  };
+  const senderWallet = await ensureWalletForNode(payoutSource, tenantId, client);
   const receiverWallet = await ensureWalletForNode(receiver, tenantId, client);
 
   const baseMetadata = {
     sourceUserId: sender.id,
     sourceRole: sender.identity,
+    debitSourceUserId: null,
+    debitSourceRole: payoutSource.identity,
     targetUserId: receiver.id,
     targetRole: receiver.identity,
     joinerUserId: joiner.id,
@@ -454,15 +485,15 @@ async function postLedgerMovement({
 
   const debitDescription =
     customDescription ||
-    `Commission paid to ${receiver.fullName} for ${subService?.name || "service"}`;
+    `Commission paid from corporate wallet to ${receiver.fullName} for ${subService?.name || "service"}`;
 
   const creditDescription =
     customDescription ||
-    `Commission received from ${sender.fullName} for ${subService?.name || "service"}`;
+    `Commission received from corporate wallet for ${subService?.name || "service"}`;
 
-  console.log(`[Commission-Debug] Posting Movement: ${sender.identity} -> ${receiver.identity} | Amount: ${amount} | ShareKey: ${shareKey}`);
+  console.log(`[Commission-Debug] Posting Movement: CORPORATE -> ${receiver.identity} | Amount: ${amount} | ShareKey: ${shareKey}`);
   console.log(
-    `[Commission-Debug] Step ${stepIndex}: debit wallet=${senderWallet.id} (${sender.fullName}) -> credit wallet=${receiverWallet.id} (${receiver.fullName})`
+    `[Commission-Debug] Step ${stepIndex}: debit wallet=${senderWallet.id} (Corporate) -> credit wallet=${receiverWallet.id} (${receiver.fullName})`
   );
   
   await client.wallet.update({
@@ -525,7 +556,7 @@ async function postLedgerMovement({
     },
   });
   console.log(
-    `[Commission-Debug] Successfully distributed ${amount} from ${sender.fullName} (${sender.identity}) to ${receiver.fullName} (${receiver.identity})`
+    `[Commission-Debug] Successfully credited ${amount} to ${receiver.fullName} (${receiver.identity}) from corporate wallet`
   );
 }
 
@@ -569,6 +600,13 @@ async function runSettlement(db, options) {
     `[Commission-Debug] Settlement start: user=${joiner.fullName} (${joiner.identity}), userId=${joiner.id}, tenantId=${tenantId}, amount=${transactionAmount}, subServiceId=${subService.id}, referenceType=${referenceType || "COMMISSION"}`
   );
 
+  if (stopAtUserId && String(stopAtUserId).trim() === String(joiner.id).trim()) {
+    console.log(
+      `[Commission-Debug] Self-upgrade detected for user=${joiner.fullName} (${joiner.identity}). Commission payout skipped because creator and target are the same user.`
+    );
+    return { success: true, skipped: true, reason: "Self-upgrade commission suppressed" };
+  }
+
   let payoutLimitIndex = chain.length - 1;
   if (stopAtUserId) {
     const creatorIndex = chain.findIndex((node) => node.id === stopAtUserId);
@@ -595,6 +633,7 @@ async function runSettlement(db, options) {
     transactionDoneById: userId,
     transactionDoneForId: joiner.id,
     amount: transactionAmount,
+    referenceId,
   });
 
   if (existing) {
@@ -613,7 +652,14 @@ async function runSettlement(db, options) {
       amount: transactionAmount,
       transactionDoneById: userId,
       transactionDoneForId: joiner.id,
+      referenceId: referenceId || null,
+      referenceType: referenceType || "COMMISSION",
       status: "PENDING",
+      metadata: {
+        joinerUserId: joiner.id,
+        stopAtUserId: stopAtUserId || null,
+        subServiceSlug: subService.slug || null,
+      },
     },
     select: {
       id: true,
@@ -623,20 +669,21 @@ async function runSettlement(db, options) {
   const transfers = [];
 
   try {
-    for (let index = 0; index < payoutLimitIndex; index += 1) {
-      const sender = chain[index];
-      const receiver = chain[index + 1];
+    for (let index = 0; index <= payoutLimitIndex; index += 1) {
+      const receiver = chain[index];
+      const shareKey = IDENTITY_TO_SHARE_KEY[receiver.identity];
       console.log(
-        `[Commission-Debug] Step ${index}: evaluating ${sender.fullName} (${sender.identity}) -> ${receiver.fullName} (${receiver.identity})`
+        `[Commission-Debug] Step ${index}: evaluating payout for ${receiver.fullName} (${receiver.identity}) with shareKey=${shareKey || "N/A"}`
       );
       const resolution = await resolveShareAmountWithFallback({
         totalAmount: transactionAmount,
         chain,
         senderIndex: index,
-        sender,
+        sender: receiver,
         receiver,
         subService,
         db: client,
+        shareKeyOverride: shareKey,
       });
 
       if (!resolution.shareKey || resolution.amount <= 0 || !resolution.scheme) {
@@ -650,7 +697,7 @@ async function runSettlement(db, options) {
 
       await postLedgerMovement({
         db: client,
-        sender,
+        sender: receiver,
         receiver,
         amount: resolution.amount,
         txLog,
@@ -666,8 +713,8 @@ async function runSettlement(db, options) {
       });
 
       transfers.push({
-        from: sender.fullName,
-        fromRole: sender.identity,
+        from: "Corporate Wallet",
+        fromRole: "ADMIN",
         to: receiver.fullName,
         toRole: receiver.identity,
         amount: resolution.amount,
@@ -750,6 +797,7 @@ const commissionSettlementService = {
           transactionDoneById: userId,
           transactionDoneForId: userId,
           amount: normalizedAmount,
+          referenceId: options.referenceId || options.reference || null,
         });
 
         if (existing) {
