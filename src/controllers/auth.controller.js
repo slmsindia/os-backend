@@ -15,6 +15,20 @@ const isStrongPassword = (password) => {
   return hasLength && hasUppercase && hasNumber && hasSpecial;
 };
 
+const isAtLeast18 = (dateOfBirth) => {
+  const birthDate = new Date(dateOfBirth);
+  if (Number.isNaN(birthDate.getTime())) return false;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+
+  return age >= 18;
+};
+
 const getOrCreateRole = async (roleName) => {
   let role = await prisma.role.findUnique({ where: { name: roleName } });
   if (!role) {
@@ -193,6 +207,20 @@ const authController = {
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ message: "fields missing" });
+    }
+
+    if (!isAtLeast18(dateOfBirth)) {
+      return res.status(400).json({
+        success: false,
+        message: "You are not eligible to register. You must be at least 18 years old."
+      });
+    }
+
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({
+        success: false,
+        message: "password must be 8+ chars with uppercase, number and special character"
+      });
     }
 
     // Validate email if provided
