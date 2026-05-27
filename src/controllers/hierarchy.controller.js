@@ -1,0 +1,1224 @@
+const prisma = require("../lib/prisma");
+const { generateUuid } = require("../utils/id");
+const { normalizeIdentity } = require("../utils/identity");
+const {
+  buildLogMap,
+  buildUserMap,
+  buildWalletBalanceMap,
+  buildStyledLedgerExportHtml,
+  enrichLedgerTransactions,
+  getLedgerMetadataUserIds
+} = require("../utils/ledger");
+
+const HIERARCHY_VIEW_PERMISSIONS = new Set([
+  "PERM_VIEW_HIERARCHY",
+  "PERM_MANAGE_HIERARCHY"
+]);
+
+const getUserPermissionNames = async (userId) => {
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId },
+    include: {
+      role: {
+        include: {
+          permissions: {
+            include: { permission: true }
+          }
+        }
+      }
+    }
+  });
+
+  return [
+    ...new Set(
+      userRoles.flatMap((ur) =>
+        ur.role.permissions.map((p) => p.permission.name).filter(Boolean)
+      )
+    )
+  ];
+};
+
+const hasHierarchyViewAccess = async (userId, identity) => {
+  const normalizedIdentity = normalizeIdentity(identity);
+
+  if (["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"].includes(normalizedIdentity)) {
+    return true;
+  }
+
+  if (normalizedIdentity !== "SUB_ADMIN") {
+    return false;
+  }
+
+  const permissions = await getUserPermissionNames(userId);
+  return permissions.some((permission) => HIERARCHY_VIEW_PERMISSIONS.has(permission));
+};
+
+const hierarchyController = {
+  /**
+   * GET /api/admin/hierarchy/children
+   */
+  getDirectChildren: async (req, res) => {
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const { parentId, identity, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+    try {
+      let targetParentId = parentId || currentUserId;
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+      const isTenantWideHierarchyAdmin =
+        isSuperAdmin ||
+        ["WHITE_LABEL_ADMIN", "ADMIN"].includes(normalizeIdentity(creatorIdentity)) ||
+        hasHierarchyAccess;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      let effectiveTenantId = tenantId || null;
+      if (!isSuperAdmin) {
+        if (!effectiveTenantId && currentUserId) {
+          const u = await prisma.user.findUnique({
+            where: { id: currentUserId },
+            select: { tenantId: true }
+          });
+          effectiveTenantId = u?.tenantId || null;
+        }
+        if (!effectiveTenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy children."
+          });
+        }
+      }
+
+      if (!isSuperAdmin && !hasHierarchyAccess && targetParentId !== currentUserId) {
+        const targetUser = await prisma.user.findUnique({ where: { id: targetParentId }, select: { path: true } });
+        if (!targetUser || !targetUser.path || !targetUser.path.includes(currentUserId)) {
+          return res.status(403).json({ success: false, message: "Permission denied." });
+        }
+      }
+
+      const where = {};
+      
+      // If a top-level admin is checking their own root level, show both their direct children AND 'orphaned' users (no parentId)
+      const isTopAdmin = isTenantWideHierarchyAdmin;
+      const isWhiteLabel =
+        normalizeIdentity(creatorIdentity) === "WHITE_LABEL_ADMIN" ||
+        (normalizeIdentity(creatorIdentity) === "SUB_ADMIN" && hasHierarchyAccess);
+
+      if (isTopAdmin && targetParentId === currentUserId) {
+        if (isSuperAdmin && identity) {
+            // Super Admin searching by identity should see global results if no parentId specified
+        } else if (isWhiteLabel) {
+            // White Label Admin should see everyone in their tenant by default if no parentId specified
+        } else {
+            where.OR = [
+              { parentId: targetParentId },
+              { parentId: null }
+            ];
+        }
+      } else {
+        where.parentId = targetParentId;
+      }
+
+      if (!isSuperAdmin) where.tenantId = effectiveTenantId;
+      if (identity) where.identity = normalizeIdentity(identity);
+      
+      console.log('[DEBUG] Hierarchy Children Query:', {
+        currentUser: currentUserId,
+        creatorIdentity,
+        targetParentId,
+        isTopAdmin,
+        whereClause: JSON.stringify(where, null, 2)
+      });
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+           const end = new Date(endDate);
+           end.setHours(23, 59, 59, 999);
+           where.createdAt.lte = end;
+        }
+      }
+
+      const [children, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          select: {
+            id: true, mobile: true, fullName: true, email: true, gender: true,
+            dateOfBirth: true, identity: true, approvalStatus: true,
+            profilePhoto: true, createdAt: true,
+            registrationState: true, registrationCity: true,
+            registrationPincode: true, registrationLat: true,
+            registrationLong: true,
+            wallet: { select: { balance: true } },
+            _count: { select: { children: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.user.count({ where })
+      ]);
+
+      // Resolve Location IDs (Validate as UUIDs to prevent Prisma/Postgres errors)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const stateIds = [...new Set(children.map(c => c.registrationState).filter(id => id && uuidRegex.test(id)))];
+      const cityIds = [...new Set(children.map(c => c.registrationCity).filter(id => id && uuidRegex.test(id)))];
+
+      const [states, cities] = await Promise.all([
+        stateIds.length === 0
+          ? Promise.resolve([])
+          : prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        cityIds.length === 0
+          ? Promise.resolve([])
+          : prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+      ]);
+
+      const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
+      const cityMap = Object.fromEntries(cities.map(c => [c.id, c.name]));
+
+      res.json({
+        success: true,
+        data: children.map(c => ({
+          ...c,
+          hasChildren: c._count.children > 0,
+          balance: c.wallet?.balance || 0,
+          state: stateMap[c.registrationState] || c.registrationState || '—',
+          city: cityMap[c.registrationCity] || c.registrationCity || '—'
+        })),
+        pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+  /**
+   * GET /api/admin/hierarchy/user-history/:targetUserId
+   */
+  getUserWalletHistory: async (req, res) => {
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const { targetUserId } = req.params; // This can be ID or Mobile number
+    const { page = 1, limit = 20, startDate, endDate, type, category } = req.query;
+
+    try {
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+      const identifier = String(targetUserId).trim();
+      
+      console.log(`[DEBUG] Searching for wallet history user: ${identifier} (Resolved Tenant: ${tenantId}, IsSuperAdmin: ${isSuperAdmin})`);
+      
+      const targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: identifier.includes('-') ? identifier : undefined }, 
+            { mobile: identifier }
+          ],
+          ...(isSuperAdmin ? {} : (tenantId ? { tenantId } : {}))
+        },
+        select: { id: true, path: true, tenantId: true }
+      });
+
+      if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+      // 2. Hierarchy Check
+      if (!isSuperAdmin && !hasHierarchyAccess && targetUser.id !== currentUserId) {
+        if (!targetUser.path || !targetUser.path.includes(currentUserId)) {
+          return res.status(403).json({ success: false, message: "Permission denied. User not in your hierarchy." });
+        }
+      }
+
+      let targetWallet = await prisma.wallet.findUnique({ where: { userId: targetUser.id } });
+      if (!targetWallet) {
+        targetWallet = await prisma.wallet.create({
+          data: { 
+            id: generateUuid(), 
+            userId: targetUser.id, 
+            tenantId: targetUser.tenantId || tenantId, 
+            balance: 0, 
+            isCorporate: false 
+          }
+        });
+      }
+
+      const where = { walletId: targetWallet.id };
+      if (type) where.type = type;
+      if (category) where.category = category;
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+           const end = new Date(endDate);
+           end.setHours(23, 59, 59, 999);
+           where.createdAt.lte = end;
+        }
+      }
+
+      const [txns, total] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            wallet: {
+              select: {
+                id: true,
+                balance: true,
+                isCorporate: true,
+                user: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    mobile: true,
+                    identity: true
+                  }
+                }
+              }
+            }
+          }
+        }),
+        prisma.walletTransaction.count({ where })
+      ]);
+
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({
+            where: { id: { in: referenceIds } }
+          })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+              id: true,
+              fullName: true,
+              mobile: true,
+              identity: true
+            }
+          })
+        : [];
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: buildWalletBalanceMap(txns.map((txn) => txn.wallet).filter(Boolean)),
+        logMap: buildLogMap(logs),
+        userMap: buildUserMap(involvedUsers)
+      });
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const skip = (pageNumber - 1) * pageSize;
+      const pagedTxns = enrichedTxns.slice(skip, skip + pageSize);
+
+      res.json({
+        success: true,
+        data: pagedTxns,
+        balance: targetWallet.balance,
+        pagination: { total, page: pageNumber, limit: pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * GET /api/admin/hierarchy/summary
+   * Returns high-level metrics for the user's hierarchy
+   */
+  getHierarchySummary: async (req, res) => {
+    const { user_id: currentUserId, identity: rawIdentity } = req.user;
+    const creatorIdentity = normalizeIdentity(rawIdentity);
+    let tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+
+    try {
+      const isSuperAdmin = creatorIdentity === "SUPER_ADMIN";
+      const isWhiteLabel = creatorIdentity === "WHITE_LABEL_ADMIN";
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+
+      if (!isSuperAdmin) {
+        if (!tenantId && currentUserId) {
+          const u = await prisma.user.findUnique({
+            where: { id: currentUserId },
+            select: { tenantId: true }
+          });
+          tenantId = u?.tenantId || null;
+        }
+        if (!tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy summary."
+          });
+        }
+      }
+
+      const isTenantWideAdmin =
+        isWhiteLabel ||
+        ["ADMIN", "SUB_ADMIN"].includes(creatorIdentity) ||
+        hasHierarchyAccess;
+
+      // 1. Define User Filter
+      let userWhere = {};
+      if (!isSuperAdmin) {
+        userWhere.tenantId = tenantId;
+        if (!isTenantWideAdmin) {
+          userWhere.OR = [
+            { id: currentUserId },
+            { path: { contains: currentUserId } }
+          ];
+        }
+      }
+
+      // 2. Define Wallet Filter (Must use relation for path-based hierarchy)
+      let walletWhere = { balance: { lt: 0 } };
+      if (!isSuperAdmin) {
+        walletWhere.tenantId = tenantId;
+        if (!isTenantWideAdmin) {
+          walletWhere.user = {
+            OR: [
+              { id: currentUserId },
+              { path: { contains: currentUserId } }
+            ]
+          };
+        }
+      }
+
+      const walletSummary = await prisma.wallet.aggregate({
+        where: walletWhere,
+        _sum: { balance: true },
+        _count: { id: true }
+      });
+      const identityCounts = await prisma.user.groupBy({
+        by: ["identity"],
+        where: userWhere,
+        _count: { id: true }
+      });
+
+      const counts = Object.fromEntries(identityCounts.map(i => [i.identity, i._count.id]));
+
+      res.json({
+        success: true,
+        data: {
+          outstandingCredit: Math.abs(walletSummary._sum.balance || 0),
+          negativeWalletCount: walletSummary._count.id,
+          counts: {
+            total: Object.values(counts).reduce((a, b) => a + b, 0),
+            saathi: counts['SAATHI'] || 0,
+            member: counts['MEMBER'] || 0,
+            partner: (counts['STATE_PARTNER'] || 0) + (counts['DISTRICT_PARTNER'] || 0) + (counts['COUNTRY_HEAD'] || 0),
+            agent: counts['AGENT'] || 0,
+            user: counts['USER'] || 0
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Hierarchy Summary Error:", err);
+      const isPoolExhausted =
+        err?.code === "P2037" || String(err?.message || "").includes("too many clients");
+      res.status(isPoolExhausted ? 503 : 500).json({
+        success: false,
+        message: isPoolExhausted
+          ? "Database is busy. Please restart the API server and try again."
+          : "Internal server error"
+      });
+    }
+  },
+
+  /**
+   * GET /api/admin/hierarchy/user-details/:identifier
+   * Search for a specific user by ID or Mobile
+   */
+  getUserDetails: async (req, res) => {
+    // Alias to getCompleteUserInfo to ensure consistent full dossier response
+    req.params.targetUserId = req.params.identifier;
+    return hierarchyController.getCompleteUserInfo(req, res);
+  },
+
+  /**
+   * GET /api/admin/hierarchy/all-transactions
+   * Combined feed of all transactions from all users in the downline
+   */
+  getHierarchyTransactionFeed: async (req, res) => {
+    const { user_id: currentUserId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const { page = 1, limit = 20, startDate, endDate, type, category, search } = req.query;
+
+    try {
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, creatorIdentity);
+      const isTenantWideHierarchyAdmin = isSuperAdmin || ['WHITE_LABEL_ADMIN', 'ADMIN'].includes(String(creatorIdentity).toUpperCase()) || hasHierarchyAccess;
+
+      const where = {};
+      if (!isSuperAdmin) where.tenantId = tenantId;
+
+      if (!isSuperAdmin && !isTenantWideHierarchyAdmin) {
+        const walletConditions = [
+          {
+            user: {
+              OR: [
+                { path: { contains: currentUserId } },
+                { id: currentUserId }
+              ]
+            }
+          }
+        ];
+
+        if (['WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
+          walletConditions.push({ isCorporate: true, tenantId });
+        }
+
+        where.wallet = { OR: walletConditions };
+      }
+
+      if (type) where.type = type;
+      if (category) where.category = category;
+
+      if (search) {
+        const searchFilter = {
+          user: {
+            OR: [
+              { fullName: { contains: search, mode: 'insensitive' } },
+              { mobile: { contains: search } }
+            ]
+          }
+        };
+
+        where.wallet = where.wallet
+          ? { ...where.wallet, ...searchFilter }
+          : searchFilter;
+      }
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt.lte = end;
+        }
+      }
+
+      const [txns, total] = await Promise.all([
+        prisma.walletTransaction.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            wallet: {
+              select: {
+                id: true,
+                balance: true,
+                isCorporate: true,
+                user: {
+                  select: { id: true, fullName: true, mobile: true, identity: true }
+                }
+              }
+            }
+          }
+        }),
+        prisma.walletTransaction.count({ where })
+      ]);
+
+      const referenceIds = [...new Set(txns.map((txn) => txn.referenceId).filter(Boolean))];
+      const logs = referenceIds.length
+        ? await prisma.transactionLog.findMany({ where: { id: { in: referenceIds } } })
+        : [];
+      const userIds = [...new Set([
+        ...logs.flatMap((log) => [log.transactionDoneById, log.transactionDoneForId]),
+        ...txns.flatMap(getLedgerMetadataUserIds)
+      ].filter(Boolean))];
+      const involvedUsers = userIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, fullName: true, mobile: true, identity: true }
+          })
+        : [];
+      const enrichedTxns = enrichLedgerTransactions({
+        transactions: txns,
+        walletBalancesById: buildWalletBalanceMap(txns.map((txn) => txn.wallet).filter(Boolean)),
+        logMap: buildLogMap(logs),
+        userMap: buildUserMap(involvedUsers)
+      });
+
+      const pageNumber = parseInt(page);
+      const pageSize = parseInt(limit);
+      const offset = (pageNumber - 1) * pageSize;
+      const mappedTxns = enrichedTxns.slice(offset, offset + pageSize);
+
+      if (req.query.exportCsv === "true") {
+        const exportHtml = buildStyledLedgerExportHtml({
+          title: 'User Ledger Export',
+          subtitle: 'Hierarchy and wallet audit with balance movement',
+          columns: [
+            { key: 'transactionDateTime', label: 'Timestamp', value: (row) => new Date(row.transactionDateTime).toLocaleString('en-IN') },
+            { key: 'tnxDoneBy', label: 'Done By' },
+            { key: 'tnxDoneFor', label: 'Done For' },
+            { key: 'roleForDoneBy', label: 'Role (By)' },
+            { key: 'roleForDoneFor', label: 'Role (For)' },
+            { key: 'userMobile', label: 'Mobile' },
+            { key: 'serviceName', label: 'Service' },
+            { key: 'subServiceName', label: 'Category' },
+            { key: 'description', label: 'Description' },
+            { key: 'type', label: 'Type' },
+            { key: 'transactionAmount', label: 'Amount', align: 'right' },
+            { key: 'walletBalance', label: 'Wallet Balance', align: 'right' },
+            { key: 'closingBalance', label: 'Closing Balance', align: 'right' },
+            { key: 'transactionMethod', label: 'Method' }
+          ],
+          rows: mappedTxns
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename=user_ledger.xls');
+        return res.status(200).send(`\ufeff${exportHtml}`);
+      }
+
+      res.json({
+        success: true,
+        data: mappedTxns,
+        pagination: {
+          total,
+          page: pageNumber,
+          limit: pageSize,
+          totalPages: Math.max(1, Math.ceil(total / pageSize))
+        }
+      });
+    } catch (err) {
+      console.error("Hierarchy Transaction Feed Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * GET /api/admin/hierarchy/user-details/:targetUserId  /**
+   * GET /api/admin/hierarchy/user-details/:targetUserId
+   * Complete User Info for Hierarchy Explorer (360-degree view)
+   */
+  getCompleteUserInfo: async (req, res) => {
+    const { user_id: currentUserId, identity: adminIdentity, tenant_id: tenantId } = req.user;
+    const { targetUserId } = req.params; // This can be ID or Mobile number
+
+    try {
+      const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+      const hasHierarchyAccess = await hasHierarchyViewAccess(currentUserId, adminIdentity);
+      const identifier = String(targetUserId).trim();
+      
+      console.log(`[DEBUG] Searching for user details: ${identifier} (Resolved Tenant: ${tenantId}, Admin: ${adminIdentity})`);
+      
+      const targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: identifier.includes('-') ? identifier : undefined }, 
+            { mobile: identifier }
+          ],
+          // Only apply tenant filter if not Super Admin and tenantId is actually present
+          ...(adminIdentity !== 'SUPER_ADMIN' && tenantId ? { tenantId } : {})
+        },
+        include: {
+          wallet: true,
+          parent: { select: { fullName: true } },
+          membershipApplications: { where: { status: "APPROVED" }, take: 1 },
+          saathiApplications: { where: { status: "APPROVED" }, take: 1 },
+          _count: {
+             select: {
+               referrals: true,
+               membershipApplications: true,
+               saathiApplications: true,
+               businessApplications: true,
+               jobPosts: true
+             }
+          }
+        }
+      });
+
+      if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+      const isTopAdmin = ['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(adminIdentity);
+      const isOwner = targetUser.id === currentUserId;
+      const isInHierarchy = targetUser.path && targetUser.path.includes(currentUserId);
+      const isSameTenant = targetUser.tenantId === tenantId;
+
+      if (!isTopAdmin && !hasHierarchyAccess && !isOwner && !isInHierarchy) {
+        return res.status(403).json({ success: false, message: "Permission denied. User not in your hierarchy." });
+      }
+
+      // Special check for White Label Admins: Must be same tenant if not SuperAdmin
+      if (adminIdentity !== 'SUPER_ADMIN' && !isSameTenant) {
+        return res.status(403).json({ success: false, message: "Permission denied. User belongs to another tenant." });
+      }
+
+      // 2. Fetch Aggregated Stats
+      const [txnStats, commissionStats, topUpStats, docCount] = await Promise.all([
+        // Transaction Stats
+        prisma.walletTransaction.aggregate({
+          where: { wallet: { userId: targetUser.id } },
+          _count: { _all: true },
+          _sum: { amount: true }
+        }),
+        // Commission Stats
+        prisma.commissionHistory.aggregate({
+          where: { userId: targetUser.id },
+          _sum: { amount: true }
+        }),
+        // Remittance/Money Deposit Stats (via category filter)
+        prisma.walletTransaction.aggregate({
+          where: { 
+            wallet: { userId: targetUser.id }, 
+            category: { in: ['REMITTANCE', 'MONEY_TRANSFER', 'CASH_PICKUP'] } 
+          },
+          _count: { _all: true },
+          _sum: { amount: true }
+        }),
+        // Document Counts (Membership docs)
+        prisma.membershipDocument.count({
+           where: { application: { userId: targetUser.id } }
+        })
+      ]);
+
+      // 3. Format Response (Robust mapping for frontend consistency)
+      const { password, ...safeUser } = targetUser;
+      
+      // Resolve location names
+      const [cityName, stateName] = await Promise.all([
+        prisma.district.findUnique({ where: { id: targetUser.registrationCity || "" }, select: { name: true } }).then(d => d?.name),
+        prisma.state.findUnique({ where: { id: targetUser.registrationState || "" }, select: { name: true } }).then(s => s?.name)
+      ]);
+
+      const data = {
+        ...safeUser,
+        // Derived fields for legacy UserProfile.jsx support
+        firstName: targetUser.fullName?.split(' ')[0] || "User",
+        lastName: targetUser.fullName?.split(' ').slice(1).join(' ') || "",
+        birthDate: targetUser.dateOfBirth ? targetUser.dateOfBirth.toLocaleDateString('en-IN') : "N/A",
+        dateOfRegistration: targetUser.createdAt,
+        email: targetUser.email || targetUser.membershipApplications[0]?.email || "N/A",
+        role: targetUser.identity,
+        phoneNo: targetUser.mobile,
+        genderName: targetUser.gender === "MALE" ? "Male" : targetUser.gender === "FEMALE" ? "Female" : "Other",
+        isEmailVerified: !!(targetUser.email || targetUser.membershipApplications[0]?.email),
+        isPhoneVerified: true,
+        profilePhotoUrl: targetUser.profilePhoto || targetUser.membershipApplications[0]?.profilePhoto || null,
+        parentUserName: targetUser.parent?.fullName || "System Administrator",
+        isActive: targetUser.approvalStatus !== "DEACTIVATED",
+        walletBalance: targetUser.wallet?.balance || 0,
+        isMemberApproved: targetUser.membershipApplications.length > 0,
+        isSaathiApproved: targetUser.saathiApplications.length > 0,
+        membershipNumber: targetUser.membershipApplications[0]?.membershipNumber || "N/A",
+        
+        // Address Info
+        address: targetUser.membershipApplications[0]?.currentAddress || "N/A",
+        city: cityName || targetUser.registrationCity || "N/A",
+        district: targetUser.membershipApplications[0]?.currentDistrict || "N/A",
+        state: stateName || targetUser.registrationState || "N/A",
+        country: "India",
+        pincode: targetUser.registrationPincode || targetUser.membershipApplications[0]?.currentPincode || "N/A",
+        
+        // Transaction Stats
+        noOfTransactions: txnStats._count._all || 0,
+        totalTransactions: txnStats._sum.amount || 0,
+        noOfRemittanceTransactions: topUpStats._count._all || 0,
+        totalRemittanceTransactions: topUpStats._sum.amount || 0,
+        netCommission: commissionStats._sum.amount || 0,
+        netCommision: commissionStats._sum.amount || 0, // Typo fallback
+        referralCount: targetUser._count.referrals || 0,
+        noOfDocuments: docCount || 0,
+        
+        // Placeholder/Future features
+        haveJobProfile: targetUser._count.jobPosts > 0,
+        haveBusinessProfile: targetUser._count.businessApplications > 0,
+        imeAgentRegistration: false,
+        prabhuAgentRegistration: false,
+        lastLogin: (await prisma.auditLog.findFirst({
+          where: { userId: targetUser.id, action: 'USER_LOGIN' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true }
+        }))?.createdAt || null
+      };
+
+      res.json({
+        success: true,
+        data,
+        message: "User details found"
+      });
+
+    } catch (err) {
+      console.error("Complete User Info Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * GET /api/admin/hierarchy/members
+   */
+  getDescendants: async (req, res) => {
+    const { user_id: userId, identity: creatorIdentity } = req.user;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const { identity, status, search, page = 1, limit = 20, startDate, endDate, parentId, exportCsv = "false" } = req.query;
+
+    try {
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      let baseId = parentId || userId;
+      const isSuperAdmin = creatorIdentity === 'SUPER_ADMIN';
+
+      const conditions = [];
+      let effectiveTenantId = tenantId || null;
+      if (!isSuperAdmin) {
+        if (!effectiveTenantId && userId) {
+          const u = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { tenantId: true }
+          });
+          effectiveTenantId = u?.tenantId || null;
+        }
+        if (!effectiveTenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant context for hierarchy members."
+          });
+        }
+        conditions.push({ tenantId: effectiveTenantId });
+      }
+
+      if (baseId !== userId || !['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN'].includes(creatorIdentity)) {
+          conditions.push({
+            OR: [
+              { path: { contains: baseId } },
+              { parentId: baseId }
+            ]
+          });
+          conditions.push({ id: { not: baseId } });
+      } else {
+          conditions.push({ id: { not: userId } });
+      }
+
+      if (identity) conditions.push({ identity: normalizeIdentity(identity) });
+      if (status) conditions.push({ approvalStatus: status });
+      
+      if (search) {
+        conditions.push({
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { mobile: { contains: search } }
+          ]
+        });
+      }
+      
+      const where = { AND: conditions };
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = new Date(startDate);
+        if (endDate) {
+           const end = new Date(endDate);
+           end.setHours(23, 59, 59, 999);
+           where.createdAt.lte = end;
+        }
+      }
+
+      const [users, total, identityStats] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          select: {
+            id: true, mobile: true, fullName: true, email: true, gender: true,
+            dateOfBirth: true, identity: true, approvalStatus: true,
+            profilePhoto: true, createdAt: true, path: true,
+            referralCode: true,
+            registrationState: true,
+            registrationCity: true,
+            registrationPincode: true,
+            parentId: true,
+            wallet: { select: { balance: true } }
+          },
+          skip,
+          take: parseInt(limit),
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.user.count({ where }),
+        prisma.user.groupBy({ by: ['identity'], where, _count: { _all: true } })
+      ]);
+
+      const allPathIds = new Set();
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      users.forEach(u => { if (u.path) u.path.split('/').forEach(id => { if (id && uuidRegex.test(id)) allPathIds.add(id); }); });
+      const pathUsers = allPathIds.size === 0
+        ? []
+        : await prisma.user.findMany({
+            where: { id: { in: Array.from(allPathIds) } },
+            select: { id: true, fullName: true, identity: true }
+          });
+      const userMap = Object.fromEntries(pathUsers.map(u => [u.id, u]));
+
+      const enrichedUsers = users.map(u => {
+        const pathArray = u.path ? u.path.split('/').filter(id => id && uuidRegex.test(id)) : [];
+        const partners = pathArray.map(id => userMap[id]).filter(Boolean);
+        return {
+          ...u,
+          balance: u.wallet?.balance || 0,
+          hierarchyInfo: {
+            whiteLabel: partners.find(p => p.identity.includes('WHITE_LABEL')),
+            countryHead: partners.find(p => p.identity.includes('COUNTRY')),
+            statePartner: partners.find(p => p.identity.includes('STATE')),
+            districtPartner: partners.find(p => p.identity.includes('DISTRICT'))
+          }
+        };
+      });
+
+      // Fetch last login for each user from AuditLog
+      const auditLogins =
+        users.length === 0
+          ? []
+          : await prisma.auditLog.groupBy({
+              by: ["userId"],
+              where: {
+                userId: { in: users.map((u) => u.id) },
+                action: "USER_LOGIN"
+              },
+              _max: { createdAt: true }
+            });
+      const loginMap = Object.fromEntries(auditLogins.map(l => [l.userId, l._max.createdAt]));
+
+      const finalUsers = enrichedUsers.map(u => ({
+        ...u,
+        lastLogin: loginMap[u.id] || null
+      }));
+
+      // Resolve Location IDs to Names (Validate as UUIDs)
+      const stateIds = [...new Set(finalUsers.map(u => u.registrationState).filter(id => id && uuidRegex.test(id)))];
+      const cityIds = [...new Set(finalUsers.map(u => u.registrationCity).filter(id => id && uuidRegex.test(id)))];
+
+      const [states, cities] = await Promise.all([
+        stateIds.length === 0
+          ? Promise.resolve([])
+          : prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } }),
+        cityIds.length === 0
+          ? Promise.resolve([])
+          : prisma.district.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true } })
+      ]);
+
+      const stateMap = Object.fromEntries(states.map(s => [s.id, s.name]));
+      const cityMap = Object.fromEntries(cities.map(c => [c.id, c.name]));
+
+      const resolvedUsers = finalUsers.map(u => ({
+        ...u,
+        state: stateMap[u.registrationState] || u.registrationState || '—',
+        city: cityMap[u.registrationCity] || u.registrationCity || '—'
+      }));
+
+      if (exportCsv === "true") {
+        const headers = ["ID", "Name", "Mobile", "Email", "Role", "Status", "Balance", "White Label", "Country Head", "State Partner", "District Partner", "Last Login", "Created At"];
+        let csv = headers.join(",") + "\n";
+        resolvedUsers.forEach(u => {
+          const values = [u.id, u.fullName, u.mobile, u.email || "N/A", u.identity, u.approvalStatus, u.balance, u.hierarchyInfo.whiteLabel?.fullName || "N/A", u.hierarchyInfo.countryHead?.fullName || "N/A", u.hierarchyInfo.statePartner?.fullName || "N/A", u.hierarchyInfo.districtPartner?.fullName || "N/A", u.lastLogin ? u.lastLogin.toISOString() : "N/A", u.createdAt.toISOString()];
+          csv += values.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
+        });
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=hierarchy.csv`);
+        return res.status(200).send(csv);
+      }
+
+      const summary = {};
+      identityStats.forEach(s => { summary[s.identity] = s._count._all; });
+
+      res.json({ success: true, data: { users: resolvedUsers, summary, pagination: { total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) } } });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Request Hierarchy Transfer via Referral Code
+   * POST /api/admin/hierarchy/request-transfer
+   */
+  requestTransfer: async (req, res) => {
+    const { user_id: userId, tenant_id: tenantId } = req.user;
+    const { referralCode, ReferralCode, newParentId, mobile } = req.body;
+    const identifier = referralCode || ReferralCode || newParentId || mobile;
+
+    if (!identifier) return res.status(400).json({ success: false, message: "New parent identifier (referral code, ID, or mobile) required" });
+
+    try {
+      const [user, newParent] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId } }),
+        prisma.user.findFirst({
+          where: {
+            OR: [
+              { referralCode: { equals: identifier, mode: 'insensitive' } },
+              { id: { equals: identifier, mode: 'insensitive' } },
+              { mobile: identifier }
+            ]
+          }
+        })
+      ]);
+
+      if (!user) return res.status(404).json({ success: false, message: "User not found" });
+      if (!newParent) return res.status(404).json({ success: false, message: "Invalid referral code. New parent not found." });
+
+      if (newParent.id === userId) return res.status(400).json({ success: false, message: "You cannot transfer to yourself." });
+      if (newParent.id === user.parentId) return res.status(400).json({ success: false, message: "You are already under this parent." });
+
+      // Hierarchy Rule: New parent must be a higher level (lower rank number)
+      const roleRank = {
+        "SUPER_ADMIN": 0, "WHITE_LABEL_ADMIN": 1, "ADMIN": 2, "SUB_ADMIN": 3,
+        "COUNTRY_HEAD": 4, "STATE_PARTNER": 5, "DISTRICT_PARTNER": 6,
+        "BUSINESS_PARTNER": 8, "SAATHI": 7, "MEMBER": 9, "AGENT": 10, "USER": 11
+      };
+
+      const myRank = roleRank[user.identity] ?? 99;
+      const parentRank = roleRank[newParent.identity] ?? 99;
+
+      if (parentRank >= myRank) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `A ${user.identity} cannot move under a ${newParent.identity}. Parent must be of a higher level.` 
+        });
+      }
+
+      // Check for existing pending request
+      const existingRequest = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" }
+      });
+
+      if (existingRequest) {
+        return res.status(400).json({ success: false, message: "You already have a pending transfer request." });
+      }
+
+      // Create Request with 24h schedule
+      const scheduledAt = new Date();
+      scheduledAt.setHours(scheduledAt.getHours() + 24);
+
+      const request = await prisma.hierarchyTransferRequest.create({
+        data: {
+          id: generateUuid(),
+          userId,
+          oldParentId: user.parentId,
+          newParentId: newParent.id,
+          tenantId,
+          scheduledAt,
+          status: "PENDING"
+        },
+        include: { newParent: { select: { fullName: true, identity: true } } }
+      });
+
+      // 3. Notification to Current Parent (if exists)
+      if (user.parentId) {
+        await prisma.notification.create({
+          data: {
+            id: generateUuid(),
+            userId: user.parentId,
+            tenantId,
+            title: "Hierarchy Transfer Alert",
+            message: `Hierarchy Alert: Your downline ${user.fullName} (${user.identity}) has requested to move to another parent. Unless withdrawn, this user will be automatically shifted to the new hierarchy in 24 hours.`,
+            type: "TRANSFER_REQUEST",
+            metadata: { requestId: request.id, userId: user.id }
+          }
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Transfer request submitted. It will be automatically processed on ${scheduledAt.toLocaleString()} (after 24 hours). Notifications sent to parents.`,
+        data: request
+      });
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Withdraw Hierarchy Transfer Request
+   * POST /api/admin/hierarchy/withdraw-transfer
+   */
+  withdrawTransfer: async (req, res) => {
+    const { user_id: userId, tenant_id: tenantId } = req.user;
+    try {
+      const request = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" },
+        include: { user: { select: { fullName: true } } }
+      });
+
+      if (!request) return res.status(404).json({ success: false, message: "No pending transfer request found." });
+
+      await prisma.hierarchyTransferRequest.update({
+        where: { id: request.id },
+        data: { status: "WITHDRAWN" }
+      });
+
+      // Notify Parents about withdrawal
+      const notifications = [];
+      if (request.oldParentId) {
+        notifications.push({
+          id: generateUuid(),
+          userId: request.oldParentId,
+          tenantId,
+          title: "Transfer Request Withdrawn",
+          message: `${request.user.fullName} has withdrawn their transfer request and will stay in your hierarchy.`,
+          type: "WITHDRAWN",
+          metadata: { requestId: request.id }
+        });
+      }
+      notifications.push({
+        id: generateUuid(),
+        userId: request.newParentId,
+        tenantId,
+        title: "Transfer Request Withdrawn",
+        message: `${request.user.fullName} has withdrawn their request to join your hierarchy.`,
+        type: "WITHDRAWN",
+        metadata: { requestId: request.id }
+      });
+
+      await prisma.notification.createMany({ data: notifications });
+
+      res.json({ success: true, message: "Transfer request withdrawn successfully. Parents notified." });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+
+  /**
+   * Execute Scheduled Transfers (Older than 24h)
+   * This can be called by a cron job or manually for testing.
+   */
+  executeScheduledTransfers: async (req, res) => {
+    try {
+      const pendingRequests = await prisma.hierarchyTransferRequest.findMany({
+        where: { 
+          status: "PENDING",
+          scheduledAt: { lte: new Date() }
+        },
+        include: { user: true, newParent: true }
+      });
+
+      if (pendingRequests.length === 0) {
+        return res.json({ success: true, message: "No transfers ready for processing.", count: 0 });
+      }
+
+      let processedCount = 0;
+      for (const req of pendingRequests) {
+        // Execute the transfer (using the internal transfer logic pattern)
+        const targetUserId = req.userId;
+        const newParent = req.newParent;
+        const tenantId = req.tenantId;
+
+        const descendants = await prisma.user.findMany({
+          where: { OR: [{ id: targetUserId }, { path: { contains: targetUserId } }] }
+        });
+
+        await prisma.$transaction(async (tx) => {
+          const newRootPrefix = newParent.path ? `${newParent.path}/${newParent.id}` : `/${newParent.id}`;
+          
+          for (const u of descendants) {
+            let newPath = "";
+            if (u.id === targetUserId) {
+              newPath = newRootPrefix;
+            } else {
+              const currentPath = u.path || "";
+              const targetIndex = currentPath.indexOf(targetUserId);
+              newPath = targetIndex !== -1 
+                ? `${newRootPrefix}/${currentPath.substring(targetIndex)}`.replace(/\/\//g, '/')
+                : `${newRootPrefix}/${targetUserId}/${u.id}`.replace(/\/\//g, '/');
+            }
+
+            await tx.user.update({
+              where: { id: u.id },
+              data: {
+                path: newPath,
+                ...(u.id === targetUserId ? { parentId: newParent.id } : {})
+              }
+            });
+          }
+
+          // Mark request as completed
+          await tx.hierarchyTransferRequest.update({
+            where: { id: req.id },
+            data: { status: "COMPLETED" }
+          });
+
+          // 4. Completion Notifications
+          const notifications = [];
+          
+          // Notify User
+          notifications.push({
+            id: generateUuid(),
+            userId: targetUserId,
+            tenantId,
+            title: "Hierarchy Transfer Successful",
+            message: `Your hierarchy has been successfully moved under ${newParent.fullName}.`,
+            type: "COMPLETED",
+            metadata: { requestId: req.id }
+          });
+
+          // Notify New Parent
+          notifications.push({
+            id: generateUuid(),
+            userId: newParent.id,
+            tenantId,
+            title: "New Downline Added",
+            message: `${req.user.fullName} and their downline have been added to your hierarchy.`,
+            type: "COMPLETED",
+            metadata: { requestId: req.id, userId: targetUserId }
+          });
+
+          // Notify Old Parent (if exists)
+          if (req.oldParentId) {
+            notifications.push({
+              id: generateUuid(),
+              userId: req.oldParentId,
+              tenantId,
+              title: "Downline Left",
+              message: `${req.user.fullName} has been moved to another hierarchy.`,
+              type: "COMPLETED",
+              metadata: { requestId: req.id, userId: targetUserId }
+            });
+          }
+
+          await tx.notification.createMany({ data: notifications });
+        });
+
+        processedCount++;
+      }
+
+      res.json({ success: true, message: `Processed ${processedCount} scheduled transfers.`, count: processedCount });
+
+    } catch (err) {
+      console.error("Scheduled Transfer Execution Error:", err);
+      res.status(500).json({ success: false, message: "Execution failed" });
+    }
+  },
+
+  /**
+   * Get Current User's Active Transfer Request
+   * GET /api/admin/hierarchy/my-request
+   */
+  getMyHierarchyRequest: async (req, res) => {
+    const { user_id: userId } = req.user;
+    try {
+      const request = await prisma.hierarchyTransferRequest.findFirst({
+        where: { userId, status: "PENDING" },
+        include: { 
+          newParent: { select: { fullName: true } },
+          oldParent: { select: { fullName: true } }
+        }
+      });
+
+      if (!request) return res.status(200).json({ success: false, message: "No active request" });
+
+      res.json({
+        success: true,
+        data: {
+          id: request.id,
+          requestedAt: request.createdAt,
+          currentParentName: request.oldParent?.fullName || "System Administrator",
+          newParentName: request.newParent?.fullName || "N/A"
+        }
+      });
+    } catch (err) {
+      console.error("Get My Request Error:", err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+};
+
+module.exports = hierarchyController;
+
