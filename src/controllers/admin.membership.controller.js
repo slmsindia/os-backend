@@ -5,6 +5,10 @@ const { logAction } = require("../utils/audit");
 const walletService = require("../services/wallet.service");
 const commissionService = require("../services/commission.service");
 
+const isUuid = (value) =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 const adminMembershipController = {
   /**
    * Create a user directly (Admin/Partner led)
@@ -536,13 +540,41 @@ const adminMembershipController = {
       const allApps = [...legacyApps, ...mappedUnified].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       const total = allApps.length;
       const paginatedApps = allApps.slice(skip, skip + take);
+      const stateIds = [...new Set(paginatedApps.map((app) => app.currentState).filter(isUuid))];
+      const districtIds = [...new Set(paginatedApps.map((app) => app.currentDistrict).filter(isUuid))];
+
+      const [states, districts] = await Promise.all([
+        stateIds.length
+          ? prisma.state.findMany({ where: { id: { in: stateIds } }, select: { id: true, name: true } })
+          : [],
+        districtIds.length
+          ? prisma.district.findMany({ where: { id: { in: districtIds } }, select: { id: true, name: true } })
+          : []
+      ]);
+
+      const stateNameById = new Map(states.map((state) => [state.id, state.name]));
+      const districtNameById = new Map(districts.map((district) => [district.id, district.name]));
+      const enrichedApps = paginatedApps.map((app) => {
+        const currentStateName = stateNameById.get(app.currentState) || app.currentState || "";
+        const currentDistrictName = districtNameById.get(app.currentDistrict) || app.currentDistrict || "";
+
+        return {
+          ...app,
+          currentStateId: isUuid(app.currentState) ? app.currentState : null,
+          currentDistrictId: isUuid(app.currentDistrict) ? app.currentDistrict : null,
+          currentState: currentStateName,
+          currentDistrict: currentDistrictName,
+          currentStateName,
+          currentDistrictName
+        };
+      });
 
       await logAction({ userId: adminId, action: "VIEW_MEMBERSHIP_APPLICATIONS", tenantId });
 
       res.json({
         success: true,
         data: {
-          members: paginatedApps,
+          members: enrichedApps,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),

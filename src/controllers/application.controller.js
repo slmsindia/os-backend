@@ -168,6 +168,68 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
   return updatedUser;
 }
 
+async function settleApplicationFeeToCorporateWallet(app, trigger = "APPLICATION_SETTLEMENT") {
+  const settlementAmount = Number(app.paymentAmount || 0);
+  if (!settlementAmount || settlementAmount <= 0 || app.paymentStatus !== "SUCCESS") {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const adminWallet =
+      (await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } })) ||
+      (await tx.wallet.create({
+        data: {
+          id: generateUuid(),
+          userId: null,
+          tenantId: app.tenantId,
+          isCorporate: true,
+          balance: 0,
+          currency: "INR",
+          isActive: true
+        }
+      }));
+
+    const existingCredit = await tx.walletTransaction.findFirst({
+      where: {
+        walletId: adminWallet.id,
+        referenceId: app.id,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE"
+      }
+    });
+
+    if (existingCredit) {
+      return existingCredit;
+    }
+
+    await tx.wallet.update({
+      where: { id: adminWallet.id },
+      data: { balance: { increment: settlementAmount } }
+    });
+
+    return tx.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: adminWallet.id,
+        amount: settlementAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        referenceId: app.id,
+        description: `${app.targetIdentity} application fee received from user ${app.userId}`,
+        tenantId: app.tenantId,
+        metadata: {
+          trigger,
+          applicationId: app.id,
+          userId: app.userId,
+          paymentMethod: app.paymentMethod,
+          razorpayPaymentId: app.razorpayPaymentId
+        }
+      }
+    });
+  });
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // CONTROLLER METHODS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -247,6 +309,45 @@ const applicationController = {
       }
 
       // ── 5. Resolve fee ───────────────────────────────────────────────────────
+      const paidRejectedApplication = await prisma.application.findFirst({
+        where: {
+          userId: targetUser.id,
+          targetIdentity,
+          status: "REJECTED",
+          paymentStatus: "SUCCESS"
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+
+      if (paidRejectedApplication) {
+        const resubmitted = await prisma.application.update({
+          where: { id: paidRejectedApplication.id },
+          data: {
+            status: "PENDING",
+            rejectionReason: null,
+            submittedData: formData,
+            geoLat: geolocation?.lat,
+            geoLng: geolocation?.lng,
+            geoAccuracy: geolocation?.accuracy,
+            geoAddress: geolocation?.address,
+            geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+          }
+        });
+
+        await logAction({
+          userId: creatorId,
+          action: `${targetIdentity}_APP_RESUBMITTED_PAYMENT_REUSED`,
+          targetId: resubmitted.id,
+          tenantId
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Application resubmitted. Previous payment reused.",
+          data: { applicationId: resubmitted.id, paymentReused: true }
+        });
+      }
+
       const fee = await resolveFee(targetIdentity, tenantId);
 
       // ── 6. ADMIN / WHITE_LABEL_ADMIN / SUB_ADMIN: Cash or Razorpay ──────────
@@ -645,6 +746,7 @@ const applicationController = {
     try {
       const app = await prisma.application.findUnique({ where: { id: applicationId } });
       if (!app) return res.status(404).json({ success: false, message: "Application not found" });
+      await settleApplicationFeeToCorporateWallet(app, "APPLICATION_REJECTED");
       await prisma.application.update({ where: { id: applicationId }, data: { status: 'REJECTED', rejectionReason: reason } });
       await logAction({ userId: adminId, action: `${app.targetIdentity}_REJECTED`, targetId: applicationId, tenantId });
 
