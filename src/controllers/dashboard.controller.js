@@ -95,22 +95,60 @@ const dashboardController = {
         });
       }
 
-      const [userStats, appStats, corporateWallet] = await Promise.all([
+      const [userStats, appStats, corporateWallet, activeUsersCount, inactiveUsersCount, walletTxStats] = await Promise.all([
         dashboardController.getUserStats({ tenantId }),
         dashboardController.getApplicationStats({
           membership: { user: { tenantId } },
           saathi: { user: { tenantId } },
           business: { user: { tenantId } }
         }),
-        prisma.wallet.findFirst({ where: { tenantId, isCorporate: true } })
+        prisma.wallet.findFirst({ where: { tenantId, isCorporate: true } }),
+        // Active = approvalStatus is APPROVED (or null/unset means active)
+        prisma.user.count({ where: { tenantId, approvalStatus: { not: 'DEACTIVATED' } } }),
+        // Inactive/Deactivated = explicitly DEACTIVATED
+        prisma.user.count({ where: { tenantId, approvalStatus: 'DEACTIVATED' } }),
+        // Wallet transaction totals for the corporate wallet
+        prisma.wallet.findFirst({
+          where: { tenantId, isCorporate: true },
+          select: { id: true }
+        })
       ]);
+
+      // Get income (CREDIT) and expense (DEBIT) totals for the corporate wallet
+      let totalIncome = 0;
+      let totalExpense = 0;
+      if (corporateWallet?.id) {
+        const [incomeAgg, expenseAgg] = await Promise.all([
+          prisma.walletTransaction.aggregate({
+            where: { walletId: corporateWallet.id, type: 'CREDIT' },
+            _sum: { amount: true }
+          }),
+          prisma.walletTransaction.aggregate({
+            where: { walletId: corporateWallet.id, type: 'DEBIT' },
+            _sum: { amount: true }
+          })
+        ]);
+        totalIncome = incomeAgg._sum.amount || 0;
+        totalExpense = expenseAgg._sum.amount || 0;
+      }
+
+      // Unverified = total pending applications across all types
+      const unverifiedUsers =
+        (appStats.membership?.PENDING || 0) +
+        (appStats.saathi?.PENDING || 0) +
+        (appStats.business?.PENDING || 0);
 
       res.json({
         success: true,
         data: {
           users: userStats,
           applications: appStats,
-          corporateBalance: corporateWallet?.balance || 0
+          corporateBalance: corporateWallet?.balance || 0,
+          activeUsers: activeUsersCount,
+          inactiveUsers: inactiveUsersCount,
+          unverifiedUsers,
+          totalIncome,
+          totalExpense
         }
       });
     } catch (err) {
