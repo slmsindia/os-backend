@@ -120,6 +120,64 @@ const recordTargetWalletFeeFlow = async ({ db, tenantId, userId, applicationId, 
   return targetWallet;
 };
 
+const creditWhiteLabelFee = async ({ db, tenantId, applicationId, amount, paymentMethod, label, userId, paymentId, trigger }) => {
+  const feeAmount = Number(amount || 0);
+  if (!tenantId || !applicationId || feeAmount <= 0) return null;
+
+  const client = db || prisma;
+  const adminWallet =
+    (await client.wallet.findFirst({ where: { tenantId, isCorporate: true } })) ||
+    (await client.wallet.create({
+      data: {
+        id: generateUuid(),
+        userId: null,
+        tenantId,
+        isCorporate: true,
+        balance: 0,
+        currency: "INR",
+        isActive: true
+      }
+    }));
+
+  const existingCredit = await client.walletTransaction.findFirst({
+    where: {
+      walletId: adminWallet.id,
+      referenceId: applicationId,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE"
+    }
+  });
+
+  if (existingCredit) return adminWallet;
+
+  await client.wallet.update({
+    where: { id: adminWallet.id },
+    data: { balance: { increment: feeAmount } }
+  });
+
+  await client.walletTransaction.create({
+    data: {
+      id: generateUuid(),
+      walletId: adminWallet.id,
+      amount: feeAmount,
+      type: "CREDIT",
+      category: "SERVICE_CHARGE",
+      status: "SUCCESS",
+      description: `${label} fee received from user ${userId || "N/A"} (via ${paymentMethod || "UNKNOWN"})`,
+      referenceId: applicationId,
+      tenantId,
+      metadata: {
+        trigger: trigger || `${String(label || "SERVICE").toUpperCase()}_FEE_PAID`,
+        applicationId,
+        userId: userId || null,
+        paymentId: paymentId || null
+      }
+    }
+  });
+
+  return adminWallet;
+};
+
 const adminSaathiController = {
   /**
    * Set Saathi Fee
@@ -323,10 +381,11 @@ const adminSaathiController = {
       // 2. Self-target protection and hierarchy validation
       // Saathi direct onboarding is only meant for creating a new user under the current admin,
       // not for converting the admin's own account in place.
+      const isSelfUpgradeRequest = ['USER', 'MEMBER'].includes(String(adminIdentity || '').toUpperCase());
       const isSelfTarget =
         targetUser?.id === adminId ||
         String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
-      if (isSelfTarget) {
+      if (isSelfTarget && !isSelfUpgradeRequest) {
         return res.status(400).json({
           success: false,
           message: "Use a different mobile number to create a new Saathi under your hierarchy."
@@ -387,6 +446,10 @@ const adminSaathiController = {
                                 existingApplication.status === 'REJECTED' && 
                                 (existingApplication.payment?.status === 'SUCCESS' || existingApplication.payment?.status === 'PAID');
 
+      const effectivePaymentMethod = isPaidResubmission
+        ? (existingApplication.payment?.method || existingApplication.paymentType || paymentMethod)
+        : paymentMethod;
+
       // Update stale Razorpay drafts in place so users can switch payment methods safely.
       const shouldUpdateExisting = isPaidResubmission || isAwaitingPaymentDraft;
 
@@ -413,7 +476,7 @@ const adminSaathiController = {
         ? ['RAZORPAY']
         : (isWhiteLabelAdmin ? ['CASH', 'RAZORPAY'] : ['WALLET', 'RAZORPAY']);
 
-      if (amount > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
+      if (!isPaidResubmission && amount > 0 && !allowedPaymentMethods.includes(paymentMethod)) {
         return res.status(400).json({
           success: false,
           message: adminIdentity === 'USER'
@@ -426,7 +489,7 @@ const adminSaathiController = {
 
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
       let razorpayOrder = null;
-      if (paymentMethod === 'RAZORPAY') {
+      if (!isPaidResubmission && paymentMethod === 'RAZORPAY') {
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {
@@ -504,37 +567,42 @@ const adminSaathiController = {
           addressesJson: req.body.addresses || null,
           documentsJson: req.body.documents || null,
           createdById: adminId,
-          paymentType: paymentMethod,
-          status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING'
+          paymentType: effectivePaymentMethod,
+          status: isPaidResubmission ? 'PENDING' : (paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING')
         };
 
         let appResult;
         if (shouldUpdateExisting) {
-          appResult = await tx.saathiApplication.update({
-            where: { id: existingApplication.id },
-            data: { 
-              ...appData, 
-              rejectionReason: null,
-                payment: {
-                  upsert: {
-                    create: {
-                      id: generateUuid(),
-                      amount,
-                      method: paymentMethod,
-                      razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
-                    },
-                    update: {
-                      amount,
-                      method: paymentMethod,
-                      razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
-                  }
+          const updateData = { 
+            ...appData, 
+            rejectionReason: null
+          };
+
+          if (!isPaidResubmission) {
+            updateData.payment = {
+              upsert: {
+                create: {
+                  id: generateUuid(),
+                  amount,
+                  method: paymentMethod,
+                  razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                  status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                  paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                },
+                update: {
+                  amount,
+                  method: paymentMethod,
+                  razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
+                  status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
+                  paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
                 }
               }
-            },
+            };
+          }
+
+          appResult = await tx.saathiApplication.update({
+            where: { id: existingApplication.id },
+            data: updateData,
             include: { payment: true }
           });
         } else {
@@ -573,7 +641,19 @@ const adminSaathiController = {
           );
         }
 
-        if (paymentMethod === 'WALLET' || paymentMethod === 'CASH') {
+        if (!isPaidResubmission && (paymentMethod === 'WALLET' || paymentMethod === 'CASH')) {
+          await creditWhiteLabelFee({
+            db: tx,
+            tenantId,
+            applicationId: appResult.id,
+            amount,
+            paymentMethod,
+            label: "Saathi",
+            userId: targetUserId,
+            paymentId: appResult.payment?.id,
+            trigger: "SAATHI_FEE_PAID"
+          });
+
           await recordTargetWalletFeeFlow({
             db: tx,
             tenantId,
@@ -592,7 +672,9 @@ const adminSaathiController = {
 
       res.status(201).json({
         success: true,
-        message: paymentMethod === 'RAZORPAY' ? "Saathi application created. Please complete payment." : "Saathi application created successfully.",
+        message: isPaidResubmission
+          ? "Saathi application resubmitted successfully."
+          : (paymentMethod === 'RAZORPAY' ? "Saathi application created. Please complete payment." : "Saathi application created successfully."),
         data: { 
           applicationId: application.id, 
           userId: targetUserId,
@@ -888,47 +970,20 @@ const adminSaathiController = {
           );
 
           await prisma.$transaction(async (tx) => {
-            const adminWallet = await tx.wallet.findFirst({
-              where: { tenantId, isCorporate: true }
-            }) || await tx.wallet.create({
-              data: {
-                id: generateUuid(),
-                userId: null,
-                tenantId,
-                isCorporate: true,
-                balance: 0,
-                currency: "INR",
-                isActive: true
-              }
-            });
-
-            await tx.wallet.update({
-              where: { id: adminWallet.id },
-              data: { balance: { increment: settlementAmount } }
+            const adminWallet = await creditWhiteLabelFee({
+              db: tx,
+              tenantId,
+              applicationId: application.id,
+              amount: settlementAmount,
+              paymentMethod: modeLabel,
+              label: "Saathi",
+              userId: application.userId,
+              paymentId: application.payment?.id,
+              trigger: "SAATHI_APPROVAL_FEE_BACKFILL"
             });
             console.log(
-              `[Commission-Debug][SAATHI] Admin wallet credited: applicationId=${application.id}, walletId=${adminWallet.id}, amount=${settlementAmount}`
+              `[Commission-Debug][SAATHI] Admin wallet fee credit ensured: applicationId=${application.id}, walletId=${adminWallet?.id || "N/A"}, amount=${settlementAmount}`
             );
-
-            await tx.walletTransaction.create({
-              data: {
-                id: generateUuid(),
-                walletId: adminWallet.id,
-                amount: settlementAmount,
-                type: "CREDIT",
-                category: "SERVICE_CHARGE",
-                status: "SUCCESS",
-                description: `Saathi fee received from user ${application.userId} (via ${modeLabel})`,
-                referenceId: application.id,
-                tenantId,
-                metadata: {
-                  trigger: "SAATHI_APPROVAL",
-                  applicationId: application.id,
-                  userId: application.userId,
-                  paymentId: application.payment?.id
-                }
-              }
-            });
           });
 
           try {
@@ -954,7 +1009,9 @@ const adminSaathiController = {
                 {
                   referenceId: application.id,
                   referenceType: "SAATHI_APPLICATION",
-                  stopAtUserId: application.createdById || null
+                  stopAtUserId: application.createdById && application.createdById !== application.userId
+                    ? application.createdById
+                    : null
                 }
               );
               console.log(
@@ -1117,6 +1174,18 @@ const adminSaathiController = {
         await tx.saathiApplication.update({
           where: { id: application.id },
           data: { status: 'PENDING' }
+        });
+
+        await creditWhiteLabelFee({
+          db: tx,
+          tenantId,
+          applicationId: application.id,
+          amount: application.payment.amount,
+          paymentMethod: "RAZORPAY",
+          label: "Saathi",
+          userId: application.userId,
+          paymentId: application.payment.id,
+          trigger: "SAATHI_FEE_PAID"
         });
 
         await recordTargetWalletFeeFlow({
