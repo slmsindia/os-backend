@@ -8,6 +8,80 @@ const commissionService = require("../services/commission.service");
 const isUuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const PASSWORD_RULE_MESSAGE = "Password must be at least 8 characters and include one uppercase letter and one special character.";
+const isStrongPassword = (password) =>
+  typeof password === "string" && /^(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/.test(password);
+const sanitizeJsonValue = (value) => {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(sanitizeJsonValue);
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, sanitizeJsonValue(item)])
+    );
+  }
+  return value;
+};
+
+const creditMembershipFeeToCorporateWallet = async ({ application, tenantId, trigger }) => {
+  const settlementAmount = Number(application?.payment?.amount || 0);
+  if (!tenantId || !application?.id || application?.payment?.status !== "SUCCESS" || settlementAmount <= 0) {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const adminWallet =
+      (await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } })) ||
+      (await tx.wallet.create({
+        data: {
+          id: generateUuid(),
+          userId: null,
+          tenantId,
+          isCorporate: true,
+          balance: 0,
+          currency: "INR",
+          isActive: true
+        }
+      }));
+
+    const existingCredit = await tx.walletTransaction.findFirst({
+      where: {
+        walletId: adminWallet.id,
+        referenceId: application.id,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE"
+      }
+    });
+
+    if (existingCredit) return existingCredit;
+
+    await tx.wallet.update({
+      where: { id: adminWallet.id },
+      data: { balance: { increment: settlementAmount } }
+    });
+
+    return tx.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: adminWallet.id,
+        amount: settlementAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        referenceId: application.id,
+        description: `Membership fee received from user ${application.userId} (via ${application.payment?.method || application.paymentType || "UNKNOWN"})`,
+        tenantId,
+        metadata: sanitizeJsonValue({
+          trigger,
+          applicationId: application.id,
+          userId: application.userId,
+          paymentId: application.payment?.id
+        })
+      }
+    });
+  });
+};
 
 const adminMembershipController = {
   /**
@@ -27,8 +101,8 @@ const adminMembershipController = {
     }
 
     const isNewUserFlow = flowType === 'ADMIN_CREATE_NEW_USER';
-    if (isNewUserFlow && !password) {
-      return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+    if (isNewUserFlow && !isStrongPassword(password)) {
+      return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
     }
 
     // Sanitize identity input (convert camelCase or spaces to UPPER_SNAKE_CASE)
@@ -169,14 +243,14 @@ const adminMembershipController = {
 
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
-      if (isNewUserFlow && !password) {
-        return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+      if (!isStrongPassword(password)) {
+        return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
       }
 
       // ─── Flow 3 Fix: Create Application for New Users ───
       // Instead of direct creation, we create an APPLICATION record that must be approved.
       
-      const hashedPassword = await bcrypt.hash(password || mobile.slice(-4), 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
 
@@ -479,7 +553,9 @@ const adminMembershipController = {
       if (adminIdentity !== 'SUPER_ADMIN') {
         where.user = { tenantId: tenantId };
       }
-      if (status) {
+      if (status === 'PENDING') {
+        where.status = { in: ['PENDING', 'RESUBMITTED'] };
+      } else if (status) {
         where.status = status;
       }
 
@@ -495,7 +571,11 @@ const adminMembershipController = {
 
       const unifiedWhere = {
         targetIdentity: 'MEMBER',
-        ...(status ? { status } : {})
+        ...(status === 'PENDING'
+          ? { status: { in: ['PENDING', 'RESUBMITTED'] } }
+          : status
+            ? { status }
+            : {})
       };
       if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
@@ -832,12 +912,12 @@ const adminMembershipController = {
                 referenceId: application.id,
                 description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
                 tenantId,
-                metadata: {
+                metadata: sanitizeJsonValue({
                   trigger: "MEMBERSHIP_APPROVAL",
                   applicationId,
                   userId: application.userId,
                   paymentId: application.payment?.id
-                }
+                })
               }
             });
           }
@@ -920,7 +1000,8 @@ const adminMembershipController = {
       }
 
       const application = await prisma.membershipApplication.findUnique({
-        where: { id: applicationId }
+        where: { id: applicationId },
+        include: { user: true, payment: true }
       });
 
       if (!application) {
@@ -944,6 +1025,12 @@ const adminMembershipController = {
           message: "Application already rejected"
         });
       }
+
+      await creditMembershipFeeToCorporateWallet({
+        application,
+        tenantId,
+        trigger: "MEMBERSHIP_APPLICATION_REJECTED"
+      });
 
       // Update application status
       const updated = await prisma.membershipApplication.update({
