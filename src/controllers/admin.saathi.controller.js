@@ -149,7 +149,7 @@ const adminSaathiController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-    if (!calculatedAmount || calculatedAmount <= 0) {
+    if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
@@ -323,10 +323,12 @@ const adminSaathiController = {
       // 2. Self-target protection and hierarchy validation
       // Saathi direct onboarding is only meant for creating a new user under the current admin,
       // not for converting the admin's own account in place.
+      // Exception: If the logged-in user is a MEMBER or USER, they are upgrading their own account to Saathi.
+      const isSelfUpgrade = ['MEMBER', 'USER'].includes(String(adminIdentity || '').toUpperCase());
       const isSelfTarget =
         targetUser?.id === adminId ||
         String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
-      if (isSelfTarget) {
+      if (isSelfTarget && !isSelfUpgrade) {
         return res.status(400).json({
           success: false,
           message: "Use a different mobile number to create a new Saathi under your hierarchy."
@@ -501,6 +503,7 @@ const adminSaathiController = {
           jobServices: Boolean(req.body.jobServices),
           indoNepalServices: Boolean(req.body.indoNepalServices),
           shopName: req.body.shopName || null,
+          profilePhoto: req.body.profilePhoto || targetUser.profilePhoto || null,
           addressesJson: req.body.addresses || null,
           documentsJson: req.body.documents || null,
           createdById: adminId,

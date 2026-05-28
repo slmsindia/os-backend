@@ -553,9 +553,9 @@ const membershipController = {
             id: generateUuid(),
             applicationId: app.id,
             documentTypeId: doc.documentTypeId || doc.id || doc.type || "1", // Fallback mapping
-            documentNumber: doc.documentNumber || "N/A",
-            frontImageUrl: doc.frontImageUrl || doc.documentUrl || "",
-            backImageUrl: doc.backImageUrl || null
+            documentNumber: doc.documentNumber || doc.number || "N/A",
+            frontImageUrl: doc.frontImageUrl || doc.frontUrl || doc.documentUrl || "",
+            backImageUrl: doc.backImageUrl || doc.backUrl || null
           }));
 
           await tx.membershipDocument.createMany({

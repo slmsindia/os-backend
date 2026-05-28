@@ -105,12 +105,38 @@ const dashboardController = {
         prisma.wallet.findFirst({ where: { tenantId, isCorporate: true } })
       ]);
 
+      const corporateWalletId = corporateWallet?.id;
+      const [walletIncome, walletExpense] = await Promise.all([
+        corporateWalletId
+          ? prisma.walletTransaction.aggregate({
+              where: {
+                walletId: corporateWalletId,
+                type: 'CREDIT',
+                status: 'SUCCESS'
+              },
+              _sum: { amount: true }
+            })
+          : Promise.resolve({ _sum: { amount: 0 } }),
+        corporateWalletId
+          ? prisma.walletTransaction.aggregate({
+              where: {
+                walletId: corporateWalletId,
+                type: 'DEBIT',
+                status: 'SUCCESS'
+              },
+              _sum: { amount: true }
+            })
+          : Promise.resolve({ _sum: { amount: 0 } })
+      ]);
+
       res.json({
         success: true,
         data: {
           users: userStats,
           applications: appStats,
-          corporateBalance: corporateWallet?.balance || 0
+          corporateBalance: corporateWallet?.balance || 0,
+          totalIncome: walletIncome._sum.amount || 0,
+          totalExpense: walletExpense._sum.amount || 0
         }
       });
     } catch (err) {

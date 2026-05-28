@@ -192,7 +192,7 @@ const businessPartnerController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-    if (!calculatedAmount || calculatedAmount <= 0) {
+    if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
