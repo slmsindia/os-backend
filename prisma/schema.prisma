@@ -1,0 +1,2167 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  domain    String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+  wallets   Wallet[]
+  adminJobs       Job[]
+resumeTemplates ResumeTemplate[]
+ // Opposite relation for shared wallets
+  
+  // App & Admin Management
+  appSections     AppSection[]
+  posters         Poster[]
+  announcements   Announcement[]
+  notices         Notice[]
+  surveyQuestions SurveyQuestion[]
+  qrCodes         QRCode[]
+  walletTransactions WalletTransaction[]
+
+  // Razorpay Multi-tenant Credentials
+  razorpayKeyId      String?
+  razorpayKeySecret  String?
+
+  // Master Data & Config
+  bankDetails     BankDetails[]
+  bankPincodeVisibility BankPincodeVisibility[]
+  documentTypes   DocumentType[]
+  educations      Education[]
+  sectors         Sector[]
+  jobRoles        JobRole[]
+  skills          Skill[]
+  jobFacilities   JobFacility[]
+  membershipConfigs MembershipConfig[]
+  globalSettings  GlobalSetting[]
+  applications    Application[]
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Identity {
+  SUPER_ADMIN
+  WHITE_LABEL_ADMIN
+  ADMIN
+  SUB_ADMIN
+  SUPPORT_TEAM
+  COUNTRY_HEAD
+  STATE_PARTNER
+  DISTRICT_PARTNER
+  BUSINESS_PARTNER
+  SAATHI
+  MEMBER
+  AGENT
+  USER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  mobile       String
+  email        String?
+  password     String
+  fullName     String
+  profilePhoto String?
+  gender       Gender
+  dateOfBirth    DateTime
+  identity       Identity @default(USER)
+  userType       String   @default("USER")
+  approvalStatus String   @default("APPROVED")
+  approvedAt     DateTime?
+  roleId         String?
+  tenantId       String
+  parentId     String?
+  createdBy    String?
+  referredBy   String?
+  referralCode String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
+
+  parent       User?    @relation("UserHierarchy", fields: [parentId], references: [id])
+  children     User[]   @relation("UserHierarchy")
+
+  creator      User?    @relation("UserCreation", fields: [createdBy], references: [id])
+  createdUsers User[]   @relation("UserCreation")
+
+  referrer     User?    @relation("UserReferral", fields: [referredBy], references: [id])
+  referrals    User[]   @relation("UserReferral")
+
+  roles        UserRole[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  membershipApplications MembershipApplication[]
+
+
+
+
+
+  createdMembershipApplications MembershipApplication[] @relation("ApplicationCreator")
+  wallet          Wallet?
+  businessProfile BusinessProfile?
+  businessApplications BusinessApplication[]
+  jobPosts        JobPost[]
+  adminJobs      Job[]            @relation("AdminJobs")
+userJobApps    JobApplication[] @relation("UserJobApps")
+
+  // Scalability & Hierarchy
+  path              String?  @default("")
+  metadata          Json?    // Flexible storage for future requirements
+  
+  // Soft Delete Support
+  isDeleted         Boolean  @default(false)
+  deletedAt         DateTime?
+  
+  // Membership & Saathi Delegation
+  canApproveMembership Boolean @default(false)
+  membershipApprovalDelegatedBy String?
+  canApproveSaathi     Boolean @default(false)
+  saathiApprovalDelegatedBy String?
+
+  // Relations
+  saathiApplications     SaathiApplication[] @relation("UserSaathiApps")
+  createdSaathiApps      SaathiApplication[] @relation("SaathiCreator")
+  businessPartnerApps    BusinessPartnerApplication[]
+
+  // Commission
+  commissionSchemeId String?
+  commissionScheme   CommissionScheme? @relation("UserCommissionScheme", fields: [commissionSchemeId], references: [id])
+
+  surveyAnswers      SurveyAnswer[]
+
+  // Relations for Hierarchy Transfer
+  transferRequests    HierarchyTransferRequest[] @relation("UserTransferRequests")
+  oldParentTransfers  HierarchyTransferRequest[] @relation("OldParentTransfers")
+  newParentTransfers  HierarchyTransferRequest[] @relation("NewParentTransfers")
+
+  // Support System Relations
+  createdTickets    SupportTicket[]  @relation("CreatedTickets")
+  assignedTickets   SupportTicket[]  @relation("AssignedTickets")
+  sentSupportMessages SupportMessage[] @relation("SentSupportMessages")
+  createdMarketing    MarketingContent[] @relation("CreatedMarketing")
+  loginLogs           UserLoginLog[]
+  notifications       Notification[] @relation("UserNotifications")
+
+  // NEW: Unified Application System Relations
+  applications        Application[] @relation("AppTarget")
+  createdApplications Application[] @relation("AppCreator")
+  memberProfile       MemberProfile?
+  saathiProfile       SaathiProfile?
+  partnerProfile      PartnerProfile?
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@index([createdBy])
+  @@index([path])
+  @@index([canApproveMembership])
+  @@index([canApproveSaathi])
+  @@index([commissionSchemeId])
+  @@index([mobile])
+  @@index([createdAt])
+  @@index([isDeleted])
+  
+  // Registration Location Data
+  registrationState   String?
+  registrationCity    String?
+  registrationPincode String?
+  registrationLat     Float?
+  registrationLong    Float?
+  registrationAddress Json?
+  registrationGeo     Json?
+
+  @@unique([mobile, tenantId])
+}
+
+model HierarchyTransferRequest {
+  id              String   @id @default(uuid())
+  userId          String
+  oldParentId     String?
+  newParentId     String
+  status          String   @default("PENDING") // PENDING, WITHDRAWN, COMPLETED
+  scheduledAt     DateTime
+  tenantId        String
+  createdAt       DateTime @default(now())
+
+  user            User     @relation("UserTransferRequests", fields: [userId], references: [id])
+  oldParent       User?    @relation("OldParentTransfers", fields: [oldParentId], references: [id])
+  newParent       User     @relation("NewParentTransfers", fields: [newParentId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ... (existing models)
+
+// Business Partner System
+model BusinessProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  companyLogoUrl    String?
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  businessType      Int      @default(0)
+  employerType      Int      @default(0)
+  
+  serviceCharges    Float    @default(0)
+  gst               Float    @default(0)
+  platformFees      Float    @default(0)
+  
+  address           Json?    // Stores structured address
+  metadata          Json?    // Flexible storage for future requirements
+  isDeleted         Boolean  @default(false)
+  deletedAt         DateTime?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  jobPosts          JobPost[]
+}
+
+model BusinessApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  businessName      String
+  brandName         String
+  ownerName         String
+  email             String
+  contactNumber1    String
+  contactNumber2    String?
+  
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  
+  amount            Float    @default(0)
+  paymentMode       Int      @default(1)
+  razorPayReferenceNo String?
+  
+  address           Json?
+  documents         Json?    // Stores array of document objects
+  
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedBy        String?  // Admin ID
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model JobPost {
+  id                String   @id @default(uuid())
+  businessId        String
+  business          BusinessProfile @relation(fields: [businessId], references: [id])
+  creatorId         String
+  creator           User     @relation(fields: [creatorId], references: [id])
+  
+  jobDescription    String
+  jobType           Int      @default(0)
+  payStructure      Int      @default(0)
+  offeredAmount     Float
+  
+  educationId       String
+  education         Education @relation(fields: [educationId], references: [id])
+  experience        Int      @default(0)
+  
+  gender            Gender   @default(OTHER)
+  minAge            Int      @default(18)
+  maxAge            Int      @default(60)
+  
+  officeStartTime   String
+  officeEndTime     String
+  
+  address           Json?
+  facilities        String[] // Array of facility IDs or names
+  
+  isJoiningFees     Boolean  @default(false)
+  joiningAmount     Float    @default(0)
+  joiningFeeReason  Int[]    // Array of reason codes
+  
+  contactName       String
+  contactNumber     String
+  isUrgentHiring    Boolean  @default(false)
+  noOfOpenings      Int      @default(1)
+  shiftType         Int      @default(0)
+  weekOffDays       Int[]    // Array of day codes
+  
+  skillIds          String[] // Array of Skill IDs
+  sectorId          String
+  sector            Sector   @relation(fields: [sectorId], references: [id])
+  jobRoleId         String
+  jobRole           JobRole  @relation(fields: [jobRoleId], references: [id])
+  
+  applicationCloseDate DateTime
+  status            String   @default("ACTIVE") // ACTIVE, CLOSED, EXPIRED
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([sectorId])
+}
+model Job {
+  id              String           @id @default(uuid())
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title           String
+  companyName     String
+  salary          String
+  experience      String
+  location        String
+  skills          String[]         
+  category        String           // "Majdur Chowk" અથવા "Government Job"
+  description     String           @db.Text
+  vacancies       Int              @default(1)
+  lastDate        DateTime?
+  jobType         String           // "FULL_TIME", "PART_TIME"
+  workMode        String           // "ONSITE", "REMOTE"
+  status          String           @default("ACTIVE") // ACTIVE, CLOSED
+  createdById     String
+  createdBy       User             @relation("AdminJobs", fields: [createdById], references: [id])
+  applications    JobApplication[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([category])
+}
+
+model ResumeTemplate {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templateName String
+  thumbnail    String   
+  templateFile String   
+  category     String   
+  createdById  String
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model JobApplication {
+  id          String   @id @default(uuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation("UserJobApps", fields: [userId], references: [id], onDelete: Cascade)
+  resumeUrl   String
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  appliedDate DateTime @default(now())
+
+  @@index([jobId])
+  @@index([userId])
+}
+
+// Additional Master Data
+
+model JobFacility {
+  id        String   @id @default(uuid())
+  name      String
+  icon      String?
+  isActive  Boolean  @default(true)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+}
+
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  targetId  String?
+  metadata  Json?
+  tenantId  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model PrabhuApiLog {
+  id             String   @id @default(uuid())
+  operation      String
+  integration    String
+  endpointPath   String
+  requestMethod  String
+  requestPayload Json?
+  responsePayload Json?
+  statusCode     Int?
+  success        Boolean  @default(false)
+  errorMessage   String?
+  errorPayload   Json?
+  userId         String?
+  tenantId       String?
+  ipAddress      String?
+  userAgent      String?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  @@index([operation])
+  @@index([integration])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  mobile    String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([mobile])
+}
+
+// ============================================
+// 📘 IME API Response Storage Tables
+// ============================================
+
+// IME Static Data Storage
+model ImeStaticData {
+  id          String   @id @default(uuid())
+  typeCode    String   // WSST-GDRV1, WSST-STTV1, etc.
+  reference   String?  // Country code, State ID, etc.
+  dataId      String   // The ID/Code value from IME
+  dataValue   String   // The display value (Name/Description)
+  rawData     Json?    // Full IME response backup
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([typeCode])
+  @@index([reference])
+  @@index([dataId])
+  @@unique([typeCode, dataId, reference]) // Unique within type and its parent reference
+}
+
+// IME Customer Registration Data
+model ImeCustomer {
+  id                    String   @id @default(uuid())
+  customerId             String?  @unique  // IME Customer ID
+  membershipId           String?  // IME Forex Membership ID
+  mobileNumber           String   @unique
+  firstName             String
+  middleName            String?
+  lastName              String
+  gender                String
+  dateOfBirth            String
+  nationality            String
+  maritalStatus          String
+  fatherOrMotherName    String
+  email                 String?
+  occupation            String
+  sourceOfFund          String?
+  idType                String
+  idNumber              String
+  idPlaceOfIssue        String?
+  idIssueDate           String
+  idExpiryDate          String?
+  idData                String?  // Base64 encoded ID document
+  idDataType            String?  // pdf, jpg, jpeg, png
+  photoData             String?  // Base64 encoded photo
+  photoDataType         String?
+  
+  // Permanent Address
+  permanentState         String
+  permanentDistrict      String
+  permanentMunicipality String?
+  permanentAddress       String
+  permanentWardNo       String?
+  permanentHouseNo       String?
+  permanentPostalCode    String?
+  
+  // Temporary Address (India)
+  temporaryState         String
+  temporaryDistrict      String
+  temporaryAddress       String
+  temporaryPostalCode    String?
+  temporaryHouseNo       String?
+  
+  // Status & Tokens
+  customerToken         String?  // From CustomerRegistration response
+  amlStatus            String?  // True/False from CheckCustomer
+  kycStatus            String?  // Approved/Pending/Rejected
+  rejectionReason       String?
+  amendmentStatus      String?
+  amendmentMessage     String?
+  newMobileNo          String?
+  
+  // Metadata
+  imeResponseCode       String?  // Response code from IME
+  imeResponseMessage    String?  // Response message from IME
+  agentSessionId        String?  // Session ID used in request
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobileNumber])
+  @@index([customerId])
+  @@index([membershipId])
+  @@index([kycStatus])
+  @@index([createdAt])
+}
+
+// IME Receiver/Beneficiary Data
+model ImeReceiver {
+  id                    String   @id @default(uuid())
+  receiverId            String?  @unique  // IME Receiver ID
+  customerId             String?  // Link to IME Customer
+  firstName             String
+  middleName            String?
+  lastName              String
+  fullName              String?  // Full name from IME
+  mobileNumber           String
+  gender                String?
+  relationship          String?
+  purposeOfRemittance   String?
+  countryCode           String   @default("NP")
+  paymentMode           String?  // CASH, BANK
+  bankCode              String?
+  bankBranchId          String?
+  accountNumber         String?
+  address               String?
+  state                 String?
+  district              String?
+  municipality          String?
+  city                  String?
+  
+  // Status
+  isActive              Boolean  @default(true)
+  imeResponseCode       String?
+  imeResponseMessage    String?
+  
+  // Metadata
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([receiverId])
+  @@index([customerId])
+  @@index([mobileNumber])
+  @@index([createdAt])
+}
+
+// IME Transaction Data
+model ImeTransaction {
+  id                    String   @id @default(uuid())
+  transactionId         String?  @unique  // IME Transaction ID
+  agentTxnRefId        String?  // Agent's reference ID
+  icn                   String?  // ICN (payout code)
+  forexSessionId        String?  // From GetCalculation
+  
+  // Sender Information
+  senderCustomerId      String?
+  senderName           String
+  senderMobile         String
+  
+  // Receiver Information
+  receiverCustomerId   String?
+  receiverId           String?
+  receiverName         String
+  receiverMobile       String
+  receiverAddress      String?
+  receiverGender       String?
+  receiverCountry      String   @default("NPL")
+  receiverState        String?
+  receiverDistrict     String?
+  receiverMunicipality String?
+  receiverCity         String?
+  
+  // Transaction Details
+  collectAmount         Float?  // Amount collected from sender
+  payoutAmount         Float?   // Amount paid in Nepal
+  sendAmount           Float?   // Principal amount
+  serviceCharge        Float?
+  exchangeRate         Float?
+  sourceCurrency        String   @default("INR")
+  destinationCurrency   String   @default("NPR")
+  paymentMode          String?   // CASH, BANK
+  purposeOfRemittance  String?
+  sourceOfFund         String?
+  relationship         String?
+  
+  // Bank Details (if paymentMode = BANK)
+  bankCode             String?
+  bankBranchId         String?
+  bankAccountNumber    String?
+  
+  // Status & Tracking
+  status               String    // Success, Pending, Failed, Cancelled
+  responseCode         String?   // IME response code
+  responseMessage      String?   // IME response message
+  otpProcessId         String?   // For OTP verification
+  otp                  String?   // Verified OTP
+  
+  // Timestamps
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  completedAt          DateTime?
+  
+  // Metadata
+  agentSessionId        String?
+  imeResponsePayload   Json?     // Full IME response
+  requestPayload       Json?     // Request sent to IME
+
+  @@index([transactionId])
+  @@index([agentTxnRefId])
+  @@index([senderCustomerId])
+  @@index([receiverCustomerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([completedAt])
+}
+
+// IME Transaction History (for customer transaction history)
+model ImeTransactionHistory {
+  id                    String   @id @default(uuid())
+  customerId             String
+  transactionId         String?
+  senderName            String
+  receiverName          String
+  receiverMobile        String
+  amount                Float
+  serviceCharge         Float?
+  exchangeRate         Float?
+  status                String
+  transactionDate       String?
+  currency              String   @default("NPR")
+  
+  // Metadata
+  imeResponseCode       String?
+  imeResponseMessage    String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+
+  @@index([customerId])
+  @@index([transactionId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// IME OTP Logs
+model ImeOtpLog {
+  id                    String   @id @default(uuid())
+  mobileNumber           String
+  module                String    // CR, ST, MT, CT
+  referenceValue        String?   // CustomerToken, RefNo, ICN, etc.
+  otpToken              String?   // From SendOTP response
+  otp                   String?   // Verified OTP
+  otpExpiryAt          DateTime?
+  isVerified            Boolean  @default(false)
+  verificationAttempt    Int      @default(0)
+  
+  // Status
+  responseCode          String?
+  responseMessage       String?
+  agentSessionId        String?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobileNumber])
+  @@index([module])
+  @@index([referenceValue])
+  @@index([isVerified])
+  @@index([createdAt])
+}
+
+// IME API Request/Response Logs
+model ImeApiLog {
+  id                    String   @id @default(uuid())
+  operation            String    // CustomerRegistration, SendTransaction, etc.
+  endpointPath         String
+  requestMethod        String   // POST, GET
+  requestPayload       Json?     // Full request sent to IME
+  responsePayload      Json?     // Full response from IME
+  statusCode           Int?       // HTTP status code
+  imeResponseCode      String?    // IME business logic response code
+  imeResponseMessage   String?    // IME business logic response message
+  success              Boolean   @default(false)
+  errorMessage         String?
+  errorPayload         Json?
+  durationMs           Int?       // Request duration in milliseconds
+  userId               String?
+  tenantId             String?
+  ipAddress            String?
+  userAgent            String?
+  
+  createdAt            DateTime @default(now())
+
+  @@index([operation])
+  @@index([statusCode])
+  @@index([success])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// IME Exchange Rate Logs
+model ImeExchangeRate {
+  id                    String   @id @default(uuid())
+  sourceCurrency        String   @default("USD")
+  destinationCurrency   String   @default("NPR")
+  exchangeRate         Float
+  serviceCharge        Float?
+  validFrom            DateTime @default(now())
+  validTo              DateTime?
+  isActive            Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage    String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+
+  @@index([sourceCurrency])
+  @@index([destinationCurrency])
+  @@index([isActive])
+  @@index([validFrom])
+}
+
+// IME Bank & Payment Data
+model ImeBank {
+  id                    String   @id @default(uuid())
+  bankId               String?   @unique
+  bankCode              String    @unique
+  bankName              String
+  country               String   @default("NP")
+  isActive              Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage    String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([bankCode])
+  @@index([country])
+  @@index([isActive])
+}
+
+model ImeBankBranch {
+  id                    String   @id @default(uuid())
+  branchId              String?   @unique
+  bankId                String
+  bankCode              String
+  branchName            String
+  branchCode            String?   @unique
+  state                 String?
+  district              String?
+  city                  String?
+  isActive              Boolean  @default(true)
+  
+  // Metadata
+  imeResponseCode      String?
+  imeResponseMessage    String?
+  agentSessionId        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([bankId])
+  @@index([bankCode])
+  @@index([branchCode])
+  @@index([isActive])
+}
+
+// Legacy IME Data (for backward compatibility)
+model ImeData {
+  id               String   @id @default(uuid())
+  name             String
+  mobile           String
+  relationship     String
+  sendAmountInr    Float?
+  receiveAmountNpr Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuData {
+  id                   String   @id @default(uuid())
+  name                 String
+  mobile               String
+  relationship         String
+  purposeOfTransaction String?
+  paymentMode          String?
+  bankName             String?
+  bankBranch           String?
+  sendAmountInr        Float?
+  receiveAmountNpr     Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuReceiver {
+  id           String   @id @default(uuid())
+  customerId   String?
+  receiverId   String?  @unique
+  name         String
+  mobile       String
+  relationship String?
+  gender       String?
+  paymentMode  String?
+  bankCode     String?
+  bankBranchId String?
+  accountNumber String?
+  address      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+model PrabhuSender {
+  id             String   @id @default(uuid())
+  customerId     String?  @unique
+  name           String
+  mobile         String
+  gender         String?
+  dateOfBirth    String?
+  address        String?
+  city           String?
+  district       String?
+  state          String?
+  nationality    String?
+  email          String?
+  idType         String?
+  idNumber       String?
+  idExpiryDate   String?
+  idIssuedPlace  String?
+  sourceIncomeType String?
+  customerType   String?
+  status         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([mobile])
+  @@index([createdAt])
+}
+
+// Membership Configuration
+model MembershipConfig {
+  id              String   @id @default(uuid())
+  membershipPrice Float    @default(100.0)
+  currency        String   @default("INR")
+  isActive        Boolean  @default(true)
+  gst             Float    @default(0)
+  includedExcluded Boolean @default(true)
+  platformFee     Float    @default(0)
+  serviceCharge   Float    @default(0)
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model GlobalSetting {
+  id       String   @id @default(uuid())
+  key      String
+  value    String
+  tenantId String?
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@unique([key, tenantId])
+  @@index([tenantId])
+}
+
+// ============================================
+// 🌍 Location Master Data
+// ============================================
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String?  @unique // e.g. IN, NP
+  isActive  Boolean  @default(true)
+  states    State[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id])
+  districts District[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model District {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  stateId   String
+  state     State    @relation(fields: [stateId], references: [id])
+  municipalities Municipality[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stateId])
+}
+
+model Municipality {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  districtId String
+  district   District @relation(fields: [districtId], references: [id])
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([districtId])
+}
+
+
+// Reference Data Models
+model Education {
+  id        String   @id @default(uuid())
+  name      String
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+}
+
+model Sector {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobRoles               JobRole[]
+  skills                 Skill[]
+  membershipApplications MembershipApplication[]
+  businessProfiles       BusinessProfile[]
+  businessApplications   BusinessApplication[]
+  jobPosts               JobPost[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+}
+
+model JobRole {
+  id          String   @id @default(uuid())
+  sectorId    String?
+  sector      Sector?  @relation(fields: [sectorId], references: [id])
+  name        String
+  description String?
+  imageUrl    String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  skills                 Skill[]
+  membershipApplications MembershipApplication[]
+  jobPosts               JobPost[]
+  
+  @@unique([name, tenantId])
+  @@index([sectorId])
+  @@index([tenantId])
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  sectorId    String?
+  sector      Sector?  @relation(fields: [sectorId], references: [id])
+  jobRoleId   String?
+  jobRole     JobRole? @relation(fields: [jobRoleId], references: [id])
+  name        String
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([sectorId])
+  @@index([jobRoleId])
+  @@index([tenantId])
+}
+
+model DocumentType {
+  id        String   @id @default(uuid())
+  name      String
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  membershipDocuments MembershipDocument[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+}
+
+// Membership Application
+model MembershipApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  
+  // Personal Information
+  firstName         String
+  lastName          String
+  email             String
+  mobile            String?
+  gender            String
+  educationId       String?
+  education         Education? @relation(fields: [educationId], references: [id])
+  sectorId          String?
+  sector            Sector?    @relation(fields: [sectorId], references: [id])
+  jobRoleId         String?
+  jobRole           JobRole?   @relation(fields: [jobRoleId], references: [id])
+  maritalStatus     String?
+  citizenship       String?
+  isMigrantWorker   Boolean?
+  monthlyIncome     String?
+  birthDate         DateTime?
+  occupation        String?
+  
+  // New API Fields
+  profilePhoto      String?
+  imageName         String?
+  incomeAboveThreshold Boolean @default(false)
+  razorPayReferenceNo  String?
+  platformFees      Float   @default(0)
+  gst               Float   @default(0)
+  serviceCharge     Float   @default(0)
+  paymentMode       Int     @default(1)
+  tnxStatus         Int     @default(0)
+  
+  addressesJson     Json?
+  documentsJson     Json?
+  
+  // Current Address
+  currentCountry    String
+  currentState      String
+  currentDistrict   String
+  currentAddress    String
+  currentPincode    String
+  
+  // Permanent Address
+  permanentCountry  String
+  permanentState    String
+  permanentDistrict String
+  permanentAddress  String
+  permanentPincode  String
+  
+  // Application Status
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedAt        DateTime?
+  approvedBy        String?
+  
+  createdById       String?   // The admin/partner who filled the form (Method 2)
+  creator           User?     @relation("ApplicationCreator", fields: [createdById], references: [id])
+  paymentType       String    @default("RAZORPAY") // RAZORPAY, WALLET
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Payment & Documents
+  payment           MembershipPayment?
+  documents         MembershipDocument[]
+  memberProfile     MemberProfile?
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model MembershipPayment {
+  id                String   @id @default(uuid())
+  applicationId     String   @unique
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  razorpayOrderId   String
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount            Float
+  currency          String   @default("INR")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+  @@index([razorpayOrderId])
+}
+
+model MembershipDocument {
+  id                String   @id @default(uuid())
+  applicationId     String
+  application       MembershipApplication @relation(fields: [applicationId], references: [id])
+  documentTypeId    String
+  documentType      DocumentType @relation(fields: [documentTypeId], references: [id])
+  documentNumber    String
+  frontImageUrl     String
+  backImageUrl      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([applicationId])
+}
+
+// Business Partner System
+model BusinessPartnerApplication {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  
+  businessName        String
+  brandName           String
+  ownerName           String
+  email               String?
+  contactNumber1      String?
+  contactNumber2      String?
+  
+  companyLogoName     String?
+  companyLogoBase64   String?
+  companyLogoUrl      String?
+  
+  sectorId            String?
+  bussinessType       Int      @default(0)
+  employeerType       Int      @default(0)
+  
+  serviceCharges      Float    @default(0)
+  gst                 Float    @default(0)
+  platformFees        Float    @default(0)
+  amount              Float    @default(0)
+  
+  razorPayReferenceNo String?
+  paymentMode         Int      @default(1)
+  
+  addressJson         Json?
+  documentsJson       Json?
+  
+  status              String   @default("PENDING")
+  rejectionReason     String?
+  approvedBy          String?
+  createdById         String?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  partnerProfile      PartnerProfile?
+  
+  @@index([userId])
+}
+
+
+// Wallet System Models
+model Wallet {
+  id          String   @id @default(uuid())
+  userId      String?  @unique // Null for Corporate/Shared wallets
+  user        User?    @relation(fields: [userId], references: [id])
+  tenantId    String   // Link to the organization
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  isCorporate Boolean  @default(false) // True for ADMIN/SUB_ADMIN shared wallet
+  
+  balance     Float    @default(0.0)
+  currency    String   @default("INR")
+  isActive    Boolean  @default(true)
+  metadata    Json?    // For future scaling (limits, tier info, etc.)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topUpRequests WalletTopUpRequest[]
+  transactions  WalletTransaction[]
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([isCorporate])
+}
+
+model BankDetails {
+  id              String   @id @default(uuid())
+  bankName        String
+  beneficiaryName String
+  accountNumber   String
+  branch          String
+  ifscCode        String
+  isActive        Boolean  @default(true)
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topUpRequests   WalletTopUpRequest[]
+  pincodeVisibility BankPincodeVisibility[]
+
+  @@index([isActive])
+  @@index([tenantId])
+}
+
+model BankPincodeVisibility {
+  id            String      @id @default(uuid())
+  bankDetailsId String
+  bankDetails   BankDetails @relation(fields: [bankDetailsId], references: [id], onDelete: Cascade)
+  tenantId      String?
+  tenant        Tenant?     @relation(fields: [tenantId], references: [id])
+  pincode       String
+  locationName  String?
+  isActive      Boolean     @default(true)
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([tenantId, bankDetailsId, pincode])
+  @@index([tenantId, pincode, isActive])
+  @@index([bankDetailsId])
+ }
+
+model WalletTopUpRequest {
+  id              String   @id @default(uuid())
+  walletId        String
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  bankDetailsId   String
+  bankDetails     BankDetails @relation(fields: [bankDetailsId], references: [id])
+  
+  amount          Float
+  depositDate     DateTime
+  utrNumber       String
+  paymentScreenshot String
+  
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason String?
+  isResubmitted   Boolean  @default(false)
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@index([utrNumber])
+}
+
+// Prabhu Transaction Model
+model PrabhuTransaction {
+  id                  String   @id @default(uuid())
+  customerId          String?
+  senderName          String
+  senderMobile        String
+  receiverId          String
+  receiverName        String
+  receiverMobile      String
+  sendCountry         String   @default("India")
+  payoutCountry       String   @default("Nepal")
+  paymentMode         String
+  transferAmount      String
+  sendAmount          String
+  sendCurrency        String   @default("INR")
+  payAmount           String
+  payCurrency         String   @default("NPR")
+  exchangeRate        String   @default("1.6")
+  serviceCharge       String
+  collectedAmount     String
+  accountNumber       String   @default("")
+  partnerPinNo        String
+  remittanceReason    String
+  sourceOfFund        String
+  cspCode             String
+  otpProcessId        String
+  otp                 String
+  bankCode            String
+  bankBranchId        String
+  transactionId       String?
+  pinNo               String
+  responseCode        String   @default("000")
+  responseMessage     String   @default("Success")
+  transactionStatus   String   @default("Success")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([pinNo])
+  @@index([createdAt])
+}
+
+// Saathi System
+model SaathiApplication {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation("UserSaathiApps", fields: [userId], references: [id])
+  
+  // Applicant details snapshot
+  fullName          String?
+  mobile            String?
+  gender            String?
+  dateOfBirth       DateTime?
+  address           String?
+
+  // New API Fields
+  maritalStatus         String?
+  citizenship           String?
+  isMigrantWorker       Boolean  @default(false)
+  incomeAboveThreshold  Boolean  @default(false)
+  membershipNumber      String?
+  sector                String?
+  jobRole               String?
+  aadhaarNumber         String?
+  panNumber             String?
+  
+  computerLiteracy      Boolean  @default(false)
+  internetAvailability  Boolean  @default(false)
+  pcLaptopAvailability  Boolean  @default(false)
+  kycStatus             Boolean  @default(false)
+  governmentSchemes     Boolean  @default(false)
+  travelServices        Boolean  @default(false)
+  bankingInsurance      Boolean  @default(false)
+  jobServices           Boolean  @default(false)
+  indoNepalServices     Boolean  @default(false)
+  
+  shopName              String?
+  
+  addressesJson         Json?    
+  documentsJson         Json?    
+  
+  // Status and Approval
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  rejectionReason   String?
+  approvedBy        String?
+  
+  // Creation metadata
+  createdById       String   
+  creator           User     @relation("SaathiCreator", fields: [createdById], references: [id])
+  
+  paymentType       String   @default("RAZORPAY") // RAZORPAY, WALLET, CASH
+  
+  // Relationships
+  payment           SaathiPayment?
+  saathiProfile     SaathiProfile?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model SaathiPayment {
+  id                String   @id @default(uuid())
+  applicationId     String   @unique
+  application       SaathiApplication @relation(fields: [applicationId], references: [id])
+  
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  
+  amount            Float
+  currency          String   @default("INR")
+  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  method            String   // RAZORPAY, WALLET, CASH
+  
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([applicationId])
+}
+
+// ============================================
+// 📘 Commission System Models
+// ============================================
+
+model CommissionScheme {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false) // General scheme marker
+  
+  // Location Targeting
+  targetState    String?
+  targetCity     String?
+  targetPincode  String?
+  
+  tenantId  String
+  users     User[]   @relation("UserCommissionScheme")
+  shares    CommissionShare[]
+  services  CommissionService[] @relation("SchemeServices")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([targetPincode])
+  @@index([targetCity])
+  @@index([targetState])
+}
+
+model CommissionService {
+  id          String   @id @default(uuid())
+  name        String
+  isActive    Boolean  @default(true)
+  tenantId    String?
+  schemeId    String?
+  scheme      CommissionScheme? @relation("SchemeServices", fields: [schemeId], references: [id])
+  subServices CommissionSubService[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([schemeId])
+  @@index([tenantId])
+}
+
+model FormDraft {
+  id           String   @id @default(uuid())
+  userId       String   // Who is filling the form
+  targetMobile String   // Mobile of the person being registered
+  formType     String   // 'member', 'saathi', 'business'
+  data         Json
+  step         Int      @default(1)
+  tenantId     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, formType, targetMobile, tenantId])
+  @@index([userId])
+  @@index([targetMobile])
+  @@index([tenantId])
+}
+
+model CommissionSubService {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String?
+  serviceId   String
+  service     CommissionService @relation(fields: [serviceId], references: [id])
+  tenantId    String?
+  schemeId    String?
+  isActive    Boolean  @default(true)
+  shares      CommissionShare[]
+  transactions TransactionLog[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([serviceId])
+  @@index([schemeId])
+  @@index([tenantId])
+  @@unique([serviceId, slug, schemeId])
+}
+
+model CommissionShare {
+  id                String   @id @default(uuid())
+  schemeId          String
+  scheme            CommissionScheme @relation(fields: [schemeId], references: [id])
+  subServiceId      String
+  subService        CommissionSubService @relation(fields: [subServiceId], references: [id])
+  
+  commissionType    Int      @default(1) // 1 = Percentage, 2 = Flat
+  baseType          Int      @default(1) 
+  
+  admin             Float    @default(0)
+  countryPartner    Float    @default(0) @map("country_partner")
+  statePartner      Float    @default(0)
+  districtPartner   Float    @default(0)
+  saathi            Float    @default(0)
+  member            Float    @default(0)
+  servicePrice      Float    @default(0)
+  referral          Float    @default(0)
+  referralMinAmount Float    @default(0)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([schemeId, subServiceId])
+  @@index([schemeId])
+  @@index([subServiceId])
+}
+
+model TransactionLog {
+  id                  String   @id @default(uuid())
+  settlementKey       String?  @unique
+  subServiceId        String
+  subService          CommissionSubService @relation(fields: [subServiceId], references: [id])
+  amount              Float
+  transactionDoneById String
+  transactionDoneForId String?
+  referenceId         String?
+  referenceType       String?
+  metadata            Json?
+  status              String   @default("SUCCESS")
+  commissionHistory   CommissionHistory[]
+  adminIncome         AdminIncome[]
+  createdAt           DateTime @default(now())
+
+  @@index([subServiceId])
+  @@index([transactionDoneById])
+  @@index([referenceId])
+  @@index([referenceType])
+}
+
+model CommissionHistory {
+  id              String   @id @default(uuid())
+  userId          String
+  transactionId   String
+  transaction     TransactionLog @relation(fields: [transactionId], references: [id])
+  amount          Float
+  accountType     String   @default("commission") // commission, main
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([transactionId])
+}
+
+model AdminIncome {
+  id              String   @id @default(uuid())
+  transactionId   String
+  transaction     TransactionLog @relation(fields: [transactionId], references: [id])
+  amount          Float
+  type            String   @default("credit") // credit, debit
+  createdAt       DateTime @default(now())
+
+  @@index([transactionId])
+}
+
+// ============================================
+// 📱 App Services & UI Management
+// ============================================
+
+model AppSection {
+  id           String       @id @default(uuid())
+  name         String
+  iconUrl      String?
+  order        Int          @default(0)
+  isActive     Boolean      @default(true)
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  services     AppService[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([tenantId])
+}
+
+model AppService {
+  id            String       @id @default(uuid())
+  name          String
+  iconUrl       String?
+  sectionId     String
+  section       AppSection   @relation(fields: [sectionId], references: [id])
+  componentName String?      // For frontend routing
+  arguments     Json?        // Dynamic config for the service
+  order         Int          @default(0)
+  isActive      Boolean      @default(true)
+  
+  permissions   RoleServicePermission[]
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([sectionId])
+}
+
+model RoleServicePermission {
+  id          String     @id @default(uuid())
+  serviceId   String
+  service     AppService @relation(fields: [serviceId], references: [id])
+  identity    Identity   // Role that can see this service
+  
+  createdAt   DateTime   @default(now())
+
+  @@unique([serviceId, identity])
+}
+
+// ============================================
+// 📢 Admin Content Management
+// ============================================
+
+model Poster {
+  id          String   @id @default(uuid())
+  title       String?
+  imageUrl    String
+  linkUrl     String?
+  screen      String?  @default("HOME") // Where to show
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Announcement {
+  id          String   @id @default(uuid())
+  text        String
+  type        String   @default("TICKER") // TICKER, BANNER
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Notice {
+  id          String   @id @default(uuid())
+  title       String
+  message     String
+  imageUrl    String?
+  isPopup     Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ============================================
+// 📝 Survey & Membership Questions
+// ============================================
+
+model SurveyQuestion {
+  id          String         @id @default(uuid())
+  question    String
+  type        String         @default("TEXT") // TEXT, SELECT, MULTI_SELECT, RADIO
+  options     Json?          // Options for select/radio
+  order       Int            @default(0)
+  isRequired  Boolean        @default(true)
+  isActive    Boolean        @default(true)
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  answers     SurveyAnswer[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([tenantId])
+}
+
+model SurveyAnswer {
+  id          String         @id @default(uuid())
+  questionId  String
+  question    SurveyQuestion @relation(fields: [questionId], references: [id])
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  answer      String
+  createdAt   DateTime       @default(now())
+
+  @@index([questionId])
+  @@index([userId])
+}
+
+// ============================================
+// 💳 Wallet Enhancements
+// ============================================
+
+model QRCode {
+  id          String   @id @default(uuid())
+  title       String
+  imageUrl    String
+  isActive    Boolean  @default(true)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model WalletTransaction {
+  id          String   @id @default(uuid())
+  walletId    String
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+  amount      Float
+  type        String   // CREDIT, DEBIT
+  category    String   // TOPUP, REFUND, SERVICE_CHARGE, ADMIN_ADJUSTMENT, COMMISSION
+  status      String   @default("SUCCESS")
+  referenceId String?  // ID of the related object (e.g. TransactionLog ID)
+  description String?
+  tags        String[] // Flexible tagging for reporting
+  metadata    Json?    // Dynamic txn details
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+
+  // Transaction Location Data
+  txnState    String?
+  txnCity     String?
+  txnPincode  String?
+  txnLat      Float?
+  txnLong     Float?
+
+  @@index([walletId])
+  @@index([category])
+  @@index([tenantId])
+}
+
+model SupportTicket {
+  id           String           @id @default(uuid())
+  ticketNumber String           @unique // e.g., TKT-1001
+  subject      String
+  description  String?
+  status       TicketStatus     @default(OPEN)
+  priority     TicketPriority   @default(MEDIUM)
+  
+  creatorId    String
+  creator      User             @relation("CreatedTickets", fields: [creatorId], references: [id])
+  
+  assignedToId String
+  assignedTo   User             @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  
+  tenantId     String
+  
+  messages     SupportMessage[]
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  closedAt     DateTime?
+
+  @@index([creatorId])
+  @@index([assignedToId])
+  @@index([tenantId])
+}
+
+model SupportMessage {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  
+  senderId  String
+  sender    User     @relation("SentSupportMessages", fields: [senderId], references: [id])
+  
+  message   String   @db.Text
+  fileUrl   String?
+  
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
+enum TicketStatus {
+  OPEN
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model MarketingContent {
+  id            String         @id @default(uuid())
+  type          MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER
+  title         String
+  content       String?        @db.Text
+  imageUrl      String?
+  linkUrl       String?
+  
+  // Targeting
+  targetType    TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC
+  targetIdentity Identity?     // If targetType is IDENTITY
+  targetUserId  String?        // If targetType is BRANCH or SPECIFIC
+  
+  isActive      Boolean        @default(true)
+  isGlobalDeactivated Boolean  @default(false) // Master switch for Super Admin
+  
+  creatorId     String
+  creator       User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  
+  tenantId      String
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([type])
+}
+
+enum MarketingType {
+  BANNER
+  NOTIFICATION
+  NOTICE
+  HOVER
+}
+
+enum TargetType {
+  ALL
+  IDENTITY
+  BRANCH
+  SPECIFIC
+}
+
+model UserLoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  ip        String?
+  state     String?
+  city      String?
+  pincode   String?
+  lat       Float?
+  long      Float?
+  
+  deviceInfo String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([pincode])
+  @@index([createdAt])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation("UserNotifications", fields: [userId], references: [id])
+  title       String
+  message     String
+  type        String   @default("GENERAL") // TRANSFER_REQUEST, WITHDRAWN, COMPLETED
+  isRead      Boolean  @default(false)
+  metadata    Json?    // Related object IDs
+  tenantId    String
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([createdAt])
+}
+
+model ServiceFeeConfig {
+  id            String   @id @default(uuid())
+  serviceType   String   // IME, PRABHU
+  amount        Float
+  tenantId      String
+  updatedAt     DateTime @updatedAt
+}
+
+// Access Control & Feature Restriction
+model IdentityControl {
+  id        String   @id @default(uuid())
+  tenantId  String
+  identity  Identity
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, identity])
+  @@index([tenantId])
+}
+
+model FeatureRestriction {
+  id          String   @id @default(uuid())
+  tenantId    String
+  identity    Identity
+  serviceId   String   // e.g., "PAYOUT", "IME", "MEMBERSHIP_PROVISIONING"
+  state       String?  // Optional: restrict to specific state
+  district    String?  // Optional: restrict to specific district
+  isRestricted Boolean @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, identity, serviceId, state, district])
+  @@index([tenantId, identity])
+}
+
+// ============================================================
+// NEW: Unified Application System (runs alongside existing tables)
+// ============================================================
+
+model Application {
+  id                String   @id @default(uuid())
+  userId            String   // Target user (who is being upgraded)
+  createdById       String   // Who submitted (self or admin/partner)
+  tenantId          String
+
+  targetIdentity    String   // MEMBER, SAATHI, BUSINESS_USER, DISTRICT_PARTNER, etc.
+  status            String   @default("PENDING") // PENDING, APPROVED, REJECTED, PAYMENT_PENDING
+  rejectionReason   String?
+  approvedBy        String?
+  approvedAt        DateTime?
+
+  // Payment
+  paymentMethod     String   @default("RAZORPAY") // FREE, CASH, WALLET, RAZORPAY
+  paymentStatus     String   @default("NONE")     // NONE, PENDING, SUCCESS, FAILED
+  paymentAmount     Float    @default(0)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  // All form data stored as flexible JSON
+  submittedData     Json
+  metadata          Json?    // Extra internal processing info
+
+  // Geolocation captured at submission time
+  geoLat            Float?
+  geoLng            Float?
+  geoAccuracy       Float?
+  geoAddress        String?
+  geoCapturedAt     DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation("AppTarget",  fields: [userId],      references: [id])
+  creator           User     @relation("AppCreator", fields: [createdById], references: [id])
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // NEW: Back-references for layered profiles
+  memberProfile     MemberProfile?
+  saathiProfile     SaathiProfile?
+  partnerProfile    PartnerProfile?
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([targetIdentity])
+  @@index([status])
+  @@index([createdById])
+}
+
+// Layered Member Profile — created when MEMBER application is approved
+model MemberProfile {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  applicationId        String?  @unique
+  membershipApplicationId String? @unique
+  membershipApplication MembershipApplication? @relation(fields: [membershipApplicationId], references: [id])
+  
+  
+
+  maritalStatus        String?
+  citizenship          String?
+  isMigrantWorker      Boolean  @default(false)
+  incomeAboveThreshold Boolean  @default(false)
+  monthlyIncome        String?
+  occupation           String?
+  sectorId             String?
+  jobRoleId            String?
+  educationId          String?
+
+  currentAddressLine   String?
+  currentCity          String?
+  currentState         String?
+  currentPincode       String?
+  currentCountry       String?  @default("India")
+  currentAddressType   String?  @default("URBAN")
+  currentMunicipality  String?
+
+  permanentAddressLine String?
+  permanentCity        String?
+  permanentState       String?
+  permanentPincode     String?
+  permanentCountry     String?  @default("India")
+  permanentAddressType String?  @default("URBAN")
+  permanentMunicipality String?
+
+  documents            Json?    // Array of { type, number, frontUrl, backUrl }
+  profilePhoto         String?
+  metadata             Json?
+
+  approvedAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user                 User        @relation(fields: [userId],       references: [id])
+  application          Application? @relation(fields: [applicationId], references: [id])
+}
+
+// Layered Saathi Profile — created when SAATHI application is approved
+model SaathiProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  applicationId     String?  @unique
+
+  shopName          String?
+  shopType          String?
+  gstNumber         String?
+  businessRegNumber String?
+  yearsOfExperience Int?
+  shopOpeningTime   String?
+  shopClosingTime   String?
+
+  shopAddressLine   String?
+  shopCity          String?
+  shopState         String?
+  shopPincode       String?
+  shopCountry       String?  @default("India")
+  shopAddressType   String?  @default("URBAN")
+  shopMunicipality  String?
+
+  serviceCategory   String?
+  serviceType       String?
+  serviceName       String?
+  metadata          Json?
+
+  approvedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User        @relation(fields: [userId],       references: [id])
+  application       Application? @relation(fields: [applicationId], references: [id])
+  saathiApplication SaathiApplication? @relation(fields: [saathiApplicationId], references: [id])
+  saathiApplicationId String? @unique
+}
+
+// Layered Partner Profile — created when DP/SP/CP/WhiteLabel application is approved
+model PartnerProfile {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  applicationId        String?  @unique
+  businessPartnerApplicationId String? @unique
+  businessPartnerApplication BusinessPartnerApplication? @relation(fields: [businessPartnerApplicationId], references: [id])
+  
+  
+
+  partnerType          String   // DISTRICT_PARTNER | STATE_PARTNER | COUNTRY_HEAD | WHITE_LABEL_ADMIN
+
+  // White Label Company Info
+  companyName          String?
+  companyLogoUrl       String?
+  companyEmail         String?
+  companyMobile        String?
+  alternateMobile      String?
+  website              String?
+  companyRegNumber     String?
+  gstNumber            String?
+  panNumber            String?
+
+  companyAddressLine   String?
+  companyCity          String?
+  companyState         String?
+  companyPincode       String?
+  companyCountry       String?
+
+  adminName            String?
+  adminEmail           String?
+  adminMobile          String?
+  adminAlternateMobile String?
+  adminProfilePhoto    String?
+
+  // DP/SP/CP specific
+  partnerTypeDetail    String?
+  areaOfExpertise      String?
+  about                String?
+  serviceLocation      String?
+  experience           String?
+
+  currentAddressLine   String?
+  currentCity          String?
+  currentState         String?
+  currentPincode       String?
+  currentCountry       String?
+  currentAddressType   String?
+  currentMunicipality  String?
+
+  permanentAddressLine String?
+  permanentCity        String?
+  permanentState       String?
+  permanentPincode     String?
+  permanentCountry     String?
+  permanentAddressType String?
+  permanentMunicipality String?
+
+  documents            Json?
+  metadata             Json?
+
+  approvedAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user                 User        @relation(fields: [userId],       references: [id])
+  application          Application? @relation(fields: [applicationId], references: [id])
+}
+
+
+
+
+
