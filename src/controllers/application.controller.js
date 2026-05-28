@@ -190,9 +190,9 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
       approvalStatus: 'APPROVED',
       approvedAt: new Date(),
       // Sync location for commission targeting
-      registrationState: applicationData.currentState,
-      registrationCity: applicationData.currentDistrict,
-      registrationPincode: applicationData.currentPincode
+      registrationState: applicationData.currentState || null,
+      registrationCity: applicationData.currentDistrict || null,
+      registrationPincode: applicationData.currentPincode || null
     }
   });
   // Ensure wallet exists
@@ -802,8 +802,14 @@ const applicationController = {
 
   // ── POST /api/applications/:id/approve ─────────────────────────────────────
   approve: async (req, res) => {
-    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
+    const adminId = req.user?.user_id || req.user?.id;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const adminIdentity = req.user?.identity || req.user?.role;
     const { id: applicationId } = req.params;
+
+    if (!adminId || !tenantId || !adminIdentity) {
+      return res.status(401).json({ success: false, message: "Invalid session. Please login again." });
+    }
 
     if (!['SUPER_ADMIN', 'WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'].includes(adminIdentity)) {
       return res.status(403).json({ success: false, message: "Not authorized to approve applications." });
@@ -831,7 +837,7 @@ const applicationController = {
       if (settlementAmount > 0) {
         // 1) Always credit tenant corporate wallet first. If payment was already
         // settled during verification/rejection, this is a no-op.
-        await settleApplicationFeeToCorporateWallet(app, "APPLICATION_APPROVAL");
+        await safeSettleApplicationFeeToCorporateWallet(app, "APPLICATION_APPROVAL");
 
         // 2) Commission should not rollback wallet settlement.
         const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };
@@ -841,7 +847,9 @@ const applicationController = {
             const subService = await prisma.commissionSubService.findFirst({
               where: { OR: [{ slug }, { name: { contains: slug.replace('_fee', ''), mode: 'insensitive' } }] }
             });
-            if (!subService) return;
+            if (!subService) {
+              console.warn(`[Commission] No sub-service found for ${slug}; skipping commission for application ${app.id}`);
+            } else {
             await commissionService.processCommission(
               settlementAmount,
               subService.id,
@@ -854,6 +862,7 @@ const applicationController = {
                 stopAtUserId: app.createdById || null
               }
             );
+            }
           } catch (commErr) {
             console.error('[Commission] Failed after wallet settlement:', commErr);
           }
@@ -881,7 +890,12 @@ const applicationController = {
       res.json({ success: true, message: `${app.targetIdentity} application approved. Identity upgraded.`, data: { applicationId, userId: app.userId } });
     } catch (err) {
       console.error('[Application.approve]', err);
-      res.status(500).json({ success: false, message: "Internal server error" });
+      res.status(500).json({
+        success: false,
+        message: err.message || "Internal server error",
+        code: err.code || undefined,
+        target: err.meta?.target || undefined
+      });
     }
   },
 
