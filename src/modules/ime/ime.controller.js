@@ -1,4 +1,4 @@
-const imeService = require('./ime.service');
+  const imeService = require('./ime.service');
 const imeDataService = require('./ime-data.service');
 const imeStorageService = require('./ime.storage.service');
 const walletService = require('../../services/wallet.service');
@@ -1785,7 +1785,19 @@ const getStoredTransactions = async (req, res) => {
         updatedAt: true
       }
     });
-    return ok(res, 'Stored transactions retrieved', { data: transactions });
+    const normalizedTransactions = transactions.map((transaction) => ({
+      ...transaction,
+      TransactionId: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      RefNo: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      Amount: transaction.collectAmount ?? transaction.sendAmount ?? transaction.payoutAmount ?? null,
+      TxnCharge: transaction.serviceCharge ?? 0,
+      PaymentType: transaction.paymentMode || null,
+      ReceiverName: transaction.receiverName || null,
+      Receiver: transaction.receiverName || null,
+      PaymentStatus: transaction.status || null
+    }));
+
+    return ok(res, 'Stored transactions retrieved', { data: normalizedTransactions });
   } catch (error) {
     return fail(res, error);
   }
