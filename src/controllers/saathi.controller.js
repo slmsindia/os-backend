@@ -65,7 +65,7 @@ const saathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 1000;
+          amount = parsed.amount !== undefined ? parsed.amount : 1000;
         } catch (e) {
           amount = parseFloat(feeSetting.value);
         }
