@@ -273,9 +273,9 @@ model BusinessApplication {
 }
 
 model JobPost {
-  id                String   @id @default(uuid())
-  businessId        String
-  business          BusinessProfile @relation(fields: [businessId], references: [id])
+   id                String   @id @default(uuid())
+  businessId        String?
+  business          BusinessProfile? @relation(fields: [businessId], references: [id])
   creatorId         String
   creator           User     @relation(fields: [creatorId], references: [id])
   
