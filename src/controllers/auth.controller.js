@@ -1,26 +1,10 @@
 const bcrypt = require("bcrypt");
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
 const prisma = require("../lib/prisma");
 const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
 const { generateToken } = require("../utils/jwt");
 const { logAction } = require("../utils/audit");
 const { generateUuid, generateReferralCode } = require("../utils/id");
 
-<<<<<<< HEAD
-=======
-const { PrismaClient } = require("@prisma/client");
-const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
-const { generateToken } = require("../utils/jwt");
-const { logAction } = require("../utils/audit");
-const { generateUuid } = require("../utils/id");
-
-const prisma = new PrismaClient();
->>>>>>> main
-=======
->>>>>>> origin/main
 
 const isStrongPassword = (password) => {
   if (typeof password !== "string") return false;
@@ -31,10 +15,6 @@ const isStrongPassword = (password) => {
   return hasLength && hasUppercase && hasNumber && hasSpecial;
 };
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
 const isAtLeast18 = (dateOfBirth) => {
   const birthDate = new Date(dateOfBirth);
   if (Number.isNaN(birthDate.getTime())) return false;
@@ -49,11 +29,6 @@ const isAtLeast18 = (dateOfBirth) => {
   return age >= 18;
 };
 
-<<<<<<< HEAD
-=======
->>>>>>> main
-=======
->>>>>>> origin/main
 const getOrCreateRole = async (roleName) => {
   let role = await prisma.role.findUnique({ where: { name: roleName } });
   if (!role) {
@@ -63,43 +38,14 @@ const getOrCreateRole = async (roleName) => {
 };
 
 const authController = {
-<<<<<<< HEAD
-<<<<<<< HEAD
   sendOtp: async (req, res) => {
     const { mobile, type } = req.body;
-=======
-  checkMobile: async (req, res) => {
-    const { mobile } = req.body;
-    if (!mobile) return res.status(400).json({ success: false, message: "Mobile required" });
-    try {
-      const user = await prisma.user.findUnique({ where: { mobile } });
-      if (user) {
-        return res.json({ success: true, exists: true });
-      } else {
-        return res.json({ success: true, exists: false });
-      }
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Internal server error" });
-    }
-  },
-  sendOtp: async (req, res) => {
-    const { mobile } = req.body;
->>>>>>> main
-=======
-  sendOtp: async (req, res) => {
-    const { mobile, type } = req.body;
->>>>>>> origin/main
 
     if (!/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ success: false, message: "invalid mobile" });
     }
 
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: req.tenant_id }
       });
@@ -122,14 +68,6 @@ const authController = {
           success: false,
           message: "Registration is not allowed on this system domain. Please use a specific partner domain."
         });
-<<<<<<< HEAD
-=======
-      const existing = await prisma.user.findUnique({ where: { mobile } });
-      if (existing) {
-        return res.status(409).json({ success: false, message: "already registered" });
->>>>>>> main
-=======
->>>>>>> origin/main
       }
 
       const success = await sendOtp(mobile);
@@ -165,18 +103,8 @@ const authController = {
     }
 
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: req.tenant_id },
-=======
-      const existing = await prisma.user.findUnique({
-        where: { mobile },
->>>>>>> main
-=======
-      const existing = await prisma.user.findFirst({
-        where: { mobile, tenantId: req.tenant_id },
->>>>>>> origin/main
         include: { roles: { include: { role: true } } }
       });
 
@@ -205,15 +133,7 @@ const authController = {
     }
 
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
       const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
-=======
-      const existing = await prisma.user.findUnique({ where: { mobile } });
->>>>>>> main
-=======
-      const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
->>>>>>> origin/main
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
@@ -243,37 +163,17 @@ const authController = {
     }
 
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
       const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
-=======
-      const existing = await prisma.user.findUnique({ where: { mobile } });
->>>>>>> main
-=======
-      const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
->>>>>>> origin/main
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
       const verified = await isMobileVerified(mobile);
       if (!verified) {
         const otpResult = await verifyOtp(mobile, otp);
         if (!otpResult.success) {
           return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
         }
-<<<<<<< HEAD
-=======
-      const otpResult = await verifyOtp(mobile, otp);
-      if (!otpResult.success) {
-        return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
->>>>>>> main
-=======
->>>>>>> origin/main
       }
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -290,10 +190,6 @@ const authController = {
   },
 
   register: async (req, res) => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
     const {
       mobile,
       email,
@@ -308,22 +204,11 @@ const authController = {
       geolocation
     } = req.body;
     let tenantId = bodyTenantId || req.tenant_id;
-<<<<<<< HEAD
-=======
-    const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
-    const tenantId = req.tenant_id;
->>>>>>> main
-=======
->>>>>>> origin/main
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ message: "fields missing" });
     }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
     if (!isAtLeast18(dateOfBirth)) {
       return res.status(400).json({
         success: false,
@@ -419,31 +304,14 @@ const authController = {
       }
       */
 
-<<<<<<< HEAD
-=======
-    try {
->>>>>>> main
-=======
->>>>>>> origin/main
       if (!(await isMobileVerified(mobile))) {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: resolvedTenantId }
       });
       if (existing) return res.status(409).json({ message: "already registered in this white label" });
-<<<<<<< HEAD
-=======
-      const existing = await prisma.user.findUnique({ where: { mobile } });
-      if (existing) return res.status(409).json({ message: "already registered" });
->>>>>>> main
-=======
->>>>>>> origin/main
 
       const defaultRole = await getOrCreateRole("USER");
       const hash = await bcrypt.hash(password, 10);
@@ -452,10 +320,6 @@ const authController = {
         data: {
           id: generateUuid(),
           mobile,
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
           email: email || null,
           fullName,
           profilePhoto: profilePhoto || null,
@@ -475,18 +339,6 @@ const authController = {
           registrationLong: geolocation?.lng ?? null,
           registrationAddress: liveAddress || null,
           registrationGeo: geolocation || null,
-<<<<<<< HEAD
-=======
-          fullName,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          password: hash,
-          tenantId,
-          identity: "USER",
-          referredBy: referredBy || null,
->>>>>>> main
-=======
->>>>>>> origin/main
           roles: {
             create: {
               id: generateUuid(),
@@ -502,15 +354,7 @@ const authController = {
       await logAction({
         userId: user.id,
         action: "USER_REGISTER",
-<<<<<<< HEAD
-<<<<<<< HEAD
         tenantId: resolvedTenantId,
-=======
-        tenantId,
->>>>>>> main
-=======
-        tenantId: resolvedTenantId,
->>>>>>> origin/main
         metadata: { mobile: user.mobile }
       });
 
@@ -536,10 +380,6 @@ const authController = {
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
       // 1. Try to find user in the current tenant
       let user = await prisma.user.findFirst({
         where: { mobile, tenantId },
@@ -605,20 +445,6 @@ const authController = {
       }
 
 
-<<<<<<< HEAD
-=======
-      const user = await prisma.user.findFirst({
-        where: { mobile },
-        include: { roles: { include: { role: true } } }
-      });
-
-      if (!user || !(await bcrypt.compare(password, user.password))) {
-        return res.status(401).json({ message: "invalid mobile or pass" });
-      }
-
->>>>>>> main
-=======
->>>>>>> origin/main
       const accessToken = generateToken(user);
 
       await logAction({
@@ -635,23 +461,12 @@ const authController = {
         roles: user.roles.map((ur) => ur.role.name)
       });
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
       console.error("Login Error:", err);
       res.status(500).json({
         success: false,
         message: "Internal server error during login",
         error: process.env.NODE_ENV !== 'production' ? err.message : undefined
       });
-<<<<<<< HEAD
-=======
-      console.error(err);
-      res.status(500).json({ message: "error" });
->>>>>>> main
-=======
->>>>>>> origin/main
     }
   },
 
