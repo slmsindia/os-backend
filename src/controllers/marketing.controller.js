@@ -38,6 +38,17 @@ const marketingController = {
           return res.status(400).json({ success: false, message: "Pop-ups only support image formats. Videos or external video streams are not allowed." });
         }
       }
+    } else if (type === 'RIBBON') {
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, message: "Description (content) is mandatory for ribbons" });
+      }
+    } else if (type === 'NOTIFICATION') {
+      if (!title || !title.trim()) {
+        return res.status(400).json({ success: false, message: "Title is mandatory for notifications" });
+      }
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, message: "Description (content) is mandatory for notifications" });
+      }
     } else {
       // Banners or other types
       if (!mediaLink) {
@@ -119,8 +130,8 @@ const marketingController = {
 
       // Filter content based on hierarchical targeting rules
       const myContent = allContent.filter(item => {
-        // Creator Exclusion: The user who created the pop-up does not get it on their dashboard
-        if (item.type === 'POPUP' && item.creatorId === userId) {
+        // Creator Exclusion: The user who created the pop-up/ribbon does not get it on their dashboard
+        if ((item.type === 'POPUP' || item.type === 'RIBBON') && item.creatorId === userId) {
           return false;
         }
 
@@ -273,6 +284,17 @@ const marketingController = {
           if (isVideo) {
             return res.status(400).json({ success: false, message: "Pop-ups only support image formats. Videos or external video streams are not allowed." });
           }
+        }
+      } else if (resolvedType === 'RIBBON') {
+        if (content !== undefined && (!finalContent || !finalContent.trim())) {
+          return res.status(400).json({ success: false, message: "Description (content) is mandatory for ribbons" });
+        }
+      } else if (resolvedType === 'NOTIFICATION') {
+        if (title !== undefined && (!finalTitle || !finalTitle.trim())) {
+          return res.status(400).json({ success: false, message: "Title is mandatory for notifications" });
+        }
+        if (content !== undefined && (!finalContent || !finalContent.trim())) {
+          return res.status(400).json({ success: false, message: "Description (content) is mandatory for notifications" });
         }
       } else {
         // Banners or other types
