@@ -7,4 +7,7 @@ router.get("/states", locationController.getStates);
 router.get("/districts", locationController.getDistricts);
 router.get("/municipalities", locationController.getMunicipalities);
 
+router.post("/proxy/states", locationController.proxyStates);
+router.post("/proxy/cities", locationController.proxyCities);
+
 module.exports = router;

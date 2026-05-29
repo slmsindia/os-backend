@@ -1832,28 +1832,39 @@ enum TicketPriority {
 }
 
 model MarketingContent {
-  id            String         @id @default(uuid())
-  type          MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER
-  title         String
-  content       String?        @db.Text
-  imageUrl      String?
-  linkUrl       String?
+  id                  String         @id @default(uuid())
+  type                MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER, POPUP, RIBBON
+  title               String?        // Optional
+  content             String?        @db.Text
+  imageUrl            String?
+  linkUrl             String?
   
   // Targeting
-  targetType    TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC
-  targetIdentity Identity?     // If targetType is IDENTITY
-  targetUserId  String?        // If targetType is BRANCH or SPECIFIC
+  targetType          TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC, LOCATION
+  targetIdentity      Identity?     // If targetType is IDENTITY
+  targetUserId        String?        // If targetType is BRANCH or SPECIFIC
   
-  isActive      Boolean        @default(true)
-  isGlobalDeactivated Boolean  @default(false) // Master switch for Super Admin
+  // Advanced Multi-Location Targeting (PostgreSQL String Arrays)
+  targetCountries     String[]
+  targetStates        String[]
+  targetCities        String[]
+  targetDistricts     String[]
+  targetPincodes      String[]
   
-  creatorId     String
-  creator       User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  // Validity period
+  startDate           DateTime?
+  endDate             DateTime?
   
-  tenantId      String
+  isActive            Boolean        @default(false) // Deactivated by default
+  isGlobalDeactivated Boolean        @default(false) // Master switch for Super Admin
   
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  creatorId           String
+  creator             User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  
+  tenantId            String
+  
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([creatorId])
   @@index([tenantId])
@@ -1865,6 +1876,8 @@ enum MarketingType {
   NOTIFICATION
   NOTICE
   HOVER
+  POPUP
+  RIBBON
 }
 
 enum TargetType {
@@ -1872,6 +1885,7 @@ enum TargetType {
   IDENTITY
   BRANCH
   SPECIFIC
+  LOCATION
 }
 
 model UserLoginLog {
