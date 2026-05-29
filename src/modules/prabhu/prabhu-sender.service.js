@@ -1,6 +1,13 @@
+<<<<<<< HEAD
 const { generateUuid } = require('../../utils/id');
 
 const prisma = require('../../lib/prisma');
+=======
+const { PrismaClient } = require('@prisma/client');
+const { generateUuid } = require('../../utils/id');
+
+const prisma = new PrismaClient();
+>>>>>>> main
 
 const asStringOrNull = (value) => {
   const normalized = String(value || '').trim();

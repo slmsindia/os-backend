@@ -2,9 +2,16 @@ const axios = require('axios');
 const https = require('https');
 const crypto = require('crypto');
 const soap = require('soap');
+<<<<<<< HEAD
 const { generateUuid } = require('../../utils/id');
 
 const prisma = require('../../lib/prisma');
+=======
+const { PrismaClient } = require('@prisma/client');
+const { generateUuid } = require('../../utils/id');
+
+const prisma = new PrismaClient();
+>>>>>>> main
 
 const SOAP_OPERATIONS = {
   GetStateDistrict: 'GetStateDistrict',
@@ -215,7 +222,11 @@ const getEkycConfig = () => {
   const baseUrl = (process.env.PRABHU_CSP_BASE_URL || 'https://ekyc-sandbox.prabhuindia.com/testkya').trim();
   const baseRoute = '/v1';
   const baseRoute2 = '/v1';
+<<<<<<< HEAD
   const agentCodeRaw = (process.env.PRABHU_CSPCODE || process.env.PRABHU_AGENT_CODE || '').trim();
+=======
+  const agentCodeRaw = (process.env.PRABHU_AGENT_CODE || '').trim();
+>>>>>>> main
   return {
     active,
     userName,

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 const app = require("./app");
@@ -46,3 +47,13 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("beforeExit", (code) => {
   console.log(`Node event loop is empty before exit. code=${code}`);
 });
+=======
+require("dotenv").config();
+const app = require("./app");
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
+});
+>>>>>>> main

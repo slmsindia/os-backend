@@ -1,17 +1,24 @@
 const express = require("express");
 const adminController = require("../controllers/admin.controller");
+<<<<<<< HEAD
 const adminMembershipController = require("../controllers/admin.membership.controller");
 const adminConfigController = require("../controllers/admin.config.controller");
+=======
+>>>>>>> main
 const authMiddleware = require("../middleware/auth.middleware");
 const { checkRole } = require("../middleware/role.middleware");
 // Assuming we'll use identity check instead of role check for these
 const { checkIdentity } = require("../middleware/identity.middleware");
+<<<<<<< HEAD
 const { checkPermission } = require("../middleware/permission.middleware");
+=======
+>>>>>>> main
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
+<<<<<<< HEAD
 // Get dashboard statistics (Moved to top for priority)
 router.get("/stats", checkPermission("PERM_VIEW_REPORTS"), adminController.getStats);
 
@@ -50,5 +57,11 @@ router.post("/transfer-hierarchy", checkIdentity(["WHITE_LABEL_ADMIN", "SUPER_AD
 // Service Fee Config (White Label Admin only)
 router.get("/config/service-fees", checkIdentity(["WHITE_LABEL_ADMIN"]), adminConfigController.getServiceFees);
 router.post("/config/service-fees", checkIdentity(["WHITE_LABEL_ADMIN"]), adminConfigController.setServiceFee);
+=======
+router.post("/create-state", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN"]), adminController.createState);
+router.post("/create-district", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER"]), adminController.createDistrict);
+router.post("/create-agent", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER"]), adminController.createAgent);
+router.post("/create-user", checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "STATE_PARTNER", "DISTRICT_PARTNER", "AGENT"]), adminController.createUser);
+>>>>>>> main
 
 module.exports = router;

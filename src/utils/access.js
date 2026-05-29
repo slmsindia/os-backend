@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
+=======
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+>>>>>>> main
 
 const isDescendant = async (parentId, childId, depth = 0) => {
   if (!parentId || !childId || depth > 10) return false; // safety break

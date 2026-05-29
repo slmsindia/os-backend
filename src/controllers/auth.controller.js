@@ -1,10 +1,20 @@
 const bcrypt = require("bcrypt");
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
 const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
 const { generateToken } = require("../utils/jwt");
 const { logAction } = require("../utils/audit");
 const { generateUuid, generateReferralCode } = require("../utils/id");
 
+=======
+const { PrismaClient } = require("@prisma/client");
+const { sendOtp, verifyOtp, isMobileVerified } = require("../services/otp.service");
+const { generateToken } = require("../utils/jwt");
+const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
+
+const prisma = new PrismaClient();
+>>>>>>> main
 
 const isStrongPassword = (password) => {
   if (typeof password !== "string") return false;
@@ -15,6 +25,7 @@ const isStrongPassword = (password) => {
   return hasLength && hasUppercase && hasNumber && hasSpecial;
 };
 
+<<<<<<< HEAD
 const isAtLeast18 = (dateOfBirth) => {
   const birthDate = new Date(dateOfBirth);
   if (Number.isNaN(birthDate.getTime())) return false;
@@ -29,6 +40,8 @@ const isAtLeast18 = (dateOfBirth) => {
   return age >= 18;
 };
 
+=======
+>>>>>>> main
 const getOrCreateRole = async (roleName) => {
   let role = await prisma.role.findUnique({ where: { name: roleName } });
   if (!role) {
@@ -38,14 +51,35 @@ const getOrCreateRole = async (roleName) => {
 };
 
 const authController = {
+<<<<<<< HEAD
   sendOtp: async (req, res) => {
     const { mobile, type } = req.body;
+=======
+  checkMobile: async (req, res) => {
+    const { mobile } = req.body;
+    if (!mobile) return res.status(400).json({ success: false, message: "Mobile required" });
+    try {
+      const user = await prisma.user.findUnique({ where: { mobile } });
+      if (user) {
+        return res.json({ success: true, exists: true });
+      } else {
+        return res.json({ success: true, exists: false });
+      }
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  },
+  sendOtp: async (req, res) => {
+    const { mobile } = req.body;
+>>>>>>> main
 
     if (!/^[6-9]\d{9}$/.test(mobile)) {
       return res.status(400).json({ success: false, message: "invalid mobile" });
     }
 
     try {
+<<<<<<< HEAD
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: req.tenant_id }
       });
@@ -68,6 +102,11 @@ const authController = {
           success: false,
           message: "Registration is not allowed on this system domain. Please use a specific partner domain."
         });
+=======
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+      if (existing) {
+        return res.status(409).json({ success: false, message: "already registered" });
+>>>>>>> main
       }
 
       const success = await sendOtp(mobile);
@@ -103,8 +142,13 @@ const authController = {
     }
 
     try {
+<<<<<<< HEAD
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: req.tenant_id },
+=======
+      const existing = await prisma.user.findUnique({
+        where: { mobile },
+>>>>>>> main
         include: { roles: { include: { role: true } } }
       });
 
@@ -133,7 +177,11 @@ const authController = {
     }
 
     try {
+<<<<<<< HEAD
       const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
+=======
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+>>>>>>> main
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
@@ -163,17 +211,27 @@ const authController = {
     }
 
     try {
+<<<<<<< HEAD
       const existing = await prisma.user.findFirst({ where: { mobile, tenantId: req.tenant_id } });
+=======
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+>>>>>>> main
       if (!existing) {
         return res.status(404).json({ success: false, message: "user not found" });
       }
 
+<<<<<<< HEAD
       const verified = await isMobileVerified(mobile);
       if (!verified) {
         const otpResult = await verifyOtp(mobile, otp);
         if (!otpResult.success) {
           return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
         }
+=======
+      const otpResult = await verifyOtp(mobile, otp);
+      if (!otpResult.success) {
+        return res.status(400).json({ success: false, message: otpResult.message || "invalid otp" });
+>>>>>>> main
       }
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -190,6 +248,7 @@ const authController = {
   },
 
   register: async (req, res) => {
+<<<<<<< HEAD
     const {
       mobile,
       email,
@@ -204,11 +263,16 @@ const authController = {
       geolocation
     } = req.body;
     let tenantId = bodyTenantId || req.tenant_id;
+=======
+    const { mobile, fullName, gender, dateOfBirth, password, referredBy } = req.body;
+    const tenantId = req.tenant_id;
+>>>>>>> main
 
     if (!mobile || !fullName || !gender || !dateOfBirth || !password) {
       return res.status(400).json({ message: "fields missing" });
     }
 
+<<<<<<< HEAD
     if (!isAtLeast18(dateOfBirth)) {
       return res.status(400).json({
         success: false,
@@ -304,14 +368,22 @@ const authController = {
       }
       */
 
+=======
+    try {
+>>>>>>> main
       if (!(await isMobileVerified(mobile))) {
         return res.status(403).json({ message: "verify mobile first" });
       }
 
+<<<<<<< HEAD
       const existing = await prisma.user.findFirst({
         where: { mobile, tenantId: resolvedTenantId }
       });
       if (existing) return res.status(409).json({ message: "already registered in this white label" });
+=======
+      const existing = await prisma.user.findUnique({ where: { mobile } });
+      if (existing) return res.status(409).json({ message: "already registered" });
+>>>>>>> main
 
       const defaultRole = await getOrCreateRole("USER");
       const hash = await bcrypt.hash(password, 10);
@@ -320,6 +392,7 @@ const authController = {
         data: {
           id: generateUuid(),
           mobile,
+<<<<<<< HEAD
           email: email || null,
           fullName,
           profilePhoto: profilePhoto || null,
@@ -339,6 +412,15 @@ const authController = {
           registrationLong: geolocation?.lng ?? null,
           registrationAddress: liveAddress || null,
           registrationGeo: geolocation || null,
+=======
+          fullName,
+          gender,
+          dateOfBirth: new Date(dateOfBirth),
+          password: hash,
+          tenantId,
+          identity: "USER",
+          referredBy: referredBy || null,
+>>>>>>> main
           roles: {
             create: {
               id: generateUuid(),
@@ -354,7 +436,11 @@ const authController = {
       await logAction({
         userId: user.id,
         action: "USER_REGISTER",
+<<<<<<< HEAD
         tenantId: resolvedTenantId,
+=======
+        tenantId,
+>>>>>>> main
         metadata: { mobile: user.mobile }
       });
 
@@ -380,6 +466,7 @@ const authController = {
     if (!mobile || !password) return res.status(400).json({ message: "credentials required" });
 
     try {
+<<<<<<< HEAD
       // 1. Try to find user in the current tenant
       let user = await prisma.user.findFirst({
         where: { mobile, tenantId },
@@ -445,6 +532,17 @@ const authController = {
       }
 
 
+=======
+      const user = await prisma.user.findFirst({
+        where: { mobile },
+        include: { roles: { include: { role: true } } }
+      });
+
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ message: "invalid mobile or pass" });
+      }
+
+>>>>>>> main
       const accessToken = generateToken(user);
 
       await logAction({
@@ -461,12 +559,17 @@ const authController = {
         roles: user.roles.map((ur) => ur.role.name)
       });
     } catch (err) {
+<<<<<<< HEAD
       console.error("Login Error:", err);
       res.status(500).json({
         success: false,
         message: "Internal server error during login",
         error: process.env.NODE_ENV !== 'production' ? err.message : undefined
       });
+=======
+      console.error(err);
+      res.status(500).json({ message: "error" });
+>>>>>>> main
     }
   },
 

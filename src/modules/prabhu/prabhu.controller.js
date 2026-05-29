@@ -13,7 +13,10 @@ const prabhuService = require('./prabhu.service');
 const prabhuDataService = require('./prabhu-data.service');
 const prabhuReceiverService = require('./prabhu-receiver.service');
 const prabhuSenderService = require('./prabhu-sender.service');
+<<<<<<< HEAD
 const walletService = require('../../services/wallet.service');
+=======
+>>>>>>> main
 
 const ok = (res, message, payload) => {
   return res.json({
@@ -117,6 +120,7 @@ const extractReceiverList = (payload = {}) => {
   ].filter(Boolean);
 };
 
+<<<<<<< HEAD
 const normalizeReceiverIdentity = (receiver = {}) => ({
   receiverId: String(receiver?.receiverId || receiver?.ReceiverId || receiver?.id || '').trim(),
   receiverName: String(
@@ -206,6 +210,8 @@ const resolveReceiverDetails = async (payload = {}, context = {}) => {
   return resolved;
 };
 
+=======
+>>>>>>> main
 const extractStateDistrictRows = (payload = {}) => {
   return [
     ...toArray(payload.data),
@@ -292,9 +298,13 @@ const getCustomerByMobile = async (req, res) => {
 
 const createCustomer = async (req, res) => {
   try {
+<<<<<<< HEAD
     console.log('DEBUG - Prabhu CreateCustomer Request Body:', JSON.stringify(req.body, null, 2));
 
     const configuredCspCode = (process.env.PRABHU_CSPCODE || process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
+=======
+    const configuredCspCode = (process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
+>>>>>>> main
 
     const requestBody = {
       ...(req.body || {})
@@ -310,8 +320,11 @@ const createCustomer = async (req, res) => {
     requestBody.cspCode = effectiveCspCode;
     requestBody.CSPCode = effectiveCspCode;
 
+<<<<<<< HEAD
     console.log('DEBUG - CSP Code Set:', { configuredCspCode, effectiveCspCode, finalCspCode: requestBody.cspCode });
 
+=======
+>>>>>>> main
     await normalizeIndiaTemporaryStateCode(requestBody, getRequestContext(req));
 
     const result = await prabhuService.callEndpoint('CreateCustomer', requestBody, getRequestContext(req));
@@ -327,6 +340,14 @@ const createCustomer = async (req, res) => {
       mobile: requestBody?.PhoneNumber || requestBody?.mobile || requestBody?.phone || '',
       gender: requestBody?.gender,
       dateOfBirth: requestBody?.dob,
+<<<<<<< HEAD
+=======
+      address: requestBody?.address,
+      city: requestBody?.city,
+      district: requestBody?.district,
+      state: requestBody?.state,
+      nationality: requestBody?.nationality,
+>>>>>>> main
       email: requestBody?.email,
       idType: requestBody?.IDType || requestBody?.idType,
       idNumber: requestBody?.IDNumber || requestBody?.idNumber,
@@ -387,8 +408,12 @@ const workflowStep1Customer = async (req, res) => {
         customerId: req.body?.customerId,
         customerFullName: req.body?.customerFullName || req.body?.name,
         cspMobile: req.body?.cspMobile,
+<<<<<<< HEAD
         cspName: req.body?.cspName,
         idType: req.body?.idType || req.body?.IDType || '12' // Defaulting to 12 if not provided
+=======
+        cspName: req.body?.cspName
+>>>>>>> main
       }, getRequestContext(req));
 
       return ok(res, 'Customer not found. CreateCustomer OTP sent.', {
@@ -721,6 +746,7 @@ module.exports = {
   complianceTransactions: proxyOperation('ComplianceTransactions', 'Compliance transactions success'),
   uploadDocument: proxyOperation('UploadDocument', 'Upload document success'),
   sendTransaction: async (req, res) => {
+<<<<<<< HEAD
     let deductedWallet = null;
     let transferAmount = 0;
     let walletRefunded = false;
@@ -808,6 +834,16 @@ module.exports = {
         });
       }
 
+=======
+    try {
+      const payload = {
+        ...req.body,
+        cspCode: req.body.cspCode || process.env.PRABHU_CSP_CODE
+      };
+      const result = await prabhuService.callEndpoint('SendTransaction', payload, getRequestContext(req));
+      return ok(res, 'Send transaction success', { data: result.data });
+    } catch (error) {
+>>>>>>> main
       return fail(res, error);
     }
   },
@@ -852,6 +888,7 @@ module.exports = {
   listPrabhuSenders,
   upsertPrabhuSender,
   cspUniqueRefPoll
+<<<<<<< HEAD
 };
 
 const getTransferAmount = (payload = {}) => {
@@ -874,3 +911,6 @@ const getTransferAmount = (payload = {}) => {
 
   return 0;
 };
+=======
+};
+>>>>>>> main

@@ -1,6 +1,9 @@
 generator client {
   provider = "prisma-client-js"
+<<<<<<< HEAD
   binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+=======
+>>>>>>> main
 }
 
 datasource db {
@@ -12,6 +15,7 @@ model Tenant {
   id        String   @id @default(uuid())
   name      String
   domain    String   @unique
+<<<<<<< HEAD
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   users     User[]
@@ -45,6 +49,10 @@ resumeTemplates ResumeTemplate[]
   membershipConfigs MembershipConfig[]
   globalSettings  GlobalSetting[]
   applications    Application[]
+=======
+  createdAt DateTime @default(now())
+  users     User[]
+>>>>>>> main
 }
 
 enum Gender {
@@ -57,6 +65,7 @@ enum Identity {
   SUPER_ADMIN
   WHITE_LABEL_ADMIN
   ADMIN
+<<<<<<< HEAD
   SUB_ADMIN
   SUPPORT_TEAM
   COUNTRY_HEAD
@@ -65,12 +74,17 @@ enum Identity {
   BUSINESS_PARTNER
   SAATHI
   MEMBER
+=======
+  STATE_PARTNER
+  DISTRICT_PARTNER
+>>>>>>> main
   AGENT
   USER
 }
 
 model User {
   id           String   @id @default(uuid())
+<<<<<<< HEAD
   mobile       String
   email        String?
   password     String
@@ -84,6 +98,15 @@ model User {
   approvedAt     DateTime?
   roleId         String?
   tenantId       String
+=======
+  mobile       String   @unique
+  password     String
+  fullName     String
+  gender       Gender
+  dateOfBirth  DateTime
+  identity     Identity @default(USER)
+  tenantId     String
+>>>>>>> main
   parentId     String?
   createdBy    String?
   referredBy   String?
@@ -101,6 +124,7 @@ model User {
 
   roles        UserRole[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
+<<<<<<< HEAD
   membershipApplications MembershipApplication[]
 
 
@@ -159,10 +183,13 @@ userJobApps    JobApplication[] @relation("UserJobApps")
   memberProfile       MemberProfile?
   saathiProfile       SaathiProfile?
   partnerProfile      PartnerProfile?
+=======
+>>>>>>> main
 
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
+<<<<<<< HEAD
   @@index([path])
   @@index([canApproveMembership])
   @@index([canApproveSaathi])
@@ -395,6 +422,12 @@ model JobFacility {
 }
 
 
+=======
+  @@index([referredBy])
+  @@index([referralCode])
+}
+
+>>>>>>> main
 model Role {
   id          String           @id @default(uuid())
   name        String           @unique
@@ -479,6 +512,7 @@ model OtpCode {
   @@index([mobile])
 }
 
+<<<<<<< HEAD
 // ============================================
 // 📘 IME API Response Storage Tables
 // ============================================
@@ -831,6 +865,8 @@ model ImeBankBranch {
 }
 
 // Legacy IME Data (for backward compatibility)
+=======
+>>>>>>> main
 model ImeData {
   id               String   @id @default(uuid())
   name             String
@@ -910,6 +946,7 @@ model PrabhuSender {
   @@index([mobile])
   @@index([createdAt])
 }
+<<<<<<< HEAD
 
 // Membership Configuration
 model MembershipConfig {
@@ -2165,3 +2202,5 @@ model PartnerProfile {
 
 
 
+=======
+>>>>>>> main

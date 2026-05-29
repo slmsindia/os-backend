@@ -3,7 +3,11 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const swaggerUi = require("swagger-ui-express");
+<<<<<<< HEAD
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
+=======
+require("dotenv").config();
+>>>>>>> main
 const openApiSpec = require("./docs/openapi");
 
 const tenantMiddleware = require("./middleware/tenant.middleware");
@@ -11,6 +15,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const deviceRoutes = require("./routes/device.routes");
 const adminRoutes = require("./routes/admin.routes");
+<<<<<<< HEAD
 const adminMembershipRoutes = require("./routes/admin.membership.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
@@ -37,10 +42,21 @@ const draftRoutes = require("./routes/draft.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const applicationRoutes = require("./routes/application.routes");
 const router = require("./routes/jobs.route");
+=======
+const superAdminRoutes = require("./routes/superadmin.routes");
+const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
+const imeRoutes = require("./modules/ime/ime.routes");
+const imeLegacyRoutes = require("./modules/ime/ime.legacy.routes");
+const cspRoutes = require("./modules/csp/csp.routes");
+const rdRoutes = require('./routes/rd.routes');
+const healthRoutes = require("./routes/health.routes");
+
+>>>>>>> main
 const app = express();
 
 app.use(helmet());
 app.use(cors({
+<<<<<<< HEAD
   origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [
     'http://localhost:3005',
     'http://localhost:5273',
@@ -58,6 +74,13 @@ app.use(cors({
 app.use(morgan("dev"));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+=======
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
+  credentials: true
+}));
+app.use(morgan("dev"));
+app.use(express.json());
+>>>>>>> main
 
 const buildSwaggerSpec = (req) => {
   const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
@@ -65,6 +88,7 @@ const buildSwaggerSpec = (req) => {
   const host = req.get("host");
   const requestServerUrl = `${protocol}://${host}`;
 
+<<<<<<< HEAD
   const allServerUrls = [
     { url: requestServerUrl },
     { url: "http://localhost:3005" },
@@ -83,6 +107,11 @@ const buildSwaggerSpec = (req) => {
   return {
     ...openApiSpec,
     servers: uniqueServers,
+=======
+  return {
+    ...openApiSpec,
+    servers: [{ url: requestServerUrl }, ...(openApiSpec.servers || []).filter((s) => s.url !== requestServerUrl)],
+>>>>>>> main
   };
 };
 
@@ -99,6 +128,7 @@ app.use(
   })
 );
 
+<<<<<<< HEAD
 app.use(tenantMiddleware);
 
 // Health check to verify deployment
@@ -110,10 +140,19 @@ app.get("/api/health-check", (req, res) => res.json({
 app.use("/api/jobs", router);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/membership", membershipRoutes);
+=======
+// Health check endpoint (no tenant required)
+app.use("/health", healthRoutes);
+
+app.use(tenantMiddleware);
+
+
+>>>>>>> main
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
+<<<<<<< HEAD
 app.use("/api/admin", adminMembershipRoutes);
 app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
@@ -142,11 +181,31 @@ app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
 app.use((req, res) => res.status(404).json({ message: "not found" }));
 
+=======
+app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/prabhu", prabhuRoutes);
+
+app.use("/api/ime", imeRoutes);
+app.use("/api/IME", imeLegacyRoutes);
+app.use("/api", cspRoutes);
+app.use('/api/rd', rdRoutes);
+
+app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
+
+
+app.use((req, res) => res.status(404).json({ message: "not found" }));
+
+
+>>>>>>> main
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
     message: "error",
+<<<<<<< HEAD
     error: process.env.NODE_ENV === "development" ? err.message : undefined
+=======
+    err: process.env.NODE_ENV === "dev" ? err.message : undefined
+>>>>>>> main
   });
 });
 

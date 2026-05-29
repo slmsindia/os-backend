@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
+=======
+const bcrypt = require("bcrypt");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+>>>>>>> main
 const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
 
 const superAdminController = {
+<<<<<<< HEAD
   /**
    * Create a new White Label (Tenant)
    */
@@ -26,11 +33,29 @@ const superAdminController = {
         const bcrypt = require("bcrypt");
         const hash = await bcrypt.hash(adminPassword, 10);
 
+=======
+  createTenant: async (req, res) => {
+    const { name, domain, adminMobile, adminName, adminPassword } = req.body;
+
+    if (!name || !domain || !adminMobile || !adminName || !adminPassword) {
+      return res.status(400).json({ success: false, message: "tenant and admin details are required" });
+    }
+
+    try {
+      // Use a transaction to ensure both tenant and admin are created
+      const result = await prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: { id: generateUuid(), name, domain }
+        });
+
+        const hash = await bcrypt.hash(adminPassword, 10);
+>>>>>>> main
         const admin = await tx.user.create({
           data: {
             id: generateUuid(),
             mobile: adminMobile,
             fullName: adminName,
+<<<<<<< HEAD
             email: adminEmail,
             password: hash,
             identity: "WHITE_LABEL_ADMIN",
@@ -49,6 +74,13 @@ const superAdminController = {
              tenantId: tenant.id,
              isCorporate: true,
              balance: 0
+=======
+            password: hash,
+            gender: "MALE",
+            dateOfBirth: new Date("1990-01-01"),
+            identity: "ADMIN",
+            tenantId: tenant.id
+>>>>>>> main
           }
         });
 
@@ -56,6 +88,7 @@ const superAdminController = {
       });
 
       await logAction({
+<<<<<<< HEAD
         userId: superAdminId,
         action: "CREATE_TENANT",
         targetId: result.tenant.id,
@@ -284,6 +317,25 @@ const superAdminController = {
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: err.message });
+=======
+        action: "CREATE_TENANT",
+        targetId: result.tenant.id,
+        metadata: { name, domain, adminMobile }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "Tenant and Admin created successfully",
+        tenant: result.tenant,
+        admin: { id: result.admin.id, mobile: result.admin.mobile }
+      });
+    } catch (err) {
+      console.error(err);
+      if (err.code === "P2002") {
+        return res.status(400).json({ success: false, message: "Domain already exists" });
+      }
+      res.status(500).json({ success: false, message: "Internal server error" });
+>>>>>>> main
     }
   }
 };

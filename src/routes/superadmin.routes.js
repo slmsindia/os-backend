@@ -8,9 +8,12 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post("/create-tenant", checkIdentity(["SUPER_ADMIN"]), superAdminController.createTenant);
+<<<<<<< HEAD
 router.get("/tenants", checkIdentity(["SUPER_ADMIN"]), superAdminController.getAllTenants);
 router.get("/tenants/:tenantId/roots", checkIdentity(["SUPER_ADMIN"]), superAdminController.getTenantRoots);
 router.post("/transfer-hierarchy", checkIdentity(["SUPER_ADMIN"]), superAdminController.transferHierarchy);
 router.post("/tenants/razorpay", checkIdentity(["SUPER_ADMIN"]), superAdminController.updateTenantRazorpay);
+=======
+>>>>>>> main
 
 module.exports = router;

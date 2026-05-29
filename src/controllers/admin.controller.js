@@ -1,4 +1,5 @@
 const bcrypt = require("bcrypt");
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
 const { logAction } = require("../utils/audit");
 const { generateUuid, generateReferralCode } = require("../utils/id");
@@ -10,10 +11,17 @@ const hasGlobalAdminScope = (user = {}) => {
     .replace(/[\s-]+/g, '_');
   return identity === "SUPER_ADMIN";
 };
+=======
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+const { logAction } = require("../utils/audit");
+const { generateUuid } = require("../utils/id");
+>>>>>>> main
 
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
+<<<<<<< HEAD
     const {
       mobile,
       fullName,
@@ -57,6 +65,9 @@ const adminController = {
       permanentAddressType,
       documents
     } = req.body;
+=======
+    const { mobile, fullName, password, gender, dateOfBirth, parentId } = req.body;
+>>>>>>> main
     const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!mobile || !fullName || !password) {
@@ -64,6 +75,7 @@ const adminController = {
     }
 
     try {
+<<<<<<< HEAD
       const myIdentity = String(req.user?.identity || '').toUpperCase();
       const { permissionNames } = req.body;
 
@@ -86,10 +98,16 @@ const adminController = {
       }
 
       let finalParentId = myId;
+=======
+      let finalParentId = myId;
+
+      // If explicit parentId provided, verify it belongs to same tenant
+>>>>>>> main
       if (parentId) {
         const parent = await prisma.user.findFirst({
           where: { id: parentId, tenantId: myTenantId }
         });
+<<<<<<< HEAD
         if (!parent) return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
         finalParentId = parentId;
       }
@@ -313,11 +331,49 @@ const adminController = {
       console.error(err);
       if (err.code === "P2002") {
         return res.status(400).json({ success: false, message: "Mobile already exists in another context" });
+=======
+        if (!parent) {
+          return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
+        }
+        finalParentId = parentId;
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      const user = await prisma.user.create({
+        data: {
+          id: generateUuid(),
+          mobile,
+          fullName,
+          password: hash,
+          gender,
+          dateOfBirth: new Date(dateOfBirth),
+          identity: targetIdentity,
+          tenantId: myTenantId,
+          parentId: finalParentId,
+          createdBy: myId
+        }
+      });
+
+      await logAction({
+        userId: myId,
+        action: `CREATE_${targetIdentity}`,
+        targetId: user.id,
+        tenantId: myTenantId,
+        metadata: { mobile: user.mobile }
+      });
+
+      res.status(201).json({ success: true, user: { id: user.id, mobile: user.mobile, identity: user.identity } });
+    } catch (err) {
+      console.error(err);
+      if (err.code === "P2002") {
+        return res.status(400).json({ success: false, message: "Mobile already exists" });
+>>>>>>> main
       }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
 
+<<<<<<< HEAD
   createWhiteLabelAdmin: (req, res) => adminController.createIdentity(req, res, "WHITE_LABEL_ADMIN"),
   createAdmin: (req, res) => adminController.createIdentity(req, res, "ADMIN"),
   createSubAdmin: (req, res) => adminController.createIdentity(req, res, "SUB_ADMIN"),
@@ -1112,6 +1168,12 @@ const adminController = {
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
+=======
+  createState: (req, res) => adminController.createIdentity(req, res, "STATE_PARTNER"),
+  createDistrict: (req, res) => adminController.createIdentity(req, res, "DISTRICT_PARTNER"),
+  createAgent: (req, res) => adminController.createIdentity(req, res, "AGENT"),
+  createUser: (req, res) => adminController.createIdentity(req, res, "USER")
+>>>>>>> main
 };
 
 module.exports = adminController;
