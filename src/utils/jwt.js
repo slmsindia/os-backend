@@ -1,15 +1,35 @@
 const jwt = require("jsonwebtoken");
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const { normalizeIdentity } = require("./identity");
 
 const SECRET = process.env.JWT_SECRET || "dev_secret";
 const EXPIRES = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE_IN || "";
+<<<<<<< HEAD
+=======
+
+const SECRET = process.env.JWT_SECRET || "dev_secret";
+const EXPIRES = process.env.JWT_EXPIRES_IN || process.env.JWT_EXPIRE_IN || "1h";
+>>>>>>> main
+=======
+>>>>>>> origin/main
 
 const generateToken = (user) => {
   const roles = Array.isArray(user?.roles) ? user.roles.map((ur) => ur.role?.name).filter(Boolean) : [];
   const roleName = user?.role?.name || roles[0] || user?.role || user?.userType || user?.identity || "USER";
   const tenantId = user?.tenantId || user?.tenant_id || null;
   const parentId = user?.parentId || user?.parent_id || null;
+<<<<<<< HEAD
+<<<<<<< HEAD
   const identity = user?.identity != null ? normalizeIdentity(user.identity) : null;
+=======
+  const identity = user?.identity || null;
+>>>>>>> main
+=======
+  const identity = user?.identity != null ? normalizeIdentity(user.identity) : null;
+>>>>>>> origin/main
 
   return jwt.sign({
     user_id: user.id,

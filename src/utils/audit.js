@@ -1,5 +1,16 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
 const { generateUuid } = require("./id");
 const prisma = require("../lib/prisma");
+=======
+const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("./id");
+const prisma = new PrismaClient();
+>>>>>>> main
+=======
+const { generateUuid } = require("./id");
+const prisma = require("../lib/prisma");
+>>>>>>> origin/main
 
 const logAction = async ({ userId, action, targetId, metadata, tenantId }) => {
   try {

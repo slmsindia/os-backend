@@ -1,6 +1,17 @@
 const { logAction } = require("../utils/audit");
+<<<<<<< HEAD
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
 const { generateUuid } = require("../utils/id");
+=======
+const { PrismaClient } = require("@prisma/client");
+const { generateUuid } = require("../utils/id");
+const prisma = new PrismaClient();
+>>>>>>> main
+=======
+const prisma = require("../lib/prisma");
+const { generateUuid } = require("../utils/id");
+>>>>>>> origin/main
 
 const VALID_USER_TYPES = [
   "USER",
@@ -28,6 +39,10 @@ const getOrCreateRole = async (roleName) => {
 
 const userController = {
   getProfile: async (req, res) => {
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     try {
       const myId = req.user?.user_id;
       const myTenantId = req.user?.tenant_id || req.user?.tenantId;
@@ -154,6 +169,25 @@ const userController = {
         error: err.message,
         stack: err.stack
       });
+<<<<<<< HEAD
+=======
+    const { user_id: myId, tenant_id: myTenantId } = req.user;
+    try {
+      const user = await prisma.user.findFirst({
+        where: { id: myId, tenantId: myTenantId },
+        include: { roles: { include: { role: true } } }
+      });
+
+      if (!user) return res.status(404).json({ message: "user not found" });
+
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "error" });
+>>>>>>> main
+=======
+>>>>>>> origin/main
     }
   },
 
@@ -239,12 +273,22 @@ const userController = {
         userType: user.userType,
         role: user.role?.name,
         approvalStatus: user.approvalStatus,
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         createdAt: user.createdAt,
         registrationState: user.registrationState,
         registrationCity: user.registrationCity,
         registrationPincode: user.registrationPincode,
         registrationLat: user.registrationLat,
         registrationLong: user.registrationLong
+<<<<<<< HEAD
+=======
+        createdAt: user.createdAt
+>>>>>>> main
+=======
+>>>>>>> origin/main
       }));
 
       res.json({ success: true, users: data });
@@ -352,6 +396,10 @@ const userController = {
       }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   },
 
   updateProfile: async (req, res) => {
@@ -411,6 +459,11 @@ const userController = {
       console.error("error in updateProfile:", err);
       res.status(500).json({ success: false, message: "Internal server error during profile update" });
     }
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
   }
 };
 

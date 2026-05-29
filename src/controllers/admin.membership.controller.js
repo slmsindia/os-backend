@@ -6,6 +6,8 @@ const walletService = require("../services/wallet.service");
 const commissionService = require("../services/commission.service");
 
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
 const isUuid = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -86,6 +88,7 @@ const creditMembershipFeeToCorporateWallet = async ({ application, tenantId, tri
 
 =======
 >>>>>>> origin/main
+>>>>>>> origin/main
 const adminMembershipController = {
   /**
    * Create a user directly (Admin/Partner led)
@@ -105,11 +108,16 @@ const adminMembershipController = {
 
     const isNewUserFlow = flowType === 'ADMIN_CREATE_NEW_USER';
 <<<<<<< HEAD
+    if (isNewUserFlow && !password) {
+      return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+=======
+<<<<<<< HEAD
     if (isNewUserFlow && !isStrongPassword(password)) {
       return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
 =======
     if (isNewUserFlow && !password) {
       return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+>>>>>>> origin/main
 >>>>>>> origin/main
     }
 
@@ -183,12 +191,16 @@ const adminMembershipController = {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
           fee = 1000;
           if (setting && setting.value) {
+<<<<<<< HEAD
+            try { fee = JSON.parse(setting.value).amount || 1000; } catch (e) { fee = parseFloat(setting.value); }
+=======
             try { 
               const parsed = JSON.parse(setting.value);
               fee = parsed.amount !== undefined ? parsed.amount : 1000; 
             } catch (e) { 
               fee = parseFloat(setting.value); 
             }
+>>>>>>> origin/main
           }
         } else if (targetIdentity === 'MEMBER') {
           const config = await prisma.membershipConfig.findFirst({ 
@@ -200,12 +212,16 @@ const adminMembershipController = {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
           fee = 2000;
           if (setting && setting.value) {
+<<<<<<< HEAD
+            try { fee = JSON.parse(setting.value).amount || 2000; } catch (e) { fee = parseFloat(setting.value); }
+=======
             try { 
               const parsed = JSON.parse(setting.value);
               fee = parsed.amount !== undefined ? parsed.amount : 2000; 
             } catch (e) { 
               fee = parseFloat(setting.value); 
             }
+>>>>>>> origin/main
           }
         } else if (targetIdentity === 'AGENT') {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'AGENT_REGISTRATION_FEE', tenantId } });
@@ -262,11 +278,16 @@ const adminMembershipController = {
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
 <<<<<<< HEAD
+      if (isNewUserFlow && !password) {
+        return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+=======
+<<<<<<< HEAD
       if (!isStrongPassword(password)) {
         return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
 =======
       if (isNewUserFlow && !password) {
         return res.status(400).json({ success: false, message: "Password is required for new user creation" });
+>>>>>>> origin/main
 >>>>>>> origin/main
       }
 
@@ -274,9 +295,13 @@ const adminMembershipController = {
       // Instead of direct creation, we create an APPLICATION record that must be approved.
       
 <<<<<<< HEAD
+      const hashedPassword = await bcrypt.hash(password || mobile.slice(-4), 10);
+=======
+<<<<<<< HEAD
       const hashedPassword = await bcrypt.hash(password, 10);
 =======
       const hashedPassword = await bcrypt.hash(password || mobile.slice(-4), 10);
+>>>>>>> origin/main
 >>>>>>> origin/main
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
@@ -427,7 +452,11 @@ const adminMembershipController = {
       calculatedAmount = parseFloat(legacyPrice);
     }
 
+<<<<<<< HEAD
+    if (!calculatedAmount || calculatedAmount <= 0) {
+=======
     if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
+>>>>>>> origin/main
       return res.status(400).json({
         success: false,
         message: "Invalid fee configuration"
@@ -581,11 +610,15 @@ const adminMembershipController = {
         where.user = { tenantId: tenantId };
       }
 <<<<<<< HEAD
+      if (status) {
+=======
+<<<<<<< HEAD
       if (status === 'PENDING') {
         where.status = { in: ['PENDING', 'RESUBMITTED'] };
       } else if (status) {
 =======
       if (status) {
+>>>>>>> origin/main
 >>>>>>> origin/main
         where.status = status;
       }
@@ -603,6 +636,9 @@ const adminMembershipController = {
       const unifiedWhere = {
         targetIdentity: 'MEMBER',
 <<<<<<< HEAD
+        ...(status ? { status } : {})
+=======
+<<<<<<< HEAD
         ...(status === 'PENDING'
           ? { status: { in: ['PENDING', 'RESUBMITTED'] } }
           : status
@@ -610,6 +646,7 @@ const adminMembershipController = {
             : {})
 =======
         ...(status ? { status } : {})
+>>>>>>> origin/main
 >>>>>>> origin/main
       };
       if (adminIdentity !== 'SUPER_ADMIN') {
@@ -656,6 +693,8 @@ const adminMembershipController = {
       const total = allApps.length;
       const paginatedApps = allApps.slice(skip, skip + take);
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
       const stateIds = [...new Set(paginatedApps.map((app) => app.currentState).filter(isUuid))];
       const districtIds = [...new Set(paginatedApps.map((app) => app.currentDistrict).filter(isUuid))];
 
@@ -686,6 +725,7 @@ const adminMembershipController = {
       });
 =======
 >>>>>>> origin/main
+>>>>>>> origin/main
 
       await logAction({ userId: adminId, action: "VIEW_MEMBERSHIP_APPLICATIONS", tenantId });
 
@@ -693,9 +733,13 @@ const adminMembershipController = {
         success: true,
         data: {
 <<<<<<< HEAD
+          members: paginatedApps,
+=======
+<<<<<<< HEAD
           members: enrichedApps,
 =======
           members: paginatedApps,
+>>>>>>> origin/main
 >>>>>>> origin/main
           pagination: {
             page: parseInt(page),
@@ -955,18 +999,26 @@ const adminMembershipController = {
                 description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
                 tenantId,
 <<<<<<< HEAD
+                metadata: {
+=======
+<<<<<<< HEAD
                 metadata: sanitizeJsonValue({
 =======
                 metadata: {
+>>>>>>> origin/main
 >>>>>>> origin/main
                   trigger: "MEMBERSHIP_APPROVAL",
                   applicationId,
                   userId: application.userId,
                   paymentId: application.payment?.id
 <<<<<<< HEAD
+                }
+=======
+<<<<<<< HEAD
                 })
 =======
                 }
+>>>>>>> origin/main
 >>>>>>> origin/main
               }
             });
@@ -1051,10 +1103,14 @@ const adminMembershipController = {
 
       const application = await prisma.membershipApplication.findUnique({
 <<<<<<< HEAD
+        where: { id: applicationId }
+=======
+<<<<<<< HEAD
         where: { id: applicationId },
         include: { user: true, payment: true }
 =======
         where: { id: applicationId }
+>>>>>>> origin/main
 >>>>>>> origin/main
       });
 
@@ -1081,6 +1137,8 @@ const adminMembershipController = {
       }
 
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
       await creditMembershipFeeToCorporateWallet({
         application,
         tenantId,
@@ -1088,6 +1146,7 @@ const adminMembershipController = {
       });
 
 =======
+>>>>>>> origin/main
 >>>>>>> origin/main
       // Update application status
       const updated = await prisma.membershipApplication.update({

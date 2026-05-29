@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const { normalizeIdentity } = require("../utils/identity");
 
 const checkIdentity = (allowedIdentities) => {
@@ -24,12 +28,29 @@ const checkIdentity = (allowedIdentities) => {
     if (!normalizedAllowed.includes(userIdentity)) {
       console.log(`[IdentityCheck] DENIED for ${userIdentity}`);
       return res.status(403).json({ success: false, message: `Forbidden: Insufficient identity privileges (${userIdentity})` });
+<<<<<<< HEAD
+=======
+const checkIdentity = (allowedIdentities) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.identity) {
+      return res.status(401).json({ success: false, message: "Unauthorized: Missing identity" });
+    }
+
+    if (!allowedIdentities.includes(req.user.identity)) {
+      return res.status(403).json({ success: false, message: "Forbidden: Insufficient identity privileges" });
+>>>>>>> main
+=======
+>>>>>>> origin/main
     }
 
     next();
   };
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const isWhiteLabelAdmin = (req, res, next) => {
   const identity = normalizeIdentity(req.user?.identity);
   if (identity !== 'WHITE_LABEL_ADMIN' && identity !== 'SUPER_ADMIN') {
@@ -46,3 +67,9 @@ const isSuperAdmin = (req, res, next) => {
 };
 
 module.exports = { checkIdentity, isWhiteLabelAdmin, isSuperAdmin, normalizeIdentity };
+<<<<<<< HEAD
+=======
+module.exports = { checkIdentity };
+>>>>>>> main
+=======
+>>>>>>> origin/main

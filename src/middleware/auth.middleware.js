@@ -1,4 +1,8 @@
 const { verifyToken } = require("../utils/jwt");
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const { normalizeIdentity } = require("../utils/identity");
 
 module.exports = (req, res, next) => {
@@ -62,6 +66,26 @@ module.exports = (req, res, next) => {
     });
   }
 
+<<<<<<< HEAD
+=======
+
+module.exports = (req, res, next) => {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ success: false, message: "unauthorized" });
+  }
+
+  const token = header.split(" ")[1];
+  const decoded = verifyToken(token);
+
+  if (!decoded) {
+    return res.status(401).json({ success: false, message: "invalid token" });
+  }
+
+>>>>>>> main
+=======
+>>>>>>> origin/main
   req.user = decoded;
   next();
 };

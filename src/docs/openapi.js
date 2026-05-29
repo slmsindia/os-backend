@@ -13,6 +13,10 @@ const jsonBody = {
   },
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const membershipApplyBody = {
   required: true,
   content: {
@@ -78,6 +82,11 @@ const membershipVerifyPaymentBody = {
   }
 };
 
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
 const imeCreateCustomerBody = {
   required: true,
   content: {
@@ -89,6 +98,10 @@ const imeCreateCustomerBody = {
           "LastName",
           "Gender",
           "DateOfBirth",
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
           "PhoneNumber",
           "Nationality"
         ],
@@ -116,6 +129,48 @@ const imeCreateCustomerBody = {
           TempAddress: { type: "string", example: "Mumbai Central" },
           IdData: { type: "string", example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" },
           IdDataType: { type: "string", example: "jpeg" }
+<<<<<<< HEAD
+=======
+          "IDType",
+          "IDNumber",
+          "PhoneNumber",
+          "Nationality",
+          "MaritalStatus",
+          "FatherOrMotherName",
+          "Occupation",
+          "State",
+          "District",
+          "Municipality",
+          "Address",
+          "IDIssueDate",
+          "IdData"
+        ],
+        properties: {
+          FirstName: { type: "string", example: "Ram" },
+          LastName: { type: "string", example: "Bahadur" },
+          Gender: { type: "string", enum: ["M", "F"], example: "M" },
+          DateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID", "AADHAR"], example: "NP_ID" },
+          IDNumber: { type: "string", example: "29383-239334-2" },
+          IDIssueDate: { type: "string", example: "2018-02-15" },
+          PhoneNumber: { type: "string", example: "9841234567" },
+          CountryCode: { type: "string", example: "NP" },
+          Nationality: { type: "string", example: "NPL" },
+          MaritalStatus: { type: "string", example: "Single" },
+          FatherOrMotherName: { type: "string", example: "Dhan Bahadur Thapa" },
+          Occupation: { type: "string", example: "Service" },
+          SourceOfFund: { type: "string", example: "Salary" },
+          State: { type: "string", example: "Bagmati" },
+          District: { type: "string", example: "Kathmandu" },
+          Municipality: { type: "string", example: "Kathmandu" },
+          Address: { type: "string", example: "Baneshwor" }
+          ,IdData: { type: "string", example: "<base64-id-document>" }
+          ,IdDataType: { type: "string", example: "image/jpeg" }
+          ,OTPToken: { type: "string", example: "IME-OTP-TOKEN" }
+          ,OTP: { type: "string", example: "123456" }
+>>>>>>> main
+=======
+>>>>>>> origin/main
         }
       }
     }
@@ -148,7 +203,15 @@ const imeSendMoneyBody = {
         type: "object",
         required: [
           "SenderCustomerId",
+<<<<<<< HEAD
+<<<<<<< HEAD
           "ReceiverCustomerId", 
+=======
+          "ReceiverCustomerId",
+>>>>>>> main
+=======
+          "ReceiverCustomerId", 
+>>>>>>> origin/main
           "Amount",
           "SourceCurrency",
           "DestinationCurrency",
@@ -169,6 +232,10 @@ const imeSendMoneyBody = {
   }
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const imeSendTransactionBody = {
   required: true,
   content: {
@@ -239,6 +306,11 @@ const imeSendTransactionBody = {
   }
 };
 
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
 const imeCancelTransactionBody = {
   required: false,
   content: {
@@ -259,6 +331,10 @@ const imeCreateReceiverBody = {
     "application/json": {
       schema: {
         type: "object",
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         required: ["ReceiverName", "ReceiverMobileNo"],
         properties: {
           CustomerId: { type: "string", example: "", description: "Optional: links to a sender. If empty, a UUID will be generated." },
@@ -296,6 +372,23 @@ const imeCreateReceiverBody = {
         BankId: "117",
         BankBranchId: "11701",
         BankAccountNumber: "1234567890"
+<<<<<<< HEAD
+=======
+        required: ["CustomerId", "FirstName", "LastName", "IDType", "IDNumber", "PhoneNumber"],
+        properties: {
+          CustomerId: { type: "string", example: "CUST001" },
+          FirstName: { type: "string", example: "Hari" },
+          LastName: { type: "string", example: "Shrestha" },
+          IDType: { type: "string", enum: ["PP", "DL", "NP_ID"], example: "NP_ID" },
+          IDNumber: { type: "string", example: "509XXXXXXXX" },
+          PhoneNumber: { type: "string", example: "9801234567" },
+          BankCode: { type: "string", example: "NABIL" },
+          AccountNumber: { type: "string", example: "1234567890" },
+          CountryCode: { type: "string", example: "NP" }
+        }
+>>>>>>> main
+=======
+>>>>>>> origin/main
       }
     }
   }
@@ -318,6 +411,10 @@ const imeValidateBankAccountBody = {
   }
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const imeUpdateReceiverBody = {
   required: true,
   content: {
@@ -347,6 +444,11 @@ const imeUpdateReceiverBody = {
   }
 };
 
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
 const imeVerifyKycBody = {
   required: true,
   content: {
@@ -1065,6 +1167,10 @@ const paths = {
         401: { description: "Unauthorized" },
       },
     },
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     put: {
       tags: ["Users"],
       summary: "Update logged-in profile",
@@ -1075,6 +1181,11 @@ const paths = {
         401: { description: "Unauthorized" },
       },
     },
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
   },
 
   "/api/users/approvals/pending": {
@@ -1148,6 +1259,10 @@ const paths = {
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/create-white-label-admin": {
     post: {
       tags: ["Admin"],
@@ -1200,6 +1315,11 @@ const paths = {
     },
   },
 
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
   "/api/admin/create-district": {
     post: {
       tags: ["Admin"],
@@ -1248,6 +1368,10 @@ const paths = {
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/super-admin/tenants": {
     get: {
       tags: ["Super Admin"],
@@ -1283,10 +1407,27 @@ const paths = {
       responses: {
         200: { description: "Application processed" },
         403: { description: "Forbidden" },
+<<<<<<< HEAD
+=======
+  "/api/ime/authenticate": {
+    post: {
+      tags: ["IME"],
+      summary: "IME Authenticate (SOAP)",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Authentication successful" },
+        500: { description: "IME SOAP error" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/business/skills": {
     post: {
       tags: ["Admin", "Business"],
@@ -1296,10 +1437,27 @@ const paths = {
       responses: {
         201: { description: "Created" },
         403: { description: "Forbidden" },
+<<<<<<< HEAD
+=======
+  "/api/ime/login": {
+    post: {
+      tags: ["IME"],
+      summary: "IME Login (SOAP)",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Login successful" },
+        500: { description: "IME SOAP error" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/business/facilities": {
     post: {
       tags: ["Admin", "Business"],
@@ -1425,12 +1583,37 @@ const paths = {
       summary: "Post a Job",
       description: "Create a new job posting (Business Partner or Super Admin only)",
       security: bearerSecurity,
+<<<<<<< HEAD
+=======
+  "/api/ime/customers": {
+    post: {
+      tags: ["IME"],
+      summary: "Create IME Customer",
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Customer created" },
+        400: { description: "Invalid input" },
+      },
+    },
+  },
+
+  "/api/ime/customers/send-otp": {
+    post: {
+      tags: ["IME"],
+      summary: "Send OTP for IME Customer Registration",
+>>>>>>> main
+=======
+>>>>>>> origin/main
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
               required: ["jobDescription", "offeredAmount", "educationId", "sectorId", "jobRoleId"],
               properties: {
                 jobDescription: { type: "string", example: "Software Developer" },
@@ -1447,12 +1630,26 @@ const paths = {
                 address: { type: "object" },
                 facilities: { type: "array", items: { type: "string" } },
                 noOfOpenings: { type: "number", example: 5 }
+<<<<<<< HEAD
+=======
+              required: ["PhoneNumber"],
+              properties: {
+                PhoneNumber: { type: "string", example: "9812474750" },
+                ReferenceValue: { type: "string", example: "9812474750", description: "Optional explicit IME reference (customer token/id/mobile)" },
+                Module: { type: "string", example: "CustomerRegistration" }
+>>>>>>> main
+=======
+>>>>>>> origin/main
               }
             }
           }
         }
       },
       responses: {
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         201: { description: "Job posted successfully" },
         400: { description: "Invalid input" },
         401: { description: "Unauthorized" },
@@ -1513,12 +1710,31 @@ const paths = {
       tags: ["IME 6: Phase 2 eKYC"],
       summary: "Reset/Clear Aadhar KYC Process",
       description: "Used to clear/reset the Aadhar KYC process for a CSP or Customer that needs to restart",
+<<<<<<< HEAD
+=======
+        200: { description: "OTP sent" },
+        400: { description: "Invalid input" },
+      },
+    },
+  },
+
+  "/api/ime/customers/confirm": {
+    post: {
+      tags: ["IME"],
+      summary: "Confirm IME Customer Registration with OTP",
+>>>>>>> main
+=======
+>>>>>>> origin/main
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
               required: ["EntityType", "EntityId", "ReprocessState"],
               properties: {
                 EntityType: { type: "string", example: "203", description: "201=CSP, 203=Customer" },
@@ -1700,6 +1916,15 @@ const paths = {
               properties: {
                 RefNo: { type: "string", description: "From SendTransaction response" },
                 OTPToken: { type: "string", description: "From SendOTP response" },
+<<<<<<< HEAD
+=======
+              required: ["CustomerToken", "OTPToken", "OTP"],
+              properties: {
+                CustomerToken: { type: "string", example: "IME-CUSTOMER-TOKEN" },
+                OTPToken: { type: "string", example: "IME-OTP-TOKEN" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
                 OTP: { type: "string", example: "123456" }
               }
             }
@@ -1707,6 +1932,10 @@ const paths = {
         }
       },
       responses: {
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         200: {
           description: "Transaction confirmed",
           content: {
@@ -2346,10 +2575,72 @@ const paths = {
       responses: {
         200: { description: "Wallet details" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
+=======
+        200: { description: "Customer confirmed" },
+        400: { description: "Invalid OTP/Token" },
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+  "/api/ime/customers/search/mobile/{mobile}": {
+    get: {
+      tags: ["IME"],
+      summary: "Search IME Customer By Mobile",
+      parameters: [
+        { name: "mobile", in: "path", required: true, schema: { type: "string", example: "9841234567" } },
+      ],
+      responses: {
+        200: { description: "Customer search result" },
+        400: { description: "Invalid mobile" },
+      },
+    },
+  },
+
+  "/api/ime/customers/{customerId}": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Customer Requery Status By EntityId",
+      parameters: [
+        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Customer requery result" },
+        404: { description: "Customer not found" },
+      },
+    },
+  },
+
+  "/api/ime/customers/validate": {
+    post: {
+      tags: ["IME"],
+      summary: "Check IME Entity Status",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Entity status result" },
+      },
+    },
+  },
+
+  "/api/ime/transactions/send": {
+    post: {
+      tags: ["IME"],
+      summary: "Send Money via IME",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Money sent successfully" },
+        400: { description: "Invalid transaction data" },
+>>>>>>> main
+      },
+    },
+  },
+
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/my-wallet": {
     get: {
       tags: ["Wallet"],
@@ -2358,10 +2649,28 @@ const paths = {
       responses: {
         200: { description: "Wallet details" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
+=======
+  "/api/ime/transactions/{transactionId}/status": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Transaction Status",
+      parameters: [
+        { name: "transactionId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Transaction status" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/bank-details": {
     get: {
       tags: ["Wallet"],
@@ -2383,10 +2692,29 @@ const paths = {
       responses: {
         201: { description: "Top-up request created" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
+=======
+  "/api/ime/transactions/{transactionId}/cancel": {
+    post: {
+      tags: ["IME"],
+      summary: "Cancel IME Transaction",
+      parameters: [
+        { name: "transactionId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Transaction cancelled" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/transactions": {
     get: {
       tags: ["Wallet"],
@@ -2395,10 +2723,163 @@ const paths = {
       responses: {
         200: { description: "Transaction history" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
+=======
+  "/api/ime/receivers": {
+    post: {
+      tags: ["IME"],
+      summary: "Create IME Receiver (mapped via CustomerRegistration)",
+      requestBody: jsonBody,
+      responses: {
+        201: { description: "Receiver created" },
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
+  "/api/ime/receivers/{receiverId}": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Receiver Details",
+      parameters: [
+        { name: "receiverId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Receiver details" },
+      },
+    },
+    patch: {
+      tags: ["IME"],
+      summary: "Update IME Receiver",
+      parameters: [
+        { name: "receiverId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Receiver updated" },
+      },
+    },
+  },
+
+  "/api/ime/data": {
+    get: {
+      tags: ["IME"],
+      summary: "List persisted IME data",
+      responses: {
+        200: { description: "IME data list" },
+      },
+    },
+    post: {
+      tags: ["IME"],
+      summary: "Create persisted IME data",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "IME data created" },
+      },
+    },
+  },
+
+  "/api/ime/data/{id}": {
+    patch: {
+      tags: ["IME"],
+      summary: "Update persisted IME data",
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "IME data updated" },
+      },
+    },
+    delete: {
+      tags: ["IME"],
+      summary: "Delete persisted IME data",
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "IME data deleted" },
+      },
+    },
+  },
+
+  "/api/ime/payment-modes": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Payment Modes",
+      responses: {
+        200: { description: "Payment modes list" },
+      },
+    },
+  },
+
+  "/api/ime/bank-accounts/validate": {
+    post: {
+      tags: ["IME"],
+      summary: "Validate IME Bank Account",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Bank account validation result" },
+      },
+    },
+  },
+
+  "/api/ime/banks": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Bank List",
+      parameters: [
+        { name: "country", in: "query", required: false, schema: { type: "string", example: "NP" } },
+      ],
+      responses: {
+        200: { description: "Bank list" },
+      },
+    },
+  },
+
+  "/api/ime/kyc/verify": {
+    post: {
+      tags: ["IME"],
+      summary: "Check IME Entity Status for KYC",
+      requestBody: jsonBody,
+      responses: {
+        200: { description: "Entity status/KYC result" },
+      },
+    },
+  },
+
+  "/api/ime/compliance/{customerId}/status": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Compliance Status",
+      parameters: [
+        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Compliance status" },
+      },
+    },
+  },
+
+  "/api/ime/customers/{customerId}/transactions": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Transaction History",
+      parameters: [
+        { name: "customerId", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: { description: "Transaction history" },
+>>>>>>> main
+      },
+    },
+  },
+
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/top-up/requests": {
     get: {
       tags: ["Wallet"],
@@ -3124,6 +3605,21 @@ const paths = {
       summary: "Get RD info",
       responses: {
         200: { description: "RD info" },
+<<<<<<< HEAD
+=======
+  "/api/ime/exchange-rate": {
+    get: {
+      tags: ["IME"],
+      summary: "Get IME Exchange Rate",
+      parameters: [
+        { name: "from", in: "query", required: true, schema: { type: "string", example: "USD" } },
+        { name: "to", in: "query", required: true, schema: { type: "string", example: "NPR" } },
+      ],
+      responses: {
+        200: { description: "Exchange rate" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
@@ -3226,6 +3722,10 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
   });
 });
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // ==================== IME ENDPOINTS ====================
 
 // Authentication & Session Management
@@ -3744,6 +4244,21 @@ paths["/api/ime/storage/otp-logs"] = {
   }
 };
 
+<<<<<<< HEAD
+=======
+paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
+paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
+paths["/api/ime/transactions/send"].post.requestBody = imeSendMoneyBody;
+paths["/api/ime/transactions/{transactionId}/cancel"].post.requestBody = imeCancelTransactionBody;
+paths["/api/ime/receivers"].post.requestBody = imeCreateReceiverBody;
+paths["/api/ime/data"].post.requestBody = imeDataBody;
+paths["/api/ime/data/{id}"].patch.requestBody = imeDataBody;
+paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccountBody;
+paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
+
+>>>>>>> main
+=======
+>>>>>>> origin/main
 paths[`${prabhuPrefix}/SendTransaction`].post.requestBody = prabhuSendTransactionBody;
 paths[`${prabhuPrefix}/ConfirmTransaction`].post.requestBody = prabhuConfirmTransactionBody;
 paths[`${prabhuPrefix}/CreateCustomer`].post.requestBody = prabhuCreateCustomerBody;
@@ -3846,6 +4361,10 @@ paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
   post: { tags: ["Prabhu Workflow"], summary: "Workflow step 2 receiver", requestBody: jsonBody, responses: { 200: { description: "Success" } } }
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // IME Legacy Endpoints (SOAP-based compatibility routes)
 // Uppercase legacy base `/api/IME/*` was removed; legacy contract routes are served under `/api/ime/*` only.
 
@@ -4481,6 +5000,11 @@ paths["/api/rd/info"] = {
   }
 };
 
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
 module.exports = {
   openapi: "3.0.3",
   info: {
@@ -4496,6 +5020,10 @@ module.exports = {
     { name: "Users" },
     { name: "Admin" },
     { name: "Super Admin" },
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     { name: "Business" },
     { name: "Wallet" },
     { name: "Wallet Admin" },
@@ -4503,11 +5031,20 @@ module.exports = {
     { name: "Devices" },
     { name: "RD Device" },
     { name: "Locations" },
+<<<<<<< HEAD
+=======
+>>>>>>> main
+=======
+>>>>>>> origin/main
     { name: "Prabhu" },
     { name: "Prabhu CSP" },
     { name: "Prabhu E-KYC" },
     { name: "Prabhu Workflow" },
     { name: "Prabhu Data" },
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     { name: "Remittance" },
     { name: "IME 1: Static Data" },
     { name: "IME 2: CSP Module" },
@@ -4515,6 +5052,12 @@ module.exports = {
     { name: "IME 4: Transaction Flow" },
     { name: "IME 5: Reports" },
     { name: "IME 6: Phase 2 eKYC" }
+<<<<<<< HEAD
+=======
+    { name: "IME" },
+>>>>>>> main
+=======
+>>>>>>> origin/main
   ],
   components: {
     securitySchemes: {
@@ -4525,6 +5068,13 @@ module.exports = {
       },
     },
   },
+<<<<<<< HEAD
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
+=======
+
+>>>>>>> origin/main
   paths,
 };
