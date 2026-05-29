@@ -146,7 +146,8 @@ const authenticate = async (req, res) => {
 const login = async (req, res) => {
   try {
     const result = await imeService.login(req.body);
-    return ok(res, 'IME Login successful', result);
+    const balance = parseFloat(result?.data?.[0]?.BalanceInquiryResponse?.Balance || 0);
+    return ok(res, 'IME Login successful', { ...result, balance });
   } catch (error) {
     return fail(res, error);
   }
