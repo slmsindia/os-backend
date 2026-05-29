@@ -19,6 +19,7 @@ const ROLE_HIERARCHY = {
 const ADMIN_CREATOR_ROLES   = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
 const PARTNER_CREATOR_ROLES = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER', 'SAATHI'];
 const ALL_ADMIN_ROLES       = ['SUPER_ADMIN', ...ADMIN_CREATOR_ROLES, ...PARTNER_CREATOR_ROLES];
+<<<<<<< HEAD
 const PASSWORD_RULE_MESSAGE = "Password must be at least 8 characters and include one uppercase letter and one special character.";
 const isStrongPassword = (password) =>
   typeof password === "string" && /^(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/.test(password);
@@ -53,6 +54,8 @@ const buildGeoFields = (geolocation) => ({
 const isUniqueConstraintError = (err, field) =>
   err?.code === "P2002" &&
   (!field || String(err?.meta?.target || "").toLowerCase().includes(field.toLowerCase()));
+=======
+>>>>>>> origin/main
 
 // ─── Fee Resolution ────────────────────────────────────────────────────────────
 async function resolveFee(targetIdentity, tenantId) {
@@ -202,6 +205,7 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
   return updatedUser;
 }
 
+<<<<<<< HEAD
 async function settleApplicationFeeToCorporateWallet(app, trigger = "APPLICATION_SETTLEMENT") {
   const settlementAmount = Number(app.paymentAmount || 0);
   if (!settlementAmount || settlementAmount <= 0 || app.paymentStatus !== "SUCCESS") {
@@ -314,6 +318,8 @@ async function processApplicationCommissionOnce(app) {
   );
 }
 
+=======
+>>>>>>> origin/main
 // ═════════════════════════════════════════════════════════════════════════════
 // CONTROLLER METHODS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -321,6 +327,7 @@ const applicationController = {
 
   // ── POST /api/applications/submit ──────────────────────────────────────────
   submit: async (req, res) => {
+<<<<<<< HEAD
     const creatorId = req.user?.user_id || req.user?.id;
     const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
     const creatorIdentity = req.user?.identity || req.user?.role;
@@ -332,6 +339,12 @@ const applicationController = {
     if (!creatorId || !tenantId || !creatorIdentity) {
       return res.status(401).json({ success: false, message: "Invalid session. Please login again." });
     }
+=======
+    const { user_id: creatorId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
+    const { targetIdentity, targetMobile, targetUserId: explicitTargetId, geolocation, ...formData } = req.body;
+
+    if (!targetIdentity) return res.status(400).json({ success: false, message: "targetIdentity is required" });
+>>>>>>> origin/main
 
     try {
       // ── 1. Resolve target user ──────────────────────────────────────────────
@@ -340,6 +353,7 @@ const applicationController = {
         targetUser = await prisma.user.findUnique({ where: { id: explicitTargetId } });
       } else if (targetMobile) {
         targetUser = await prisma.user.findFirst({ where: { mobile: targetMobile, tenantId } });
+<<<<<<< HEAD
         if (!targetUser) {
           const existingMobileUser = await prisma.user.findFirst({
             where: { mobile: targetMobile },
@@ -352,6 +366,8 @@ const applicationController = {
             });
           }
         }
+=======
+>>>>>>> origin/main
       }
 
       if (!targetUser && !targetMobile) {
@@ -360,6 +376,7 @@ const applicationController = {
       }
 
       // Update password for existing targetUser if provided
+<<<<<<< HEAD
       // ── 2. Auto-create base USER if not found (admin/partner creating for new person) ──
       if (!targetUser && targetMobile && ALL_ADMIN_ROLES.includes(creatorIdentity)) {
         const passwordToHash = isStrongPassword(password) ? password : generateTemporaryPassword();
@@ -387,6 +404,32 @@ const applicationController = {
           }
           throw createErr;
         }
+=======
+      if (targetUser && formData.password) {
+        const hashedPwd = await bcrypt.hash(formData.password, 10);
+        targetUser = await prisma.user.update({
+          where: { id: targetUser.id },
+          data: { password: hashedPwd }
+        });
+      }
+
+      // ── 2. Auto-create base USER if not found (admin/partner creating for new person) ──
+      if (!targetUser && targetMobile && ALL_ADMIN_ROLES.includes(creatorIdentity)) {
+        const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { path: true } });
+        const path = creator?.path ? `${creator.path}/${creatorId}` : `/${creatorId}`;
+        const password = formData.password || targetMobile.slice(-4);
+        const hashedPwd = await bcrypt.hash(password, 10);
+        targetUser = await prisma.user.create({
+          data: {
+            id: generateUuid(), mobile: targetMobile,
+            fullName: `${formData.firstName || ''} ${formData.lastName || ''}`.trim() || targetMobile,
+            gender: (formData.gender || 'OTHER').toUpperCase(),
+            dateOfBirth: formData.birthDate ? new Date(formData.birthDate) : new Date('1990-01-01'),
+            password: hashedPwd, identity: 'USER', userType: 'USER',
+            approvalStatus: 'APPROVED', tenantId, parentId: creatorId, path
+          }
+        });
+>>>>>>> origin/main
       }
 
       if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found. Provide targetMobile or targetUserId." });
@@ -405,16 +448,25 @@ const applicationController = {
 
       // ── 4. Block duplicate pending application ──────────────────────────────
       const duplicate = await prisma.application.findFirst({
+<<<<<<< HEAD
         where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'RESUBMITTED', 'PAYMENT_PENDING', 'APPROVED'] } }
+=======
+        where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'PAYMENT_PENDING', 'APPROVED'] } }
+>>>>>>> origin/main
       });
       if (duplicate?.status === 'APPROVED') {
         return res.status(400).json({ success: false, message: `${targetIdentity} already approved for this user.` });
       }
+<<<<<<< HEAD
       if (duplicate?.status === 'PENDING' || duplicate?.status === 'RESUBMITTED') {
+=======
+      if (duplicate?.status === 'PENDING') {
+>>>>>>> origin/main
         return res.status(400).json({ success: false, message: `A pending ${targetIdentity} application already exists.` });
       }
 
       // ── 5. Resolve fee ───────────────────────────────────────────────────────
+<<<<<<< HEAD
       const paidRejectedApplication = await prisma.application.findFirst({
         where: {
           userId: targetUser.id,
@@ -521,6 +573,10 @@ const applicationController = {
         }
       }
 
+=======
+      const fee = await resolveFee(targetIdentity, tenantId);
+
+>>>>>>> origin/main
       // ── 6. ADMIN / WHITE_LABEL_ADMIN / SUB_ADMIN: Cash or Razorpay ──────────
       // All admin-level creators use the same payment flow and go to PENDING queue.
       // Instant (free) upgrade is only via the separate `convert` endpoint.
@@ -540,14 +596,25 @@ const applicationController = {
             targetIdentity, status: fee > 0 ? 'PAYMENT_PENDING' : 'PENDING',
             paymentMethod: method || 'CASH', paymentStatus: method === 'CASH' ? 'SUCCESS' : 'NONE',
             paymentAmount: fee,
+<<<<<<< HEAD
             submittedData,
             ...geoFields
+=======
+            submittedData: formData,
+            geoLat: geolocation?.lat, geoLng: geolocation?.lng,
+            geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
+            geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+>>>>>>> origin/main
           }
         });
 
         if (method === 'CASH' || fee === 0) {
+<<<<<<< HEAD
           const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
           await safeSettleApplicationFeeToCorporateWallet(updatedApp, "APPLICATION_CASH_SUBMITTED");
+=======
+          await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
+>>>>>>> origin/main
           return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: app.id } });
         }
 
@@ -562,8 +629,12 @@ const applicationController = {
               wallet.id, adminWallet?.id, fee,
               `${targetIdentity} application fee`, app.id, tenantId, 'WALLET', prisma, false
             );
+<<<<<<< HEAD
             const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
             await processApplicationCommissionOnce(updatedApp);
+=======
+            await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
+>>>>>>> origin/main
             return res.status(201).json({ success: true, message: "Application submitted via corporate wallet.", data: { applicationId: app.id } });
           } catch (walletErr) {
             console.warn('[AdminWalletFallback] Wallet failed, falling back to Razorpay:', walletErr.message);
@@ -625,8 +696,15 @@ const applicationController = {
             targetIdentity, status: fee > 0 ? 'PAYMENT_PENDING' : 'PENDING',
             paymentMethod: 'RAZORPAY',
             paymentStatus: fee === 0 ? 'SUCCESS' : 'NONE', paymentAmount: fee,
+<<<<<<< HEAD
             submittedData,
             ...geoFields
+=======
+            submittedData: formData,
+            geoLat: geolocation?.lat, geoLng: geolocation?.lng,
+            geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
+            geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+>>>>>>> origin/main
           }
         });
 
@@ -659,8 +737,15 @@ const applicationController = {
           id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
           targetIdentity, status: 'PAYMENT_PENDING', paymentMethod: 'WALLET',
           paymentStatus: 'NONE', paymentAmount: fee,
+<<<<<<< HEAD
           submittedData,
           ...geoFields
+=======
+          submittedData: formData,
+          geoLat: geolocation?.lat, geoLng: geolocation?.lng,
+          geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
+          geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+>>>>>>> origin/main
         }
       });
 
@@ -713,6 +798,7 @@ const applicationController = {
 
     } catch (err) {
       console.error('[Application.submit] Error:', err);
+<<<<<<< HEAD
       if (isUniqueConstraintError(err, "mobile")) {
         return res.status(409).json({
           success: false,
@@ -725,6 +811,9 @@ const applicationController = {
         code: err.code || undefined,
         target: err.meta?.target || undefined
       });
+=======
+      res.status(500).json({ success: false, message: err.message || "Internal server error" });
+>>>>>>> origin/main
     }
   },
 
@@ -747,6 +836,7 @@ const applicationController = {
         data: { razorpayPaymentId: razorpay_payment_id, paymentStatus: 'SUCCESS', status: 'PENDING' }
       });
 
+<<<<<<< HEAD
       await settleApplicationFeeToCorporateWallet(
         {
           ...app,
@@ -757,6 +847,8 @@ const applicationController = {
         "APPLICATION_PAYMENT_VERIFIED"
       );
 
+=======
+>>>>>>> origin/main
       await logAction({ userId, action: "APPLICATION_PAYMENT_VERIFIED", targetId: applicationId, tenantId });
       res.json({ success: true, message: "Payment verified. Application is now under review." });
     } catch (err) {
@@ -829,9 +921,50 @@ const applicationController = {
       // Settlement and commission distribution
       const settlementAmount = Number(app.paymentAmount || 0);
       if (settlementAmount > 0) {
+<<<<<<< HEAD
         // 1) Always credit tenant corporate wallet first. If payment was already
         // settled during verification/rejection, this is a no-op.
         await settleApplicationFeeToCorporateWallet(app, "APPLICATION_APPROVAL");
+=======
+        // 1) Always credit tenant corporate wallet first.
+        await prisma.$transaction(async (tx) => {
+          const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
+            data: {
+              id: generateUuid(),
+              userId: null,
+              tenantId: app.tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
+            }
+          });
+
+          await tx.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: settlementAmount } }
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: settlementAmount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              status: "SUCCESS",
+              referenceId: app.id,
+              description: `${app.targetIdentity} application fee received from user ${app.userId}`,
+              tenantId: app.tenantId,
+              metadata: {
+                trigger: "APPLICATION_APPROVAL",
+                applicationId: app.id,
+                userId: app.userId
+              }
+            }
+          });
+        });
+>>>>>>> origin/main
 
         // 2) Commission should not rollback wallet settlement.
         const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };
@@ -899,7 +1032,10 @@ const applicationController = {
     try {
       const app = await prisma.application.findUnique({ where: { id: applicationId } });
       if (!app) return res.status(404).json({ success: false, message: "Application not found" });
+<<<<<<< HEAD
       await settleApplicationFeeToCorporateWallet(app, "APPLICATION_REJECTED");
+=======
+>>>>>>> origin/main
       await prisma.application.update({ where: { id: applicationId }, data: { status: 'REJECTED', rejectionReason: reason } });
       await logAction({ userId: adminId, action: `${app.targetIdentity}_REJECTED`, targetId: applicationId, tenantId });
 
@@ -936,8 +1072,11 @@ const applicationController = {
     }
 
     const { targetIdentity, targetUserId, geolocation, ...formData } = req.body;
+<<<<<<< HEAD
     const submittedData = sanitizeJsonValue(formData);
     const geoFields = buildGeoFields(geolocation);
+=======
+>>>>>>> origin/main
     if (!targetIdentity || !targetUserId) {
       return res.status(400).json({ success: false, message: "targetIdentity and targetUserId are required." });
     }
@@ -960,8 +1099,15 @@ const applicationController = {
             id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
             targetIdentity: normalizedTargetIdentity, status: 'APPROVED', paymentMethod: 'FREE', paymentStatus: 'SUCCESS',
             paymentAmount: 0, approvedBy: creatorId, approvedAt: new Date(),
+<<<<<<< HEAD
             submittedData,
             ...geoFields
+=======
+            submittedData: formData,
+            geoLat: geolocation?.lat, geoLng: geolocation?.lng,
+            geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
+            geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+>>>>>>> origin/main
           }
         });
         const updatedUser = await upgradeUserIdentity(targetUser.id, normalizedTargetIdentity, formData, tenantId, tx, { skipWalletCreation: true });
