@@ -937,8 +937,10 @@ model GlobalSetting {
   @@index([tenantId])
 }
 
-// =====================================// 🌍 Location Master Data
-// ==============================model Country {
+// =====================================
+// 🌍 Location Master Data
+// ==============================
+model Country {
   id        String   @id @default(uuid())
   name      String   @unique
   code      String?  @unique // e.g. IN, NP
@@ -1449,8 +1451,10 @@ model SaathiPayment {
   @@index([applicationId])
 }
 
-// =====================================// 📘 Commission System Models
-// ==============================model CommissionScheme {
+// =====================================
+// 📘 Commission System Models
+// ==============================
+model CommissionScheme {
   id        String   @id @default(uuid())
   name      String
   isActive  Boolean  @default(true)
@@ -1600,8 +1604,10 @@ model AdminIncome {
   @@index([transactionId])
 }
 
-// =====================================// 📱 App Services & UI Management
-// ==============================model AppSection {
+// =====================================
+// 📱 App Services & UI Management
+// ==============================
+model AppSection {
   id           String       @id @default(uuid())
   name         String
   iconUrl      String?
@@ -1646,8 +1652,10 @@ model RoleServicePermission {
   @@unique([serviceId, identity])
 }
 
-// =====================================// 📢 Admin Content Management
-// ==============================model Poster {
+// =====================================
+// 📢 Admin Content Management
+// ==============================
+model Poster {
   id          String   @id @default(uuid())
   title       String?
   imageUrl    String
@@ -1691,8 +1699,10 @@ model Notice {
   @@index([tenantId])
 }
 
-// =====================================// 📝 Survey & Membership Questions
-// ==============================model SurveyQuestion {
+// =====================================
+// 📝 Survey & Membership Questions
+// ==============================
+model SurveyQuestion {
   id          String         @id @default(uuid())
   question    String
   type        String         @default("TEXT") // TEXT, SELECT, MULTI_SELECT, RADIO
@@ -1722,8 +1732,10 @@ model SurveyAnswer {
   @@index([userId])
 }
 
-// =====================================// 💳 Wallet Enhancements
-// ==============================model QRCode {
+// =====================================
+// 💳 Wallet Enhancements
+// ==============================
+model QRCode {
   id          String   @id @default(uuid())
   title       String
   imageUrl    String
@@ -1933,8 +1945,10 @@ model FeatureRestriction {
   @@index([tenantId, identity])
 }
 
-// =====================================================// NEW: Unified Application System (runs alongside existing tables)
-// ==============================================model Application {
+// =====================================================
+// NEW: Unified Application System (runs alongside existing tables)
+// ==============================================
+model Application {
   id                String   @id @default(uuid())
   userId            String   // Target user (who is being upgraded)
   createdById       String   // Who submitted (self or admin/partner)
