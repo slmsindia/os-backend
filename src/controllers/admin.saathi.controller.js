@@ -149,7 +149,7 @@ const adminSaathiController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-    if (!calculatedAmount || calculatedAmount <= 0) {
+    if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
@@ -323,10 +323,12 @@ const adminSaathiController = {
       // 2. Self-target protection and hierarchy validation
       // Saathi direct onboarding is only meant for creating a new user under the current admin,
       // not for converting the admin's own account in place.
+      // Exception: If the logged-in user is a MEMBER or USER, they are upgrading their own account to Saathi.
+      const isSelfUpgrade = ['MEMBER', 'USER'].includes(String(adminIdentity || '').toUpperCase());
       const isSelfTarget =
         targetUser?.id === adminId ||
         String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
-      if (isSelfTarget) {
+      if (isSelfTarget && !isSelfUpgrade) {
         return res.status(400).json({
           success: false,
           message: "Use a different mobile number to create a new Saathi under your hierarchy."
@@ -398,7 +400,7 @@ const adminSaathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 1000;
+          amount = parsed.amount !== undefined ? parsed.amount : 1000;
           // Support both names during transition
           if (!parsed.serviceCharge && parsed.serviceCharges) {
             parsed.serviceCharge = parsed.serviceCharges;
@@ -426,7 +428,7 @@ const adminSaathiController = {
 
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
       let razorpayOrder = null;
-      if (paymentMethod === 'RAZORPAY') {
+      if (paymentMethod === 'RAZORPAY' && amount > 0) {
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {
@@ -505,8 +507,15 @@ const adminSaathiController = {
           documentsJson: req.body.documents || null,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING'
+          status: (paymentMethod === 'RAZORPAY' && amount > 0) ? 'PAYMENT_PENDING' : 'PENDING'
         };
+
+        // Update targetUser's profile photo directly on the User model
+        const photoVal = req.body.profilePhoto || targetUser.profilePhoto || null;
+        await tx.user.update({
+          where: { id: targetUserId },
+          data: { profilePhoto: photoVal }
+        });
 
         let appResult;
         if (shouldUpdateExisting) {
@@ -522,15 +531,15 @@ const adminSaathiController = {
                       amount,
                       method: paymentMethod,
                       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? 'SUCCESS' : 'PENDING',
+                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? new Date() : null
                     },
                     update: {
                       amount,
                       method: paymentMethod,
                       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? new Date() : null
                   }
                 }
               }
@@ -549,8 +558,8 @@ const adminSaathiController = {
                     amount,
                     method: paymentMethod,
                     razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount === 0) ? new Date() : null
                   }
                 }
               },

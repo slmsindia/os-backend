@@ -183,7 +183,12 @@ const adminMembershipController = {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
           fee = 1000;
           if (setting && setting.value) {
-            try { fee = JSON.parse(setting.value).amount || 1000; } catch (e) { fee = parseFloat(setting.value); }
+            try { 
+              const parsed = JSON.parse(setting.value);
+              fee = parsed.amount !== undefined ? parsed.amount : 1000; 
+            } catch (e) { 
+              fee = parseFloat(setting.value); 
+            }
           }
         } else if (targetIdentity === 'MEMBER') {
           const config = await prisma.membershipConfig.findFirst({ 
@@ -195,7 +200,12 @@ const adminMembershipController = {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
           fee = 2000;
           if (setting && setting.value) {
-            try { fee = JSON.parse(setting.value).amount || 2000; } catch (e) { fee = parseFloat(setting.value); }
+            try { 
+              const parsed = JSON.parse(setting.value);
+              fee = parsed.amount !== undefined ? parsed.amount : 2000; 
+            } catch (e) { 
+              fee = parseFloat(setting.value); 
+            }
           }
         } else if (targetIdentity === 'AGENT') {
           const setting = await prisma.globalSetting.findFirst({ where: { key: 'AGENT_REGISTRATION_FEE', tenantId } });
@@ -417,7 +427,7 @@ const adminMembershipController = {
       calculatedAmount = parseFloat(legacyPrice);
     }
 
-    if (!calculatedAmount || calculatedAmount <= 0) {
+    if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid fee configuration"
