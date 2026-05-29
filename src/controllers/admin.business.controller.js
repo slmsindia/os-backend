@@ -192,11 +192,7 @@ const businessPartnerController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-<<<<<<< HEAD
     if (!calculatedAmount || calculatedAmount <= 0) {
-=======
-    if (calculatedAmount === undefined || calculatedAmount === null || isNaN(calculatedAmount) || calculatedAmount < 0) {
->>>>>>> origin/main
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
@@ -429,11 +425,7 @@ const businessPartnerController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-<<<<<<< HEAD
           amount = parsed.amount || 2000;
-=======
-          amount = parsed.amount !== undefined ? parsed.amount : 2000;
->>>>>>> origin/main
           if (!parsed.serviceCharge && parsed.serviceCharges) {
             parsed.serviceCharge = parsed.serviceCharges;
           }
@@ -461,11 +453,7 @@ const businessPartnerController = {
 
       let razorpayOrder = null;
 
-<<<<<<< HEAD
       if (paymentMethod === 'RAZORPAY') {
-=======
-      if (paymentMethod === 'RAZORPAY' && amount > 0) {
->>>>>>> origin/main
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `biz_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {
@@ -517,11 +505,7 @@ const businessPartnerController = {
           paymentMode: paymentMethod === 'RAZORPAY' ? 1 : (paymentMethod === 'WALLET' ? 2 : 3),
           addressJson: body.address || null,
           documentsJson: body.documents || null,
-<<<<<<< HEAD
           status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING',
-=======
-          status: (paymentMethod === 'RAZORPAY' && amount > 0) ? 'PAYMENT_PENDING' : 'PENDING',
->>>>>>> origin/main
           createdById: adminId
         };
 
