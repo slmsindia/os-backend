@@ -14,9 +14,13 @@ const prabhuDataService = require('./prabhu-data.service');
 const prabhuReceiverService = require('./prabhu-receiver.service');
 const prabhuSenderService = require('./prabhu-sender.service');
 <<<<<<< HEAD
+<<<<<<< HEAD
 const walletService = require('../../services/wallet.service');
 =======
 >>>>>>> main
+=======
+const walletService = require('../../services/wallet.service');
+>>>>>>> origin/main
 
 const ok = (res, message, payload) => {
   return res.json({
@@ -121,6 +125,9 @@ const extractReceiverList = (payload = {}) => {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const normalizeReceiverIdentity = (receiver = {}) => ({
   receiverId: String(receiver?.receiverId || receiver?.ReceiverId || receiver?.id || '').trim(),
   receiverName: String(
@@ -210,8 +217,11 @@ const resolveReceiverDetails = async (payload = {}, context = {}) => {
   return resolved;
 };
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const extractStateDistrictRows = (payload = {}) => {
   return [
     ...toArray(payload.data),
@@ -299,12 +309,18 @@ const getCustomerByMobile = async (req, res) => {
 const createCustomer = async (req, res) => {
   try {
 <<<<<<< HEAD
+<<<<<<< HEAD
     console.log('DEBUG - Prabhu CreateCustomer Request Body:', JSON.stringify(req.body, null, 2));
 
     const configuredCspCode = (process.env.PRABHU_CSPCODE || process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
 =======
     const configuredCspCode = (process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
 >>>>>>> main
+=======
+    console.log('DEBUG - Prabhu CreateCustomer Request Body:', JSON.stringify(req.body, null, 2));
+
+    const configuredCspCode = (process.env.PRABHU_CSPCODE || process.env.PRABHU_CSP_CODE || process.env.PRABHU_AGENT_CODE || '').trim();
+>>>>>>> origin/main
 
     const requestBody = {
       ...(req.body || {})
@@ -321,10 +337,15 @@ const createCustomer = async (req, res) => {
     requestBody.CSPCode = effectiveCspCode;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     console.log('DEBUG - CSP Code Set:', { configuredCspCode, effectiveCspCode, finalCspCode: requestBody.cspCode });
 
 =======
 >>>>>>> main
+=======
+    console.log('DEBUG - CSP Code Set:', { configuredCspCode, effectiveCspCode, finalCspCode: requestBody.cspCode });
+
+>>>>>>> origin/main
     await normalizeIndiaTemporaryStateCode(requestBody, getRequestContext(req));
 
     const result = await prabhuService.callEndpoint('CreateCustomer', requestBody, getRequestContext(req));
@@ -341,6 +362,7 @@ const createCustomer = async (req, res) => {
       gender: requestBody?.gender,
       dateOfBirth: requestBody?.dob,
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
       address: requestBody?.address,
       city: requestBody?.city,
@@ -348,6 +370,8 @@ const createCustomer = async (req, res) => {
       state: requestBody?.state,
       nationality: requestBody?.nationality,
 >>>>>>> main
+=======
+>>>>>>> origin/main
       email: requestBody?.email,
       idType: requestBody?.IDType || requestBody?.idType,
       idNumber: requestBody?.IDNumber || requestBody?.idNumber,
@@ -409,11 +433,16 @@ const workflowStep1Customer = async (req, res) => {
         customerFullName: req.body?.customerFullName || req.body?.name,
         cspMobile: req.body?.cspMobile,
 <<<<<<< HEAD
+<<<<<<< HEAD
         cspName: req.body?.cspName,
         idType: req.body?.idType || req.body?.IDType || '12' // Defaulting to 12 if not provided
 =======
         cspName: req.body?.cspName
 >>>>>>> main
+=======
+        cspName: req.body?.cspName,
+        idType: req.body?.idType || req.body?.IDType || '12' // Defaulting to 12 if not provided
+>>>>>>> origin/main
       }, getRequestContext(req));
 
       return ok(res, 'Customer not found. CreateCustomer OTP sent.', {
@@ -737,7 +766,40 @@ module.exports = {
   getEcho: proxyOperation('GetEcho', 'Get echo success'),
   getCashPayLocationList: proxyOperation('GetCashPayLocationList', 'Get cash pay location list success'),
   getAcPayBankBranchList: proxyOperation('GetAcPayBankBranchList', 'Get bank branch list success'),
+<<<<<<< HEAD
   getBalance: proxyOperation('GetBalance', 'Get balance success'),
+=======
+  getBalance: async (req, res) => {
+    try {
+      const result = await prabhuService.callEndpoint('GetBalance', req.body || {}, getRequestContext(req));
+      
+      let balance = 0;
+      try {
+        const payload = result?.data || {};
+        const rawBalance = payload.currentBalance || payload.balance || payload.balanceAmt || payload.Balance || 0;
+        balance = parseFloat(rawBalance) || 0;
+      } catch (e) {
+        console.warn('Failed to parse Prabhu REST balance:', e.message);
+      }
+
+      if (!balance) {
+        balance = 245000; // UAT Sandbox Mock Balance
+      }
+
+      return ok(res, 'Get balance success', {
+        balance,
+        data: result?.data
+      });
+    } catch (error) {
+      console.warn('Prabhu GetBalance failed, falling back to UAT mock balance:', error.message);
+      return ok(res, 'Get balance success (UAT Mock Fallback)', {
+        balance: 245000,
+        isMock: true,
+        error: error.message
+      });
+    }
+  },
+>>>>>>> origin/main
   sendOTP: proxyOperation('SendOTP', 'Send OTP success'),
   getServiceCharge: proxyOperation('GetServiceCharge', 'Get service charge success'),
   getServiceChargeByCollection: proxyOperation('GetServiceChargeByCollection', 'Get service charge by collection success'),
@@ -747,6 +809,9 @@ module.exports = {
   uploadDocument: proxyOperation('UploadDocument', 'Upload document success'),
   sendTransaction: async (req, res) => {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     let deductedWallet = null;
     let transferAmount = 0;
     let walletRefunded = false;
@@ -834,6 +899,7 @@ module.exports = {
         });
       }
 
+<<<<<<< HEAD
 =======
     try {
       const payload = {
@@ -844,6 +910,8 @@ module.exports = {
       return ok(res, 'Send transaction success', { data: result.data });
     } catch (error) {
 >>>>>>> main
+=======
+>>>>>>> origin/main
       return fail(res, error);
     }
   },
@@ -889,6 +957,9 @@ module.exports = {
   upsertPrabhuSender,
   cspUniqueRefPoll
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 };
 
 const getTransferAmount = (payload = {}) => {
@@ -911,6 +982,9 @@ const getTransferAmount = (payload = {}) => {
 
   return 0;
 };
+<<<<<<< HEAD
 =======
 };
 >>>>>>> main
+=======
+>>>>>>> origin/main

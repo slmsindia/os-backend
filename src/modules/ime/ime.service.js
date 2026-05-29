@@ -596,10 +596,14 @@ const buildRequestPayload = (methodName, config, params = {}) => {
             SenderName: asString(params.SenderName, params.senderName, params.SenderFullName, params.senderFullName, 'NA'),
             SenderMobileNo: asString(params.SenderMobileNo, params.senderMobileNo, params.SenderPhoneNumber, params.PhoneNumber, '9800000000'),
 <<<<<<< HEAD
+<<<<<<< HEAD
             Occupation: normalizeOccupation(asString(params.Occupation, params.occupation), '8081')
 =======
             Occupation: asString(params.Occupation, params.occupation, 'Service')
 >>>>>>> main
+=======
+            Occupation: normalizeOccupation(asString(params.Occupation, params.occupation), '8081')
+>>>>>>> origin/main
           },
           ReceiverDetails: {
             ReceiverName: asString(params.ReceiverName, params.receiverName, 'NA'),
@@ -618,6 +622,7 @@ const buildRequestPayload = (methodName, config, params = {}) => {
             CollectAmount: asString(params.CollectAmount, params.collectAmount, params.Amount, params.amount, '100'),
             PayoutAmount: asString(params.PayoutAmount, params.payoutAmount, params.Amount, params.amount, '10000'),
 <<<<<<< HEAD
+<<<<<<< HEAD
             SourceOfFund: normalizeSourceOfFund(asString(params.SourceOfFund, params.sourceOfFund), '8051'),
             Relationship: asString(params.Relationship, params.relationship, '2109'),
             PurposeOfRemittance: asString(params.PurposeOfRemittance, params.purposeOfRemittance, '3801'),
@@ -626,6 +631,11 @@ const buildRequestPayload = (methodName, config, params = {}) => {
             Relationship: asString(params.Relationship, params.relationship, 'Self'),
             PurposeOfRemittance: asString(params.PurposeOfRemittance, params.purposeOfRemittance, 'Family Support'),
 >>>>>>> main
+=======
+            SourceOfFund: normalizeSourceOfFund(asString(params.SourceOfFund, params.sourceOfFund), '8051'),
+            Relationship: asString(params.Relationship, params.relationship, '2109'),
+            PurposeOfRemittance: asString(params.PurposeOfRemittance, params.purposeOfRemittance, '3801'),
+>>>>>>> origin/main
             PaymentType: normalizePaymentType(firstNonEmpty(params.PaymentType, params.paymentType, params.PaymentMode, params.paymentMode), 'C'),
             BankId: asString(params.BankId, params.bankId, params.BankCode, params.bankCode),
             BankBranchId: asString(params.BankBranchId, params.bankBranchId),
@@ -864,6 +874,9 @@ const updateReceiver = async (receiverId, receiverData) => {
  */
 const getPaymentModes = async () => {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   const typeCandidates = ['PaymentMode', 'WSST-PMDV1', 'PaymentType', 'WSST-ACCV1'];
   
   let lastResult = null;
@@ -891,9 +904,12 @@ const getPaymentModes = async () => {
       }
     }]
   };
+<<<<<<< HEAD
 =======
   return await callIMEMethod('GetPaymentModes', { TypeCode: 'PaymentType' });
 >>>>>>> main
+=======
+>>>>>>> origin/main
 };
 
 const validateBankAccount = async (bankCode, accountNumber, countryCode = 'NP') => {

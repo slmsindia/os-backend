@@ -4,18 +4,28 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const swaggerUi = require("swagger-ui-express");
 <<<<<<< HEAD
+<<<<<<< HEAD
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 =======
 require("dotenv").config();
 >>>>>>> main
 const openApiSpec = require("./docs/openapi");
 
+=======
+require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
+const openApiSpec = require("./docs/openapi");
+
+const databaseConfigMiddleware = require("./middleware/database-config.middleware");
+>>>>>>> origin/main
 const tenantMiddleware = require("./middleware/tenant.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const deviceRoutes = require("./routes/device.routes");
 const adminRoutes = require("./routes/admin.routes");
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const adminMembershipRoutes = require("./routes/admin.membership.routes");
 const superAdminRoutes = require("./routes/superadmin.routes");
 const prabhuRoutes = require("./modules/prabhu/prabhu.routes");
@@ -41,6 +51,7 @@ const adminAccessRoutes = require("./routes/admin.access.routes");
 const draftRoutes = require("./routes/draft.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const applicationRoutes = require("./routes/application.routes");
+<<<<<<< HEAD
 const router = require("./routes/jobs.route");
 =======
 const superAdminRoutes = require("./routes/superadmin.routes");
@@ -52,11 +63,17 @@ const rdRoutes = require('./routes/rd.routes');
 const healthRoutes = require("./routes/health.routes");
 
 >>>>>>> main
+=======
+
+>>>>>>> origin/main
 const app = express();
 
 app.use(helmet());
 app.use(cors({
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [
     'http://localhost:3005',
     'http://localhost:5273',
@@ -72,6 +89,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan("dev"));
+<<<<<<< HEAD
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 =======
@@ -81,6 +99,24 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(morgan("dev"));
 app.use(express.json());
 >>>>>>> main
+=======
+<<<<<<< HEAD
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+=======
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+>>>>>>> origin/main
+app.use(databaseConfigMiddleware);
+
+// Health checks stay available even when DATABASE_URL is intentionally unset.
+app.get("/api/health-check", (req, res) => res.json({
+  status: "ok",
+  version: "1.0.7",
+  timestamp: new Date().toISOString()
+}));
+app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
+>>>>>>> origin/main
 
 const buildSwaggerSpec = (req) => {
   const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
@@ -89,6 +125,9 @@ const buildSwaggerSpec = (req) => {
   const requestServerUrl = `${protocol}://${host}`;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   const allServerUrls = [
     { url: requestServerUrl },
     { url: "http://localhost:3005" },
@@ -107,11 +146,14 @@ const buildSwaggerSpec = (req) => {
   return {
     ...openApiSpec,
     servers: uniqueServers,
+<<<<<<< HEAD
 =======
   return {
     ...openApiSpec,
     servers: [{ url: requestServerUrl }, ...(openApiSpec.servers || []).filter((s) => s.url !== requestServerUrl)],
 >>>>>>> main
+=======
+>>>>>>> origin/main
   };
 };
 
@@ -128,6 +170,7 @@ app.use(
   })
 );
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 app.use(tenantMiddleware);
 
@@ -148,11 +191,20 @@ app.use(tenantMiddleware);
 
 
 >>>>>>> main
+=======
+app.use(tenantMiddleware);
+
+app.use("/api/applications", applicationRoutes);
+app.use("/api/membership", membershipRoutes);
+>>>>>>> origin/main
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/admin", adminRoutes);
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 app.use("/api/admin", adminMembershipRoutes);
 app.use("/api/superadmin", superAdminRoutes);
 app.use("/api/prabhu", prabhuRoutes);
@@ -177,6 +229,7 @@ app.use("/api/admin/access-control", adminAccessRoutes);
 app.use("/api/drafts", draftRoutes);
 app.use("/api/notifications", notificationRoutes);
 
+<<<<<<< HEAD
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
 app.use((req, res) => res.status(404).json({ message: "not found" }));
@@ -197,15 +250,23 @@ app.use((req, res) => res.status(404).json({ message: "not found" }));
 
 
 >>>>>>> main
+=======
+app.use((req, res) => res.status(404).json({ message: "not found" }));
+
+>>>>>>> origin/main
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
     message: "error",
 <<<<<<< HEAD
+<<<<<<< HEAD
     error: process.env.NODE_ENV === "development" ? err.message : undefined
 =======
     err: process.env.NODE_ENV === "dev" ? err.message : undefined
 >>>>>>> main
+=======
+    error: process.env.NODE_ENV === "development" ? err.message : undefined
+>>>>>>> origin/main
   });
 });
 

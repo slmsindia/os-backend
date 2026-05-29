@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const memoryStorage = new Map();
 const mockRedis = {
   get: async (key) => memoryStorage.get(key),
@@ -23,6 +26,7 @@ module.exports = redis;
 
 module.exports = redis;
 
+<<<<<<< HEAD
 =======
 const Redis = require("ioredis");
 
@@ -43,3 +47,5 @@ redis.on("connect", () => console.log(`redis connected to ${redis.options.host}`
 
 module.exports = redis;
 >>>>>>> main
+=======
+>>>>>>> origin/main

@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 
 const express = require('express');
 const imeController = require('./ime.controller');
@@ -11,6 +14,7 @@ router.post('/authenticate', imeController.authenticate);
 router.post('/login', imeController.login);
 
 // IME Modern Customers Endpoints
+<<<<<<< HEAD
 =======
 const express = require('express');
 const imeController = require('./ime.controller');
@@ -27,6 +31,8 @@ router.post('/login', imeController.login);
  * Customer Operations
  */
 >>>>>>> main
+=======
+>>>>>>> origin/main
 router.post('/customers/send-otp', imeController.sendCustomerOtp);
 router.post('/customers/confirm', imeController.confirmCustomer);
 router.post('/customers', imeController.createCustomer);
@@ -36,6 +42,9 @@ router.get('/customers/:customerId', imeController.getCustomer);
 router.post('/customers/validate', imeController.validateCustomer);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // IME Transactions Endpoints
 router.post('/SendTransaction', imeController.sendTransaction);
 router.post('/TransactionInquiry', imeController.transactionInquiry);
@@ -43,6 +52,7 @@ router.post('/CancelTransaction', imeController.cancelTransaction);
 router.post('/ConfirmSendTransaction', imeController.confirmSendTransaction);
 
 // IME Receivers Endpoints
+<<<<<<< HEAD
 =======
 /**
  * Remittance/Transaction Operations
@@ -55,11 +65,16 @@ router.post('/transactions/:transactionId/cancel', imeController.cancelTransacti
  * Receiver Management
  */
 >>>>>>> main
+=======
+>>>>>>> origin/main
 router.post('/receivers', imeController.createReceiver);
 router.get('/receivers/:receiverId', imeController.getReceiver);
 router.patch('/receivers/:receiverId', imeController.updateReceiver);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // IME Storage/Database Endpoints
 router.get('/storage/transactions', imeController.getStoredTransactions);
 router.get('/storage/receivers', imeController.getStoredReceivers);
@@ -111,6 +126,7 @@ router.get('/compliance/:customerId/status', imeController.getComplianceStatus);
 router.get('/customers/:customerId/transactions', imeController.getTransactionHistory);
 router.get('/exchange-rate', imeController.getExchangeRate);
 
+<<<<<<< HEAD
 =======
 /**
  * IME Data Storage Operations
@@ -186,5 +202,7 @@ router.post('/SendTransaction', imeController.sendTransaction);
 router.post('/TransactionInquiry', imeController.transactionInquiry);
 router.post('/TransactionInquiryDefault', imeController.transactionInquiryDefault);
 >>>>>>> main
+=======
+>>>>>>> origin/main
 
 module.exports = router;

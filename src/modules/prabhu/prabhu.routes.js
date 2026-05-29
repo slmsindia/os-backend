@@ -2,9 +2,13 @@
 const express = require('express');
 const prabhuController = require('./prabhu.controller');
 <<<<<<< HEAD
+<<<<<<< HEAD
 const authMiddleware = require('../../middleware/auth.middleware');
 =======
 >>>>>>> main
+=======
+const authMiddleware = require('../../middleware/auth.middleware');
+>>>>>>> origin/main
 const router = express.Router();
 
 // UniqueRef Polling endpoint (for frontend polling)
@@ -24,10 +28,14 @@ router.post('/UnverifiedTransactions', prabhuController.unverifiedTransactions);
 router.post('/ComplianceTransactions', prabhuController.complianceTransactions);
 router.post('/UploadDocument', prabhuController.uploadDocument);
 <<<<<<< HEAD
+<<<<<<< HEAD
 router.post('/SendTransaction', authMiddleware, prabhuController.sendTransaction);
 =======
 router.post('/SendTransaction', prabhuController.sendTransaction);
 >>>>>>> main
+=======
+router.post('/SendTransaction', authMiddleware, prabhuController.sendTransaction);
+>>>>>>> origin/main
 router.post('/ConfirmTransaction', prabhuController.confirmTransaction);
 router.post('/SearchTransaction', prabhuController.searchTransaction);
 router.post('/ValidateBankAccount', prabhuController.validateBankAccount);
@@ -76,7 +84,11 @@ router.get('/senders', prabhuController.listPrabhuSenders);
 router.post('/senders/upsert', prabhuController.upsertPrabhuSender);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 module.exports = router;
 =======
 module.exports = router;
 >>>>>>> main
+=======
+module.exports = router;
+>>>>>>> origin/main

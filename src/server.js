@@ -1,6 +1,12 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
+=======
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
+
+>>>>>>> origin/main
 const app = require("./app");
 const prisma = require("./lib/prisma");
 
@@ -47,6 +53,7 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("beforeExit", (code) => {
   console.log(`Node event loop is empty before exit. code=${code}`);
 });
+<<<<<<< HEAD
 =======
 require("dotenv").config();
 const app = require("./app");
@@ -57,3 +64,5 @@ app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
 >>>>>>> main
+=======
+>>>>>>> origin/main

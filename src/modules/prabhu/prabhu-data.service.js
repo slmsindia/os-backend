@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 const { generateUuid } = require('../../utils/id');
 
 const prisma = require('../../lib/prisma');
@@ -8,6 +9,11 @@ const { generateUuid } = require('../../utils/id');
 
 const prisma = new PrismaClient();
 >>>>>>> main
+=======
+const { generateUuid } = require('../../utils/id');
+
+const prisma = require('../../lib/prisma');
+>>>>>>> origin/main
 
 const toNumberOrNull = (value) => {
   if (value === undefined || value === null || value === '') {

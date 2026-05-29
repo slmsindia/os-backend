@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const imeService = require('./ime.service');
 const imeDataService = require('./ime-data.service');
 <<<<<<< HEAD
@@ -6,6 +7,17 @@ const walletService = require('../../services/wallet.service');
 const prisma = require('../../lib/prisma');
 =======
 >>>>>>> main
+=======
+<<<<<<< HEAD
+const imeService = require('./ime.service');
+=======
+  const imeService = require('./ime.service');
+>>>>>>> origin/main
+const imeDataService = require('./ime-data.service');
+const imeStorageService = require('./ime.storage.service');
+const walletService = require('../../services/wallet.service');
+const prisma = require('../../lib/prisma');
+>>>>>>> origin/main
 
 
 const ok = (res, message, data = {}) => {
@@ -37,6 +49,9 @@ const badRequest = (res, message, missing = []) => {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const logAndSaveImeResponse = async (operation, endpointPath, requestMethod, requestPayload, response, success, durationMs, req) => {
   try {
     // Save API log
@@ -92,6 +107,7 @@ const proxyImeMethod = (methodName, successMessage, buildParams) => async (req, 
       req
     );
     
+<<<<<<< HEAD
 =======
 const proxyImeMethod = (methodName, successMessage, buildParams) => async (req, res) => {
   try {
@@ -100,6 +116,8 @@ const proxyImeMethod = (methodName, successMessage, buildParams) => async (req, 
     return ok(res, successMessage || `${methodName} completed`, result);
   } catch (error) {
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return fail(res, error);
   }
 };
@@ -158,18 +176,53 @@ const authenticate = async (req, res) => {
 const login = async (req, res) => {
   try {
     const result = await imeService.login(req.body);
+<<<<<<< HEAD
     return ok(res, 'IME Login successful', result);
   } catch (error) {
     return fail(res, error);
   }
 };
 
+=======
+    
+    let balance = 0;
+    try {
+      const payload = getImePayload(result);
+      const rawBalance = payload.Balance || payload.AgentBalance || payload.BalanceAmount || 0;
+      balance = parseFloat(rawBalance) || 0;
+    } catch (e) {
+      console.warn('Failed to parse IME SOAP balance:', e.message);
+    }
+
+    if (!balance) {
+      balance = 154000; // UAT Sandbox Mock Balance
+    }
+
+    return ok(res, 'IME Login successful', {
+      balance,
+      ...result
+    });
+  } catch (error) {
+    console.warn('IME Login SOAP request failed, falling back to UAT mock balance:', error.message);
+    return ok(res, 'IME Login successful (UAT Mock Fallback)', {
+      balance: 154000,
+      isMock: true,
+      error: error.message
+    });
+  }
+};
+
+
+>>>>>>> origin/main
 /**
  * Customer Operations
  */
 const createCustomer = async (req, res) => {
   try {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Legacy mapping and normalization
     const body = req.body || {};
     
@@ -197,18 +250,25 @@ const createCustomer = async (req, res) => {
     body.IdData = body.IdData || body.idData || '.'; // Default to dot if missing to avoid validation error if not strictly required by IME but required by our controller
 
     const missing = requiredFields(body, [
+<<<<<<< HEAD
 =======
     const missing = requiredFields(req.body || {}, [
 >>>>>>> main
+=======
+>>>>>>> origin/main
       'FirstName',
       'LastName',
       'Gender',
       'DateOfBirth',
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
       'PhoneNumber',
       'Nationality'
     ]);
     
+<<<<<<< HEAD
 =======
       'IDType',
       'IDNumber',
@@ -225,11 +285,16 @@ const createCustomer = async (req, res) => {
       'IdData'
     ]);
 >>>>>>> main
+=======
+>>>>>>> origin/main
     if (missing.length) {
       return badRequest(res, 'Missing required customer fields', missing);
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Allow legacy numeric IDs or M/F to pass through without transformation
     const gender = String(body.Gender || '').trim();
     if (!['M', 'F'].includes(body.Gender)) {
@@ -269,6 +334,7 @@ const createCustomer = async (req, res) => {
     // Allow any numeric ID or common country codes
     if (!/^\d+$/.test(nationality) && !['NPL', 'NP', 'NEPAL', 'IND', 'IN', 'INDIA'].includes(nationality)) {
       // Just a warning or more flexible check
+<<<<<<< HEAD
 =======
     if (!['M', 'F'].includes(req.body.Gender)) {
       return badRequest(res, 'Gender must be M or F');
@@ -313,6 +379,8 @@ const createCustomer = async (req, res) => {
     if (!['NPL', 'NP', 'NEPAL', 'IND', 'IN', 'INDIA'].includes(nationality)) {
       return badRequest(res, 'Nationality should be NPL (or NP/NEPAL) for Nepal profile');
 >>>>>>> main
+=======
+>>>>>>> origin/main
     }
 
     const result = await imeService.createCustomer(req.body);
@@ -328,6 +396,9 @@ const createCustomer = async (req, res) => {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Save customer data to database if successful
     if (result?.success) {
       const customerData = {
@@ -369,8 +440,11 @@ const createCustomer = async (req, res) => {
       await imeStorageService.saveCustomer(customerData, result);
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     const otp = String(req.body.OTP || '').trim();
     const otpToken = String(req.body.OTPToken || '').trim();
     const shouldAutoConfirm = Boolean(otp || otpToken);
@@ -477,14 +551,20 @@ const sendCustomerOtp = async (req, res) => {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Save OTP log if successful
     if (finalMeta?.code === '0') {
       const otpToken = imeStorageService.extractImeResponse(finalResult).otpToken;
       await imeStorageService.saveOtpLog(referenceValue, moduleUsed, referenceValue, otpToken, finalResult);
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return ok(res, 'Customer OTP sent successfully', {
       ...finalResult,
       moduleUsed,
@@ -514,6 +594,9 @@ const confirmCustomer = async (req, res) => {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Update OTP verification status in database
     if (imeMeta.code === '0') {
       // If we have a mobile number in the request, update it
@@ -523,8 +606,11 @@ const confirmCustomer = async (req, res) => {
       }
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return ok(res, 'Customer confirmed successfully', result);
   } catch (error) {
     return fail(res, error);
@@ -650,6 +736,9 @@ const sendMoney = async (req, res) => {
 
     const result = await imeService.sendMoney(req.body);
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     
     // Save transaction data to database if successful
     if (result?.success) {
@@ -691,8 +780,11 @@ const sendMoney = async (req, res) => {
       await walletService.processServiceCommission('IME', req.user.tenant_id, result?.data?.TransactionId || transactionData.agentTxnRefId, req.user.user_id || req.user.id);
     }
     
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return ok(res, 'Money sent successfully', result);
   } catch (error) {
     return fail(res, error);
@@ -721,6 +813,9 @@ const cancelTransaction = async (req, res) => {
     }
     const result = await imeService.cancelTransaction(transactionId, reason);
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     const imeMeta = getImeResponseMeta(result);
 
     // Update status in database if successful
@@ -740,8 +835,11 @@ const cancelTransaction = async (req, res) => {
       });
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return ok(res, 'Transaction cancelled successfully', result);
   } catch (error) {
     return fail(res, error);
@@ -754,6 +852,9 @@ const cancelTransaction = async (req, res) => {
 const createReceiver = async (req, res) => {
   try {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     const { 
       CustomerId, 
       ReceiverName, 
@@ -846,6 +947,7 @@ const createReceiver = async (req, res) => {
         receiverId: savedReceiver.id // Also update in the data object
       }
     });
+<<<<<<< HEAD
 =======
     const missing = requiredFields(req.body || {}, [
       'CustomerId',
@@ -877,6 +979,8 @@ const createReceiver = async (req, res) => {
 
     return ok(res, 'Receiver created successfully', result);
 >>>>>>> main
+=======
+>>>>>>> origin/main
   } catch (error) {
     return fail(res, error);
   }
@@ -889,6 +993,9 @@ const getReceiver = async (req, res) => {
       return res.status(400).json({ success: false, message: 'receiverId is required' });
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 
     // 1. Check if the ID matches a CustomerId (Sender). If so, return ALL their receivers.
     const receiverSelect = {
@@ -930,10 +1037,13 @@ const getReceiver = async (req, res) => {
     // 3. Fallback to IME Live
     const result = await imeService.getReceiver(receiverId);
     return ok(res, 'Receiver retrieved from IME', result);
+<<<<<<< HEAD
 =======
     const result = await imeService.getReceiver(receiverId);
     return ok(res, 'Receiver retrieved successfully', result);
 >>>>>>> main
+=======
+>>>>>>> origin/main
   } catch (error) {
     return fail(res, error);
   }
@@ -943,6 +1053,9 @@ const updateReceiver = async (req, res) => {
   try {
     const { receiverId } = req.params;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     const updateData = req.body || {};
 
     if (!receiverId) {
@@ -1007,6 +1120,7 @@ const updateReceiver = async (req, res) => {
       }
       throw imeError;
     }
+<<<<<<< HEAD
 =======
     if (!receiverId) {
       return res.status(400).json({ success: false, message: 'receiverId is required' });
@@ -1014,6 +1128,8 @@ const updateReceiver = async (req, res) => {
     const result = await imeService.updateReceiver(receiverId, req.body);
     return ok(res, 'Receiver updated successfully', result);
 >>>>>>> main
+=======
+>>>>>>> origin/main
   } catch (error) {
     return fail(res, error);
   }
@@ -1026,6 +1142,9 @@ const getPaymentModes = async (req, res) => {
   try {
     const result = await imeService.getPaymentModes();
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     
     // Save to database
     if (result?.success && result?.data) {
@@ -1037,8 +1156,11 @@ const getPaymentModes = async (req, res) => {
       await imeStorageService.saveStaticData('WSST-PMDV1', '', dataList);
     }
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return ok(res, 'Payment modes retrieved', result);
   } catch (error) {
     return fail(res, error);
@@ -1085,6 +1207,9 @@ const getBankBranches = async (req, res) => {
 
 const getStaticData = async (req, res) => {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   const startTime = Date.now();
   try {
     // Map legacy paths to type codes (Exact match with your 32 items list)
@@ -1161,15 +1286,21 @@ const getStaticData = async (req, res) => {
       }
     }
     
+<<<<<<< HEAD
 =======
   try {
     const { type, reference } = req.query;
 >>>>>>> main
+=======
+>>>>>>> origin/main
     if (!String(type || '').trim()) {
       return badRequest(res, 'type query parameter is required');
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // --- DB FIRST LOGIC ---
     // 1. Try to fetch from database first
     const dbData = await imeStorageService.getStaticData(type, reference);
@@ -1217,11 +1348,14 @@ const getStaticData = async (req, res) => {
       req
     );
     
+<<<<<<< HEAD
 =======
     const result = await imeService.getStaticData(type, reference || '');
     return ok(res, 'Static data retrieved', result);
   } catch (error) {
 >>>>>>> main
+=======
+>>>>>>> origin/main
     return fail(res, error);
   }
 };
@@ -1405,10 +1539,14 @@ const cspDocumentTypeListLegacy = fetchStaticType('CSPDocumentTypeList', 'CSP do
 const ownerCategoryTypesLegacy = fetchStaticType('OwnerCategoryTypes', 'Owner category types retrieved');
 const educationalQualificationListLegacy = fetchStaticType('EducationalQualificationList', 'Educational qualification list retrieved');
 <<<<<<< HEAD
+<<<<<<< HEAD
 const municipalitiesLegacy = fetchStaticType('WSST-MUNV1', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
 =======
 const municipalitiesLegacy = fetchStaticType('Municipality', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
 >>>>>>> main
+=======
+const municipalitiesLegacy = fetchStaticType('WSST-MUNV1', 'Municipalities retrieved', (req) => req.params.DistrictId || '');
+>>>>>>> origin/main
 const relationshipListLegacy = fetchStaticType('Relationship', 'Relationship list retrieved');
 const idPlaceOfIssueLegacy = async (req, res) => {
   try {
@@ -1432,6 +1570,9 @@ const checkCSPLegacy = proxyImeMethod('CheckCSP', 'CSP status fetched', (req) =>
   CSPCode: req.query.cspcode || req.query.CSPCode || req.query.cspCode || ''
 }));
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const checkCustomerLegacy = async (req, res) => {
   const startTime = Date.now();
   try {
@@ -1475,17 +1616,23 @@ const checkCustomerLegacy = async (req, res) => {
     return fail(res, error);
   }
 };
+<<<<<<< HEAD
 =======
 const checkCustomerLegacy = proxyImeMethod('CheckCustomer', 'Customer check completed', (req) => ({
   MobileNo: req.params.mobileNo || ''
 }));
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const confirmCustomerRegistrationLegacy = proxyImeMethod('ConfirmCustomerRegistration', 'Customer registration confirmed', (req) => ({
   OTP: req.body?.otp || req.body?.OTP || '',
   CustomerToken: req.body?.customerToken || req.body?.CustomerToken || '',
   OTPToken: req.body?.otpToken || req.body?.OTPToken || ''
 }));
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const confirmSendTransactionLegacy = async (req, res) => {
   const startTime = Date.now();
   try {
@@ -1834,9 +1981,31 @@ const sendTransactionLegacy = async (req, res) => {
       }
     }
 
+<<<<<<< HEAD
     // Process Admin Commission if successful
     if (imeMeta.code === '0') {
       await walletService.processServiceCommission('IME', req.user.tenant_id, params.AgentTxnRefId, req.user.user_id || req.user.id);
+=======
+<<<<<<< HEAD
+    // Process Admin Commission if successful
+    if (imeMeta.code === '0') {
+      await walletService.processServiceCommission('IME', req.user.tenant_id, params.AgentTxnRefId, req.user.user_id || req.user.id);
+=======
+    // Process Admin Commission if successful (only when request is authenticated)
+    if (imeMeta.code === '0') {
+      try {
+        const tenantId = req.user && (req.user.tenant_id || req.user.tenantId || req.user.tenant);
+        const userId = req.user && (req.user.user_id || req.user.id || req.user.userId);
+        if (tenantId) {
+          await walletService.processServiceCommission('IME', tenantId, params.AgentTxnRefId, userId);
+        } else {
+          console.warn('[IME] Skipping commission processing: unauthenticated request (no tenant info)');
+        }
+      } catch (commErr) {
+        console.error('[IME] Commission processing failed:', commErr?.message || commErr);
+      }
+>>>>>>> origin/main
+>>>>>>> origin/main
     }
     
     // Log API response
@@ -1868,6 +2037,7 @@ const sendTransactionLegacy = async (req, res) => {
 };
 
 
+<<<<<<< HEAD
 =======
 const confirmSendTransactionLegacy = proxyImeMethod('ConfirmSendTransaction', 'Send transaction confirmed', (req) => ({
   RefNo: req.body?.refNo || req.body?.RefNo || '',
@@ -1880,6 +2050,8 @@ const getCalculationLegacy = proxyImeMethod('GetCalculation', 'Calculation fetch
 const sendOtpLegacy = proxyImeMethod('SendOTP', 'OTP sent');
 const sendTransactionLegacy = proxyImeMethod('SendTransaction', 'Transaction send request submitted');
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const transactionInquiryLegacy = proxyImeMethod('TransactionInquiry', 'Transaction inquiry fetched');
 const transactionInquiryDefaultLegacy = proxyImeMethod('TransactionInquiryDefault', 'Transaction inquiry default fetched');
 const bankListLegacy = async (req, res) => {
@@ -1901,6 +2073,9 @@ const bankBranchListLegacy = async (req, res) => {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 /**
  * Storage / Database Fetchers
  */
@@ -1951,7 +2126,27 @@ const getStoredTransactions = async (req, res) => {
         updatedAt: true
       }
     });
+<<<<<<< HEAD
     return ok(res, 'Stored transactions retrieved', { data: transactions });
+=======
+<<<<<<< HEAD
+    return ok(res, 'Stored transactions retrieved', { data: transactions });
+=======
+    const normalizedTransactions = transactions.map((transaction) => ({
+      ...transaction,
+      TransactionId: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      RefNo: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      Amount: transaction.collectAmount ?? transaction.sendAmount ?? transaction.payoutAmount ?? null,
+      TxnCharge: transaction.serviceCharge ?? 0,
+      PaymentType: transaction.paymentMode || null,
+      ReceiverName: transaction.receiverName || null,
+      Receiver: transaction.receiverName || null,
+      PaymentStatus: transaction.status || null
+    }));
+
+    return ok(res, 'Stored transactions retrieved', { data: normalizedTransactions });
+>>>>>>> origin/main
+>>>>>>> origin/main
   } catch (error) {
     return fail(res, error);
   }
@@ -1991,6 +2186,7 @@ module.exports = {
   createReceiver,
   getReceiver,
   updateReceiver,
+<<<<<<< HEAD
 =======
 module.exports = {
   // Auth
@@ -2018,6 +2214,8 @@ module.exports = {
 
   // Payment
 >>>>>>> main
+=======
+>>>>>>> origin/main
   getPaymentModes,
   validateBankAccount,
   getBankList,
@@ -2025,10 +2223,14 @@ module.exports = {
   getStaticData,
   getIssuePlaces,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   verifyKYC,
   getComplianceStatus,
   getTransactionHistory,
   getExchangeRate,
+<<<<<<< HEAD
 =======
 
   // Compliance
@@ -2041,11 +2243,16 @@ module.exports = {
 
   // IME Data
 >>>>>>> main
+=======
+>>>>>>> origin/main
   listImeData,
   createImeData,
   updateImeData,
   deleteImeData,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   createCustomer,
   getCalculation: getCalculationLegacy,
   cancelTransaction,
@@ -2061,6 +2268,7 @@ module.exports = {
   customerRegistration: createCustomer,
   confirmCustomerRegistration: confirmCustomer,
   sendTransaction: sendTransactionLegacy,
+<<<<<<< HEAD
 =======
 
   // Legacy IME endpoints (all required for /api/IME/*)
@@ -2072,11 +2280,14 @@ module.exports = {
   balanceInquiry: balanceInquiryLegacy,
   checkCustomer: checkCustomerLegacy,
 >>>>>>> main
+=======
+>>>>>>> origin/main
   confirmSendTransaction: confirmSendTransactionLegacy,
   transactionInquiry: transactionInquiryLegacy,
   transactionInquiryDefault: transactionInquiryDefaultLegacy,
   amendTransaction: amendTransactionLegacy,
   customerMobileAmendment: customerMobileAmendmentLegacy,
+<<<<<<< HEAD
 <<<<<<< HEAD
   getStoredTransactions,
   getStoredReceivers,
@@ -2117,4 +2328,8 @@ module.exports = {
   sendTransaction: sendTransactionLegacy,
   cspDocumentUpload: cspDocumentUploadLegacy
 >>>>>>> main
+=======
+  getStoredTransactions,
+  getStoredReceivers,
+>>>>>>> origin/main
 };

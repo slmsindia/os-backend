@@ -14,6 +14,9 @@ const jsonBody = {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const membershipApplyBody = {
   required: true,
   content: {
@@ -79,8 +82,11 @@ const membershipVerifyPaymentBody = {
   }
 };
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const imeCreateCustomerBody = {
   required: true,
   content: {
@@ -93,6 +99,9 @@ const imeCreateCustomerBody = {
           "Gender",
           "DateOfBirth",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
           "PhoneNumber",
           "Nationality"
         ],
@@ -120,6 +129,7 @@ const imeCreateCustomerBody = {
           TempAddress: { type: "string", example: "Mumbai Central" },
           IdData: { type: "string", example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" },
           IdDataType: { type: "string", example: "jpeg" }
+<<<<<<< HEAD
 =======
           "IDType",
           "IDNumber",
@@ -159,6 +169,8 @@ const imeCreateCustomerBody = {
           ,OTPToken: { type: "string", example: "IME-OTP-TOKEN" }
           ,OTP: { type: "string", example: "123456" }
 >>>>>>> main
+=======
+>>>>>>> origin/main
         }
       }
     }
@@ -192,10 +204,14 @@ const imeSendMoneyBody = {
         required: [
           "SenderCustomerId",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "ReceiverCustomerId", 
 =======
           "ReceiverCustomerId",
 >>>>>>> main
+=======
+          "ReceiverCustomerId", 
+>>>>>>> origin/main
           "Amount",
           "SourceCurrency",
           "DestinationCurrency",
@@ -217,6 +233,9 @@ const imeSendMoneyBody = {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const imeSendTransactionBody = {
   required: true,
   content: {
@@ -287,8 +306,11 @@ const imeSendTransactionBody = {
   }
 };
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const imeCancelTransactionBody = {
   required: false,
   content: {
@@ -310,6 +332,9 @@ const imeCreateReceiverBody = {
       schema: {
         type: "object",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         required: ["ReceiverName", "ReceiverMobileNo"],
         properties: {
           CustomerId: { type: "string", example: "", description: "Optional: links to a sender. If empty, a UUID will be generated." },
@@ -347,6 +372,7 @@ const imeCreateReceiverBody = {
         BankId: "117",
         BankBranchId: "11701",
         BankAccountNumber: "1234567890"
+<<<<<<< HEAD
 =======
         required: ["CustomerId", "FirstName", "LastName", "IDType", "IDNumber", "PhoneNumber"],
         properties: {
@@ -361,6 +387,8 @@ const imeCreateReceiverBody = {
           CountryCode: { type: "string", example: "NP" }
         }
 >>>>>>> main
+=======
+>>>>>>> origin/main
       }
     }
   }
@@ -384,6 +412,9 @@ const imeValidateBankAccountBody = {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const imeUpdateReceiverBody = {
   required: true,
   content: {
@@ -413,8 +444,11 @@ const imeUpdateReceiverBody = {
   }
 };
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 const imeVerifyKycBody = {
   required: true,
   content: {
@@ -1134,6 +1168,9 @@ const paths = {
       },
     },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     put: {
       tags: ["Users"],
       summary: "Update logged-in profile",
@@ -1144,8 +1181,11 @@ const paths = {
         401: { description: "Unauthorized" },
       },
     },
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
   },
 
   "/api/users/approvals/pending": {
@@ -1220,6 +1260,9 @@ const paths = {
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/create-white-label-admin": {
     post: {
       tags: ["Admin"],
@@ -1272,8 +1315,11 @@ const paths = {
     },
   },
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
   "/api/admin/create-district": {
     post: {
       tags: ["Admin"],
@@ -1323,6 +1369,9 @@ const paths = {
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/super-admin/tenants": {
     get: {
       tags: ["Super Admin"],
@@ -1358,6 +1407,7 @@ const paths = {
       responses: {
         200: { description: "Application processed" },
         403: { description: "Forbidden" },
+<<<<<<< HEAD
 =======
   "/api/ime/authenticate": {
     post: {
@@ -1368,11 +1418,16 @@ const paths = {
         200: { description: "Authentication successful" },
         500: { description: "IME SOAP error" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/business/skills": {
     post: {
       tags: ["Admin", "Business"],
@@ -1382,6 +1437,7 @@ const paths = {
       responses: {
         201: { description: "Created" },
         403: { description: "Forbidden" },
+<<<<<<< HEAD
 =======
   "/api/ime/login": {
     post: {
@@ -1392,11 +1448,16 @@ const paths = {
         200: { description: "Login successful" },
         500: { description: "IME SOAP error" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/admin/business/facilities": {
     post: {
       tags: ["Admin", "Business"],
@@ -1522,6 +1583,7 @@ const paths = {
       summary: "Post a Job",
       description: "Create a new job posting (Business Partner or Super Admin only)",
       security: bearerSecurity,
+<<<<<<< HEAD
 =======
   "/api/ime/customers": {
     post: {
@@ -1540,6 +1602,8 @@ const paths = {
       tags: ["IME"],
       summary: "Send OTP for IME Customer Registration",
 >>>>>>> main
+=======
+>>>>>>> origin/main
       requestBody: {
         required: true,
         content: {
@@ -1547,6 +1611,9 @@ const paths = {
             schema: {
               type: "object",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
               required: ["jobDescription", "offeredAmount", "educationId", "sectorId", "jobRoleId"],
               properties: {
                 jobDescription: { type: "string", example: "Software Developer" },
@@ -1563,6 +1630,7 @@ const paths = {
                 address: { type: "object" },
                 facilities: { type: "array", items: { type: "string" } },
                 noOfOpenings: { type: "number", example: 5 }
+<<<<<<< HEAD
 =======
               required: ["PhoneNumber"],
               properties: {
@@ -1570,6 +1638,8 @@ const paths = {
                 ReferenceValue: { type: "string", example: "9812474750", description: "Optional explicit IME reference (customer token/id/mobile)" },
                 Module: { type: "string", example: "CustomerRegistration" }
 >>>>>>> main
+=======
+>>>>>>> origin/main
               }
             }
           }
@@ -1577,6 +1647,9 @@ const paths = {
       },
       responses: {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         201: { description: "Job posted successfully" },
         400: { description: "Invalid input" },
         401: { description: "Unauthorized" },
@@ -1637,6 +1710,7 @@ const paths = {
       tags: ["IME 6: Phase 2 eKYC"],
       summary: "Reset/Clear Aadhar KYC Process",
       description: "Used to clear/reset the Aadhar KYC process for a CSP or Customer that needs to restart",
+<<<<<<< HEAD
 =======
         200: { description: "OTP sent" },
         400: { description: "Invalid input" },
@@ -1649,6 +1723,8 @@ const paths = {
       tags: ["IME"],
       summary: "Confirm IME Customer Registration with OTP",
 >>>>>>> main
+=======
+>>>>>>> origin/main
       requestBody: {
         required: true,
         content: {
@@ -1656,6 +1732,9 @@ const paths = {
             schema: {
               type: "object",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
               required: ["EntityType", "EntityId", "ReprocessState"],
               properties: {
                 EntityType: { type: "string", example: "203", description: "201=CSP, 203=Customer" },
@@ -1837,12 +1916,15 @@ const paths = {
               properties: {
                 RefNo: { type: "string", description: "From SendTransaction response" },
                 OTPToken: { type: "string", description: "From SendOTP response" },
+<<<<<<< HEAD
 =======
               required: ["CustomerToken", "OTPToken", "OTP"],
               properties: {
                 CustomerToken: { type: "string", example: "IME-CUSTOMER-TOKEN" },
                 OTPToken: { type: "string", example: "IME-OTP-TOKEN" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
                 OTP: { type: "string", example: "123456" }
               }
             }
@@ -1851,6 +1933,9 @@ const paths = {
       },
       responses: {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         200: {
           description: "Transaction confirmed",
           content: {
@@ -2490,13 +2575,17 @@ const paths = {
       responses: {
         200: { description: "Wallet details" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
 =======
         200: { description: "Customer confirmed" },
         400: { description: "Invalid OTP/Token" },
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
   "/api/ime/customers/search/mobile/{mobile}": {
     get: {
       tags: ["IME"],
@@ -2550,6 +2639,8 @@ const paths = {
   },
 
 <<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/my-wallet": {
     get: {
       tags: ["Wallet"],
@@ -2558,6 +2649,7 @@ const paths = {
       responses: {
         200: { description: "Wallet details" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
 =======
   "/api/ime/transactions/{transactionId}/status": {
     get: {
@@ -2569,11 +2661,16 @@ const paths = {
       responses: {
         200: { description: "Transaction status" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/bank-details": {
     get: {
       tags: ["Wallet"],
@@ -2595,6 +2692,7 @@ const paths = {
       responses: {
         201: { description: "Top-up request created" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
 =======
   "/api/ime/transactions/{transactionId}/cancel": {
     post: {
@@ -2607,11 +2705,16 @@ const paths = {
       responses: {
         200: { description: "Transaction cancelled" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/transactions": {
     get: {
       tags: ["Wallet"],
@@ -2620,6 +2723,7 @@ const paths = {
       responses: {
         200: { description: "Transaction history" },
         401: { description: "Unauthorized" },
+<<<<<<< HEAD
 =======
   "/api/ime/receivers": {
     post: {
@@ -2628,10 +2732,13 @@ const paths = {
       requestBody: jsonBody,
       responses: {
         201: { description: "Receiver created" },
+=======
+>>>>>>> origin/main
       },
     },
   },
 
+<<<<<<< HEAD
   "/api/ime/receivers/{receiverId}": {
     get: {
       tags: ["IME"],
@@ -2771,6 +2878,8 @@ const paths = {
   },
 
 <<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "/api/wallet/top-up/requests": {
     get: {
       tags: ["Wallet"],
@@ -3496,6 +3605,7 @@ const paths = {
       summary: "Get RD info",
       responses: {
         200: { description: "RD info" },
+<<<<<<< HEAD
 =======
   "/api/ime/exchange-rate": {
     get: {
@@ -3508,6 +3618,8 @@ const paths = {
       responses: {
         200: { description: "Exchange rate" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
       },
     },
   },
@@ -3611,6 +3723,9 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
 });
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // ==================== IME ENDPOINTS ====================
 
 // Authentication & Session Management
@@ -4129,6 +4244,7 @@ paths["/api/ime/storage/otp-logs"] = {
   }
 };
 
+<<<<<<< HEAD
 =======
 paths["/api/ime/customers"].post.requestBody = imeCreateCustomerBody;
 paths["/api/ime/customers/validate"].post.requestBody = imeValidateCustomerBody;
@@ -4141,6 +4257,8 @@ paths["/api/ime/bank-accounts/validate"].post.requestBody = imeValidateBankAccou
 paths["/api/ime/kyc/verify"].post.requestBody = imeVerifyKycBody;
 
 >>>>>>> main
+=======
+>>>>>>> origin/main
 paths[`${prabhuPrefix}/SendTransaction`].post.requestBody = prabhuSendTransactionBody;
 paths[`${prabhuPrefix}/ConfirmTransaction`].post.requestBody = prabhuConfirmTransactionBody;
 paths[`${prabhuPrefix}/CreateCustomer`].post.requestBody = prabhuCreateCustomerBody;
@@ -4244,6 +4362,9 @@ paths[`${prabhuPrefix}/workflow/step2-receiver`] = {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // IME Legacy Endpoints (SOAP-based compatibility routes)
 // Uppercase legacy base `/api/IME/*` was removed; legacy contract routes are served under `/api/ime/*` only.
 
@@ -4879,8 +5000,11 @@ paths["/api/rd/info"] = {
   }
 };
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 module.exports = {
   openapi: "3.0.3",
   info: {
@@ -4897,6 +5021,9 @@ module.exports = {
     { name: "Admin" },
     { name: "Super Admin" },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     { name: "Business" },
     { name: "Wallet" },
     { name: "Wallet Admin" },
@@ -4904,14 +5031,20 @@ module.exports = {
     { name: "Devices" },
     { name: "RD Device" },
     { name: "Locations" },
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
     { name: "Prabhu" },
     { name: "Prabhu CSP" },
     { name: "Prabhu E-KYC" },
     { name: "Prabhu Workflow" },
     { name: "Prabhu Data" },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     { name: "Remittance" },
     { name: "IME 1: Static Data" },
     { name: "IME 2: CSP Module" },
@@ -4919,9 +5052,12 @@ module.exports = {
     { name: "IME 4: Transaction Flow" },
     { name: "IME 5: Reports" },
     { name: "IME 6: Phase 2 eKYC" }
+<<<<<<< HEAD
 =======
     { name: "IME" },
 >>>>>>> main
+=======
+>>>>>>> origin/main
   ],
   components: {
     securitySchemes: {
@@ -4933,8 +5069,12 @@ module.exports = {
     },
   },
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> main
+=======
+
+>>>>>>> origin/main
   paths,
 };

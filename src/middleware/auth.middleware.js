@@ -1,5 +1,8 @@
 const { verifyToken } = require("../utils/jwt");
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const { normalizeIdentity } = require("../utils/identity");
 
 module.exports = (req, res, next) => {
@@ -63,6 +66,7 @@ module.exports = (req, res, next) => {
     });
   }
 
+<<<<<<< HEAD
 =======
 
 module.exports = (req, res, next) => {
@@ -80,6 +84,8 @@ module.exports = (req, res, next) => {
   }
 
 >>>>>>> main
+=======
+>>>>>>> origin/main
   req.user = decoded;
   next();
 };

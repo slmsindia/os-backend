@@ -1,5 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
@@ -85,6 +88,7 @@ async function main() {
         create: {
           id: generateUuid(),
           roleId: seededRoles["SUPER_ADMIN"].id
+<<<<<<< HEAD
 =======
 const { generateUuid } = require("../src/utils/id");
 const prisma = new PrismaClient();
@@ -172,11 +176,16 @@ async function main() {
           id: generateUuid(),
           roleId: superAdminRole.id
 >>>>>>> main
+=======
+>>>>>>> origin/main
         }
       }
     }
   });
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   console.log(`✅ SuperAdmin user created: ${mobile}`);
 
   // 3.1 Create White Label Admin for Vite dev tenant (localhost:5173)
@@ -408,6 +417,7 @@ async function main() {
 main()
   .catch((e) => {
     console.error("❌ Seeding failed:", e);
+<<<<<<< HEAD
 =======
   // --- End custom user seed ---
 
@@ -419,6 +429,8 @@ main()
     console.error("Seeding failed with error:", e.message);
     console.error("Stack trace:", e.stack);
 >>>>>>> main
+=======
+>>>>>>> origin/main
     process.exit(1);
   })
   .finally(async () => {

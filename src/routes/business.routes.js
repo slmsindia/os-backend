@@ -7,6 +7,7 @@ const { checkIdentity } = require("../middleware/identity.middleware");
 router.use(authMiddleware);
 
 // Business Partner Application
+<<<<<<< HEAD
 router.post(
   "/apply",
   checkIdentity(["USER", "SAATHI", "MEMBER"]),
@@ -73,5 +74,14 @@ router.delete(
   ]),
   businessController.deleteJob,
 );
+=======
+router.post("/apply", checkIdentity(["USER", "SAATHI", "MEMBER"]), businessController.apply);
+router.get("/status", businessController.getBusinessStatus);
+
+// Job Postings
+router.get("/list", businessController.getJobs);
+router.get("/my-jobs", checkIdentity(["BUSINESS_PARTNER"]), businessController.getMyJobs);
+router.post("/jobs", checkIdentity(["BUSINESS_PARTNER", "SUPER_ADMIN"]), businessController.postJob);
+>>>>>>> origin/main
 
 module.exports = router;

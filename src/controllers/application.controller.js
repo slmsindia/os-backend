@@ -19,6 +19,46 @@ const ROLE_HIERARCHY = {
 const ADMIN_CREATOR_ROLES   = ['WHITE_LABEL_ADMIN', 'ADMIN', 'SUB_ADMIN'];
 const PARTNER_CREATOR_ROLES = ['COUNTRY_HEAD', 'STATE_PARTNER', 'DISTRICT_PARTNER', 'SAATHI'];
 const ALL_ADMIN_ROLES       = ['SUPER_ADMIN', ...ADMIN_CREATOR_ROLES, ...PARTNER_CREATOR_ROLES];
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+const PASSWORD_RULE_MESSAGE = "Password must be at least 8 characters and include one uppercase letter and one special character.";
+const isStrongPassword = (password) =>
+  typeof password === "string" && /^(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/.test(password);
+const generateTemporaryPassword = () => `Saathi@${Math.random().toString(36).slice(2, 8)}A`;
+
+const sanitizeJsonValue = (value) => {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(sanitizeJsonValue);
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, sanitizeJsonValue(item)])
+    );
+  }
+  return value;
+};
+
+const toOptionalNumber = (value) => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+};
+
+const buildGeoFields = (geolocation) => ({
+  geoLat: toOptionalNumber(geolocation?.lat),
+  geoLng: toOptionalNumber(geolocation?.lng),
+  geoAccuracy: toOptionalNumber(geolocation?.accuracy),
+  geoAddress: geolocation?.address || null,
+  geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+});
+
+const isUniqueConstraintError = (err, field) =>
+  err?.code === "P2002" &&
+  (!field || String(err?.meta?.target || "").toLowerCase().includes(field.toLowerCase()));
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
 
 // ─── Fee Resolution ────────────────────────────────────────────────────────────
 async function resolveFee(targetIdentity, tenantId) {
@@ -28,12 +68,36 @@ async function resolveFee(targetIdentity, tenantId) {
   }
   if (targetIdentity === 'SAATHI') {
     const s = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
+<<<<<<< HEAD
     if (s?.value) { try { return JSON.parse(s.value).amount || 1000; } catch { return parseFloat(s.value) || 1000; } }
+=======
+    if (s?.value) { 
+      try { 
+        const parsed = JSON.parse(s.value);
+        return parsed.amount !== undefined ? parsed.amount : 1000; 
+      } catch { 
+        const val = parseFloat(s.value);
+        return !isNaN(val) ? val : 1000; 
+      } 
+    }
+>>>>>>> origin/main
     return 1000;
   }
   if (targetIdentity === 'BUSINESS_USER' || targetIdentity === 'BUSINESS_PARTNER') {
     const s = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
+<<<<<<< HEAD
     if (s?.value) { try { return JSON.parse(s.value).amount || 2000; } catch { return parseFloat(s.value) || 2000; } }
+=======
+    if (s?.value) { 
+      try { 
+        const parsed = JSON.parse(s.value);
+        return parsed.amount !== undefined ? parsed.amount : 2000; 
+      } catch { 
+        const val = parseFloat(s.value);
+        return !isNaN(val) ? val : 2000; 
+      } 
+    }
+>>>>>>> origin/main
     return 2000;
   }
   return 0; // Partners/admins created directly — no fee
@@ -168,6 +232,124 @@ async function upgradeUserIdentity(userId, targetIdentity, applicationData, tena
   return updatedUser;
 }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+async function settleApplicationFeeToCorporateWallet(app, trigger = "APPLICATION_SETTLEMENT") {
+  const settlementAmount = Number(app.paymentAmount || 0);
+  if (!settlementAmount || settlementAmount <= 0 || app.paymentStatus !== "SUCCESS") {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const adminWallet =
+      (await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } })) ||
+      (await tx.wallet.create({
+        data: {
+          id: generateUuid(),
+          userId: null,
+          tenantId: app.tenantId,
+          isCorporate: true,
+          balance: 0,
+          currency: "INR",
+          isActive: true
+        }
+      }));
+
+    const existingCredit = await tx.walletTransaction.findFirst({
+      where: {
+        walletId: adminWallet.id,
+        referenceId: app.id,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE"
+      }
+    });
+
+    if (existingCredit) {
+      return existingCredit;
+    }
+
+    await tx.wallet.update({
+      where: { id: adminWallet.id },
+      data: { balance: { increment: settlementAmount } }
+    });
+
+    return tx.walletTransaction.create({
+      data: {
+        id: generateUuid(),
+        walletId: adminWallet.id,
+        amount: settlementAmount,
+        type: "CREDIT",
+        category: "SERVICE_CHARGE",
+        status: "SUCCESS",
+        referenceId: app.id,
+        description: `${app.targetIdentity} application fee received from user ${app.userId}`,
+        tenantId: app.tenantId,
+        metadata: sanitizeJsonValue({
+          trigger,
+          applicationId: app.id,
+          userId: app.userId,
+          paymentMethod: app.paymentMethod,
+          razorpayPaymentId: app.razorpayPaymentId
+        })
+      }
+    });
+  });
+}
+
+async function safeSettleApplicationFeeToCorporateWallet(app, trigger) {
+  try {
+    return await settleApplicationFeeToCorporateWallet(app, trigger);
+  } catch (err) {
+    console.error(`[${trigger}] Wallet settlement failed for application ${app?.id}:`, err);
+    return null;
+  }
+}
+
+async function processApplicationCommissionOnce(app) {
+  const settlementAmount = Number(app.paymentAmount || 0);
+  if (!settlementAmount || settlementAmount <= 0 || app.paymentStatus !== "SUCCESS") {
+    return null;
+  }
+
+  const existingCommission = await prisma.walletTransaction.findFirst({
+    where: {
+      referenceId: app.id,
+      category: { in: ["COMMISSION", "COMMISSION_PAYOUT"] }
+    },
+    select: { id: true }
+  });
+
+  if (existingCommission) {
+    return { success: true, duplicate: true };
+  }
+
+  const slugMap = { MEMBER: "membership_fee", SAATHI: "saathi_fee", BUSINESS_USER: "business_partner_fee", BUSINESS_PARTNER: "business_partner_fee" };
+  const slug = slugMap[app.targetIdentity];
+  if (!slug) return null;
+
+  const subService = await prisma.commissionSubService.findFirst({
+    where: { OR: [{ slug }, { name: { contains: slug.replace("_fee", ""), mode: "insensitive" } }] }
+  });
+  if (!subService) return null;
+
+  return commissionService.processCommission(
+    settlementAmount,
+    subService.id,
+    app.userId,
+    null,
+    null,
+    {
+      referenceId: app.id,
+      referenceType: `${app.targetIdentity}_APPLICATION`,
+      stopAtUserId: app.createdById || null
+    }
+  );
+}
+
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
 // ═════════════════════════════════════════════════════════════════════════════
 // CONTROLLER METHODS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -175,10 +357,30 @@ const applicationController = {
 
   // ── POST /api/applications/submit ──────────────────────────────────────────
   submit: async (req, res) => {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    const creatorId = req.user?.user_id || req.user?.id;
+    const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
+    const creatorIdentity = req.user?.identity || req.user?.role;
+    const { targetIdentity, targetMobile, targetUserId: explicitTargetId, geolocation, password, ...formData } = req.body;
+    const submittedData = sanitizeJsonValue(formData);
+    const geoFields = buildGeoFields(geolocation);
+
+    if (!targetIdentity) return res.status(400).json({ success: false, message: "targetIdentity is required" });
+    if (!creatorId || !tenantId || !creatorIdentity) {
+      return res.status(401).json({ success: false, message: "Invalid session. Please login again." });
+    }
+=======
+>>>>>>> origin/main
     const { user_id: creatorId, tenant_id: tenantId, identity: creatorIdentity } = req.user;
     const { targetIdentity, targetMobile, targetUserId: explicitTargetId, geolocation, ...formData } = req.body;
 
     if (!targetIdentity) return res.status(400).json({ success: false, message: "targetIdentity is required" });
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
 
     try {
       // ── 1. Resolve target user ──────────────────────────────────────────────
@@ -187,6 +389,24 @@ const applicationController = {
         targetUser = await prisma.user.findUnique({ where: { id: explicitTargetId } });
       } else if (targetMobile) {
         targetUser = await prisma.user.findFirst({ where: { mobile: targetMobile, tenantId } });
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+        if (!targetUser) {
+          const existingMobileUser = await prisma.user.findFirst({
+            where: { mobile: targetMobile },
+            select: { id: true, tenantId: true, identity: true }
+          });
+          if (existingMobileUser && existingMobileUser.tenantId !== tenantId) {
+            return res.status(409).json({
+              success: false,
+              message: "This mobile number is already registered in another organization. Please use a different mobile number."
+            });
+          }
+        }
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
       }
 
       if (!targetUser && !targetMobile) {
@@ -195,6 +415,38 @@ const applicationController = {
       }
 
       // Update password for existing targetUser if provided
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+      // ── 2. Auto-create base USER if not found (admin/partner creating for new person) ──
+      if (!targetUser && targetMobile && ALL_ADMIN_ROLES.includes(creatorIdentity)) {
+        const passwordToHash = isStrongPassword(password) ? password : generateTemporaryPassword();
+
+        const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { path: true } });
+        const path = creator?.path ? `${creator.path}/${creatorId}` : `/${creatorId}`;
+        const hashedPwd = await bcrypt.hash(passwordToHash, 10);
+        try {
+          targetUser = await prisma.user.create({
+            data: {
+              id: generateUuid(), mobile: targetMobile,
+              fullName: `${formData.firstName || ''} ${formData.lastName || ''}`.trim() || targetMobile,
+              gender: (formData.gender || 'OTHER').toUpperCase(),
+              dateOfBirth: formData.birthDate ? new Date(formData.birthDate) : new Date('1990-01-01'),
+              password: hashedPwd, identity: 'USER', userType: 'USER',
+              approvalStatus: 'APPROVED', tenantId, parentId: creatorId, path
+            }
+          });
+        } catch (createErr) {
+          if (isUniqueConstraintError(createErr, "mobile")) {
+            return res.status(409).json({
+              success: false,
+              message: "This mobile number is already registered. Please search/select the existing user or use another mobile number."
+            });
+          }
+          throw createErr;
+        }
+=======
+>>>>>>> origin/main
       if (targetUser && formData.password) {
         const hashedPwd = await bcrypt.hash(formData.password, 10);
         targetUser = await prisma.user.update({
@@ -219,6 +471,10 @@ const applicationController = {
             approvalStatus: 'APPROVED', tenantId, parentId: creatorId, path
           }
         });
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
       }
 
       if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found. Provide targetMobile or targetUserId." });
@@ -237,18 +493,148 @@ const applicationController = {
 
       // ── 4. Block duplicate pending application ──────────────────────────────
       const duplicate = await prisma.application.findFirst({
+<<<<<<< HEAD
         where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'PAYMENT_PENDING', 'APPROVED'] } }
+=======
+<<<<<<< HEAD
+        where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'RESUBMITTED', 'PAYMENT_PENDING', 'APPROVED'] } }
+=======
+        where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'PAYMENT_PENDING', 'APPROVED'] } }
+>>>>>>> origin/main
+>>>>>>> origin/main
       });
       if (duplicate?.status === 'APPROVED') {
         return res.status(400).json({ success: false, message: `${targetIdentity} already approved for this user.` });
       }
+<<<<<<< HEAD
       if (duplicate?.status === 'PENDING') {
+=======
+<<<<<<< HEAD
+      if (duplicate?.status === 'PENDING' || duplicate?.status === 'RESUBMITTED') {
+=======
+      if (duplicate?.status === 'PENDING') {
+>>>>>>> origin/main
+>>>>>>> origin/main
         return res.status(400).json({ success: false, message: `A pending ${targetIdentity} application already exists.` });
       }
 
       // ── 5. Resolve fee ───────────────────────────────────────────────────────
+<<<<<<< HEAD
       const fee = await resolveFee(targetIdentity, tenantId);
 
+=======
+<<<<<<< HEAD
+      const paidRejectedApplication = await prisma.application.findFirst({
+        where: {
+          userId: targetUser.id,
+          targetIdentity,
+          status: "REJECTED",
+          paymentStatus: "SUCCESS"
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+
+      if (paidRejectedApplication) {
+        const resubmitted = await prisma.application.update({
+          where: { id: paidRejectedApplication.id },
+          data: {
+            status: "RESUBMITTED",
+            rejectionReason: null,
+            submittedData,
+            ...geoFields
+          }
+        });
+
+        await logAction({
+          userId: creatorId,
+          action: `${targetIdentity}_APP_RESUBMITTED_PAYMENT_REUSED`,
+          targetId: resubmitted.id,
+          tenantId
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Application resubmitted. Previous payment reused.",
+          data: { applicationId: resubmitted.id, paymentReused: true }
+        });
+      }
+
+      const fee = await resolveFee(targetIdentity, tenantId);
+
+      if (duplicate?.status === 'PAYMENT_PENDING') {
+        const method = (submittedData.paymentMethod || '').toUpperCase();
+        const updatedApp = await prisma.application.update({
+          where: { id: duplicate.id },
+          data: {
+            submittedData,
+            paymentAmount: fee,
+            ...geoFields
+          }
+        });
+
+        if (fee === 0 || method === 'CASH') {
+          const paidApp = await prisma.application.update({
+            where: { id: updatedApp.id },
+            data: {
+              status: 'PENDING',
+              paymentStatus: 'SUCCESS',
+              paymentMethod: fee === 0 ? 'FREE' : 'CASH'
+            }
+          });
+          await safeSettleApplicationFeeToCorporateWallet(paidApp, "APPLICATION_CASH_SUBMITTED");
+          return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: paidApp.id } });
+        }
+
+        if (updatedApp.razorpayOrderId && updatedApp.paymentMethod === 'RAZORPAY') {
+          return res.status(201).json({
+            success: true,
+            message: "Please complete payment via Razorpay.",
+            paymentMethod: 'RAZORPAY',
+            data: {
+              applicationId: updatedApp.id,
+              orderId: updatedApp.razorpayOrderId,
+              amount: fee,
+              key: await razorpayService.getKeyId(tenantId)
+            }
+          });
+        }
+
+        try {
+          const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${updatedApp.id.slice(0, 20)}`);
+          await prisma.application.update({
+            where: { id: updatedApp.id },
+            data: {
+              razorpayOrderId: order.id,
+              paymentStatus: 'PENDING',
+              paymentMethod: 'RAZORPAY'
+            }
+          });
+          return res.status(201).json({
+            success: true,
+            message: "Please complete payment via Razorpay.",
+            paymentMethod: 'RAZORPAY',
+            data: {
+              applicationId: updatedApp.id,
+              orderId: order.id,
+              amount: fee,
+              key: await razorpayService.getKeyId(tenantId)
+            }
+          });
+        } catch (rzpErr) {
+          console.error('[ExistingPendingPayment] Razorpay failed:', rzpErr.message);
+          return res.status(400).json({
+            success: false,
+            message: "Razorpay initialization failed. Please try again.",
+            error: rzpErr.message
+          });
+        }
+      }
+
+=======
+      const fee = await resolveFee(targetIdentity, tenantId);
+
+>>>>>>> origin/main
+>>>>>>> origin/main
       // ── 6. ADMIN / WHITE_LABEL_ADMIN / SUB_ADMIN: Cash or Razorpay ──────────
       // All admin-level creators use the same payment flow and go to PENDING queue.
       // Instant (free) upgrade is only via the separate `convert` endpoint.
@@ -268,15 +654,35 @@ const applicationController = {
             targetIdentity, status: fee > 0 ? 'PAYMENT_PENDING' : 'PENDING',
             paymentMethod: method || 'CASH', paymentStatus: method === 'CASH' ? 'SUCCESS' : 'NONE',
             paymentAmount: fee,
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+            submittedData,
+            ...geoFields
+=======
+>>>>>>> origin/main
             submittedData: formData,
             geoLat: geolocation?.lat, geoLng: geolocation?.lng,
             geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
             geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
           }
         });
 
         if (method === 'CASH' || fee === 0) {
+<<<<<<< HEAD
           await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
+=======
+<<<<<<< HEAD
+          const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
+          await safeSettleApplicationFeeToCorporateWallet(updatedApp, "APPLICATION_CASH_SUBMITTED");
+=======
+          await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
+>>>>>>> origin/main
+>>>>>>> origin/main
           return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: app.id } });
         }
 
@@ -291,7 +697,16 @@ const applicationController = {
               wallet.id, adminWallet?.id, fee,
               `${targetIdentity} application fee`, app.id, tenantId, 'WALLET', prisma, false
             );
+<<<<<<< HEAD
             await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
+=======
+<<<<<<< HEAD
+            const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
+            await processApplicationCommissionOnce(updatedApp);
+=======
+            await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
+>>>>>>> origin/main
+>>>>>>> origin/main
             return res.status(201).json({ success: true, message: "Application submitted via corporate wallet.", data: { applicationId: app.id } });
           } catch (walletErr) {
             console.warn('[AdminWalletFallback] Wallet failed, falling back to Razorpay:', walletErr.message);
@@ -353,10 +768,21 @@ const applicationController = {
             targetIdentity, status: fee > 0 ? 'PAYMENT_PENDING' : 'PENDING',
             paymentMethod: 'RAZORPAY',
             paymentStatus: fee === 0 ? 'SUCCESS' : 'NONE', paymentAmount: fee,
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+            submittedData,
+            ...geoFields
+=======
+>>>>>>> origin/main
             submittedData: formData,
             geoLat: geolocation?.lat, geoLng: geolocation?.lng,
             geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
             geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
           }
         });
 
@@ -389,10 +815,21 @@ const applicationController = {
           id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
           targetIdentity, status: 'PAYMENT_PENDING', paymentMethod: 'WALLET',
           paymentStatus: 'NONE', paymentAmount: fee,
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+          submittedData,
+          ...geoFields
+=======
+>>>>>>> origin/main
           submittedData: formData,
           geoLat: geolocation?.lat, geoLng: geolocation?.lng,
           geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
           geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
         }
       });
 
@@ -445,7 +882,26 @@ const applicationController = {
 
     } catch (err) {
       console.error('[Application.submit] Error:', err);
+<<<<<<< HEAD
       res.status(500).json({ success: false, message: err.message || "Internal server error" });
+=======
+<<<<<<< HEAD
+      if (isUniqueConstraintError(err, "mobile")) {
+        return res.status(409).json({
+          success: false,
+          message: "This mobile number is already registered. Please use a different mobile number."
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: err.message || "Internal server error",
+        code: err.code || undefined,
+        target: err.meta?.target || undefined
+      });
+=======
+      res.status(500).json({ success: false, message: err.message || "Internal server error" });
+>>>>>>> origin/main
+>>>>>>> origin/main
     }
   },
 
@@ -468,6 +924,22 @@ const applicationController = {
         data: { razorpayPaymentId: razorpay_payment_id, paymentStatus: 'SUCCESS', status: 'PENDING' }
       });
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+      await settleApplicationFeeToCorporateWallet(
+        {
+          ...app,
+          razorpayPaymentId: razorpay_payment_id,
+          paymentStatus: "SUCCESS",
+          status: "PENDING"
+        },
+        "APPLICATION_PAYMENT_VERIFIED"
+      );
+
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
       await logAction({ userId, action: "APPLICATION_PAYMENT_VERIFIED", targetId: applicationId, tenantId });
       res.json({ success: true, message: "Payment verified. Application is now under review." });
     } catch (err) {
@@ -540,6 +1012,14 @@ const applicationController = {
       // Settlement and commission distribution
       const settlementAmount = Number(app.paymentAmount || 0);
       if (settlementAmount > 0) {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+        // 1) Always credit tenant corporate wallet first. If payment was already
+        // settled during verification/rejection, this is a no-op.
+        await settleApplicationFeeToCorporateWallet(app, "APPLICATION_APPROVAL");
+=======
+>>>>>>> origin/main
         // 1) Always credit tenant corporate wallet first.
         await prisma.$transaction(async (tx) => {
           const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
@@ -578,6 +1058,10 @@ const applicationController = {
             }
           });
         });
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
 
         // 2) Commission should not rollback wallet settlement.
         const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };
@@ -645,6 +1129,13 @@ const applicationController = {
     try {
       const app = await prisma.application.findUnique({ where: { id: applicationId } });
       if (!app) return res.status(404).json({ success: false, message: "Application not found" });
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+      await settleApplicationFeeToCorporateWallet(app, "APPLICATION_REJECTED");
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
       await prisma.application.update({ where: { id: applicationId }, data: { status: 'REJECTED', rejectionReason: reason } });
       await logAction({ userId: adminId, action: `${app.targetIdentity}_REJECTED`, targetId: applicationId, tenantId });
 
@@ -681,6 +1172,14 @@ const applicationController = {
     }
 
     const { targetIdentity, targetUserId, geolocation, ...formData } = req.body;
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    const submittedData = sanitizeJsonValue(formData);
+    const geoFields = buildGeoFields(geolocation);
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
     if (!targetIdentity || !targetUserId) {
       return res.status(400).json({ success: false, message: "targetIdentity and targetUserId are required." });
     }
@@ -703,10 +1202,21 @@ const applicationController = {
             id: generateUuid(), userId: targetUser.id, createdById: creatorId, tenantId,
             targetIdentity: normalizedTargetIdentity, status: 'APPROVED', paymentMethod: 'FREE', paymentStatus: 'SUCCESS',
             paymentAmount: 0, approvedBy: creatorId, approvedAt: new Date(),
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+            submittedData,
+            ...geoFields
+=======
+>>>>>>> origin/main
             submittedData: formData,
             geoLat: geolocation?.lat, geoLng: geolocation?.lng,
             geoAccuracy: geolocation?.accuracy, geoAddress: geolocation?.address,
             geoCapturedAt: geolocation?.capturedAt ? new Date(geolocation.capturedAt) : new Date()
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
           }
         });
         const updatedUser = await upgradeUserIdentity(targetUser.id, normalizedTargetIdentity, formData, tenantId, tx, { skipWalletCreation: true });

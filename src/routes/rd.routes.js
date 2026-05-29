@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 /**
  * rd.routes.js
  *
@@ -269,6 +272,7 @@ router.post('/capture', async (req, res) => {
         success: false,
         message: 'Invalid request body: XML string required in body.xml or as raw text',
       });
+<<<<<<< HEAD
 =======
 const express = require('express');
 const router = express.Router();
@@ -286,11 +290,16 @@ router.post('/capture', async (req, res) => {
       logger.logAction({ action: 'RD_CAPTURE_INVALID_BODY', metadata: { body: req.body } });
       return res.status(400).json({ success: false, message: 'Invalid request body: XML string required' });
 >>>>>>> main
+=======
+>>>>>>> origin/main
     }
 
     const result = await rdService.callExternalApi(xmlBody);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     const resp     = result.PidData || {};
     const respInfo = resp.Resp       || {};
     const errCode  = String(respInfo.errCode || '0');
@@ -340,6 +349,7 @@ router.post('/capture', async (req, res) => {
       message: 'RD Service error',
       details: err.message,
     });
+<<<<<<< HEAD
 =======
     // Extract and clean response for client
     const resp = result.PidData || {};
@@ -388,6 +398,8 @@ router.get('/info', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: 'Device not found: RD Service not reachable', details: err.message });
 >>>>>>> main
+=======
+>>>>>>> origin/main
   }
 });
 

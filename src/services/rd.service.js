@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 /**
  * rd.service.js
  *
@@ -78,6 +81,7 @@ class RdService {
   }
 
   // ── callExternalApi: discover → capture ────────────────────────────────────
+<<<<<<< HEAD
 =======
 const axios = require('axios');
 const xml2js = require('xml2js');
@@ -99,12 +103,17 @@ class RdService {
   }
 
 >>>>>>> main
+=======
+>>>>>>> origin/main
   async callExternalApi(xmlBody) {
     if (!xmlBody || typeof xmlBody !== 'string') {
       throw new Error('Invalid XML body');
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     // Discover (use cached if available)
     if (!this._discoveredBase) {
       await this.discover();
@@ -127,6 +136,7 @@ class RdService {
           headers: { 'Content-Type': 'text/xml' },
           timeout: this.timeout,
           ...(this._protocol === 'https' ? { httpsAgent } : {}),
+<<<<<<< HEAD
 =======
     let lastError = null;
 
@@ -138,11 +148,16 @@ class RdService {
           timeout: this.timeout,
           ...(endpoint.agent ? { httpsAgent: endpoint.agent } : {})
 >>>>>>> main
+=======
+>>>>>>> origin/main
         });
 
         if (!response.data) throw new Error('Empty response from RD Service');
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         const result = await xml2js.parseStringPromise(response.data, {
           explicitArray: false,
           mergeAttrs: true,
@@ -181,6 +196,7 @@ class RdService {
   // ── resetDiscovery: force re-discover on next call ─────────────────────────
   resetDiscovery() {
     this._discoveredBase = null;
+<<<<<<< HEAD
 =======
         const result = await xml2js.parseStringPromise(response.data, { explicitArray: false, mergeAttrs: true });
         logger.logAction({ action: 'RD_CAPTURE_RESPONSE', metadata: { url: endpoint.url } });
@@ -198,6 +214,8 @@ class RdService {
       throw lastError;
     }
 >>>>>>> main
+=======
+>>>>>>> origin/main
   }
 }
 

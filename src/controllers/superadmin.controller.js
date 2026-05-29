@@ -1,15 +1,22 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 const prisma = require("../lib/prisma");
 =======
 const bcrypt = require("bcrypt");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 >>>>>>> main
+=======
+const prisma = require("../lib/prisma");
+>>>>>>> origin/main
 const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
 
 const superAdminController = {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   /**
    * Create a new White Label (Tenant)
    */
@@ -33,6 +40,7 @@ const superAdminController = {
         const bcrypt = require("bcrypt");
         const hash = await bcrypt.hash(adminPassword, 10);
 
+<<<<<<< HEAD
 =======
   createTenant: async (req, res) => {
     const { name, domain, adminMobile, adminName, adminPassword } = req.body;
@@ -50,12 +58,17 @@ const superAdminController = {
 
         const hash = await bcrypt.hash(adminPassword, 10);
 >>>>>>> main
+=======
+>>>>>>> origin/main
         const admin = await tx.user.create({
           data: {
             id: generateUuid(),
             mobile: adminMobile,
             fullName: adminName,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
             email: adminEmail,
             password: hash,
             identity: "WHITE_LABEL_ADMIN",
@@ -74,6 +87,7 @@ const superAdminController = {
              tenantId: tenant.id,
              isCorporate: true,
              balance: 0
+<<<<<<< HEAD
 =======
             password: hash,
             gender: "MALE",
@@ -81,6 +95,8 @@ const superAdminController = {
             identity: "ADMIN",
             tenantId: tenant.id
 >>>>>>> main
+=======
+>>>>>>> origin/main
           }
         });
 
@@ -89,6 +105,9 @@ const superAdminController = {
 
       await logAction({
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         userId: superAdminId,
         action: "CREATE_TENANT",
         targetId: result.tenant.id,
@@ -317,6 +336,7 @@ const superAdminController = {
     } catch (err) {
       console.error(err);
       res.status(500).json({ success: false, message: err.message });
+<<<<<<< HEAD
 =======
         action: "CREATE_TENANT",
         targetId: result.tenant.id,
@@ -336,6 +356,8 @@ const superAdminController = {
       }
       res.status(500).json({ success: false, message: "Internal server error" });
 >>>>>>> main
+=======
+>>>>>>> origin/main
     }
   }
 };

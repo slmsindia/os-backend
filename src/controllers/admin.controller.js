@@ -1,5 +1,8 @@
 const bcrypt = require("bcrypt");
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 const prisma = require("../lib/prisma");
 const { logAction } = require("../utils/audit");
 const { generateUuid, generateReferralCode } = require("../utils/id");
@@ -11,17 +14,23 @@ const hasGlobalAdminScope = (user = {}) => {
     .replace(/[\s-]+/g, '_');
   return identity === "SUPER_ADMIN";
 };
+<<<<<<< HEAD
 =======
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { logAction } = require("../utils/audit");
 const { generateUuid } = require("../utils/id");
 >>>>>>> main
+=======
+>>>>>>> origin/main
 
 const adminController = {
   createIdentity: async (req, res, targetIdentity) => {
     // create state/district/agent
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
     const {
       mobile,
       fullName,
@@ -65,9 +74,12 @@ const adminController = {
       permanentAddressType,
       documents
     } = req.body;
+<<<<<<< HEAD
 =======
     const { mobile, fullName, password, gender, dateOfBirth, parentId } = req.body;
 >>>>>>> main
+=======
+>>>>>>> origin/main
     const { user_id: myId, tenant_id: myTenantId } = req.user;
 
     if (!mobile || !fullName || !password) {
@@ -76,6 +88,9 @@ const adminController = {
 
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
       const myIdentity = String(req.user?.identity || '').toUpperCase();
       const { permissionNames } = req.body;
 
@@ -98,16 +113,22 @@ const adminController = {
       }
 
       let finalParentId = myId;
+<<<<<<< HEAD
 =======
       let finalParentId = myId;
 
       // If explicit parentId provided, verify it belongs to same tenant
 >>>>>>> main
+=======
+>>>>>>> origin/main
       if (parentId) {
         const parent = await prisma.user.findFirst({
           where: { id: parentId, tenantId: myTenantId }
         });
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
         if (!parent) return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
         finalParentId = parentId;
       }
@@ -331,6 +352,7 @@ const adminController = {
       console.error(err);
       if (err.code === "P2002") {
         return res.status(400).json({ success: false, message: "Mobile already exists in another context" });
+<<<<<<< HEAD
 =======
         if (!parent) {
           return res.status(400).json({ success: false, message: "Invalid parentId for this tenant" });
@@ -368,12 +390,17 @@ const adminController = {
       if (err.code === "P2002") {
         return res.status(400).json({ success: false, message: "Mobile already exists" });
 >>>>>>> main
+=======
+>>>>>>> origin/main
       }
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   },
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   createWhiteLabelAdmin: (req, res) => adminController.createIdentity(req, res, "WHITE_LABEL_ADMIN"),
   createAdmin: (req, res) => adminController.createIdentity(req, res, "ADMIN"),
   createSubAdmin: (req, res) => adminController.createIdentity(req, res, "SUB_ADMIN"),
@@ -1168,12 +1195,15 @@ const adminController = {
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
+<<<<<<< HEAD
 =======
   createState: (req, res) => adminController.createIdentity(req, res, "STATE_PARTNER"),
   createDistrict: (req, res) => adminController.createIdentity(req, res, "DISTRICT_PARTNER"),
   createAgent: (req, res) => adminController.createIdentity(req, res, "AGENT"),
   createUser: (req, res) => adminController.createIdentity(req, res, "USER")
 >>>>>>> main
+=======
+>>>>>>> origin/main
 };
 
 module.exports = adminController;

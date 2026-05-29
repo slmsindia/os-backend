@@ -1,9 +1,13 @@
 generator client {
   provider = "prisma-client-js"
 <<<<<<< HEAD
+<<<<<<< HEAD
   binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 =======
 >>>>>>> main
+=======
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+>>>>>>> origin/main
 }
 
 datasource db {
@@ -16,6 +20,7 @@ model Tenant {
   name      String
   domain    String   @unique
 <<<<<<< HEAD
+<<<<<<< HEAD
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   users     User[]
@@ -23,6 +28,12 @@ model Tenant {
   adminJobs       Job[]
 resumeTemplates ResumeTemplate[]
  // Opposite relation for shared wallets
+=======
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+  wallets   Wallet[] // Opposite relation for shared wallets
+>>>>>>> origin/main
   
   // App & Admin Management
   appSections     AppSection[]
@@ -49,10 +60,13 @@ resumeTemplates ResumeTemplate[]
   membershipConfigs MembershipConfig[]
   globalSettings  GlobalSetting[]
   applications    Application[]
+<<<<<<< HEAD
 =======
   createdAt DateTime @default(now())
   users     User[]
 >>>>>>> main
+=======
+>>>>>>> origin/main
 }
 
 enum Gender {
@@ -66,6 +80,9 @@ enum Identity {
   WHITE_LABEL_ADMIN
   ADMIN
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   SUB_ADMIN
   SUPPORT_TEAM
   COUNTRY_HEAD
@@ -74,10 +91,13 @@ enum Identity {
   BUSINESS_PARTNER
   SAATHI
   MEMBER
+<<<<<<< HEAD
 =======
   STATE_PARTNER
   DISTRICT_PARTNER
 >>>>>>> main
+=======
+>>>>>>> origin/main
   AGENT
   USER
 }
@@ -85,6 +105,9 @@ enum Identity {
 model User {
   id           String   @id @default(uuid())
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   mobile       String
   email        String?
   password     String
@@ -98,6 +121,7 @@ model User {
   approvedAt     DateTime?
   roleId         String?
   tenantId       String
+<<<<<<< HEAD
 =======
   mobile       String   @unique
   password     String
@@ -107,6 +131,8 @@ model User {
   identity     Identity @default(USER)
   tenantId     String
 >>>>>>> main
+=======
+>>>>>>> origin/main
   parentId     String?
   createdBy    String?
   referredBy   String?
@@ -125,6 +151,9 @@ model User {
   roles        UserRole[]
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   membershipApplications MembershipApplication[]
 
 
@@ -136,8 +165,11 @@ model User {
   businessProfile BusinessProfile?
   businessApplications BusinessApplication[]
   jobPosts        JobPost[]
+<<<<<<< HEAD
   adminJobs      Job[]            @relation("AdminJobs")
 userJobApps    JobApplication[] @relation("UserJobApps")
+=======
+>>>>>>> origin/main
 
   // Scalability & Hierarchy
   path              String?  @default("")
@@ -183,13 +215,19 @@ userJobApps    JobApplication[] @relation("UserJobApps")
   memberProfile       MemberProfile?
   saathiProfile       SaathiProfile?
   partnerProfile      PartnerProfile?
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 
   @@index([tenantId])
   @@index([parentId])
   @@index([createdBy])
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   @@index([path])
   @@index([canApproveMembership])
   @@index([canApproveSaathi])
@@ -300,9 +338,15 @@ model BusinessApplication {
 }
 
 model JobPost {
+<<<<<<< HEAD
    id                String   @id @default(uuid())
   businessId        String?
   business          BusinessProfile? @relation(fields: [businessId], references: [id])
+=======
+  id                String   @id @default(uuid())
+  businessId        String
+  business          BusinessProfile @relation(fields: [businessId], references: [id])
+>>>>>>> origin/main
   creatorId         String
   creator           User     @relation(fields: [creatorId], references: [id])
   
@@ -351,6 +395,7 @@ model JobPost {
   @@index([businessId])
   @@index([sectorId])
 }
+<<<<<<< HEAD
 model Job {
   id              String           @id @default(uuid())
   tenantId        String
@@ -405,6 +450,8 @@ model JobApplication {
   @@index([jobId])
   @@index([userId])
 }
+=======
+>>>>>>> origin/main
 
 // Additional Master Data
 
@@ -422,12 +469,15 @@ model JobFacility {
 }
 
 
+<<<<<<< HEAD
 =======
   @@index([referredBy])
   @@index([referralCode])
 }
 
 >>>>>>> main
+=======
+>>>>>>> origin/main
 model Role {
   id          String           @id @default(uuid())
   name        String           @unique
@@ -513,6 +563,9 @@ model OtpCode {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 // ============================================
 // 📘 IME API Response Storage Tables
 // ============================================
@@ -865,8 +918,11 @@ model ImeBankBranch {
 }
 
 // Legacy IME Data (for backward compatibility)
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main
 model ImeData {
   id               String   @id @default(uuid())
   name             String
@@ -947,6 +1003,9 @@ model PrabhuSender {
   @@index([createdAt])
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 
 // Membership Configuration
 model MembershipConfig {
@@ -2202,5 +2261,8 @@ model PartnerProfile {
 
 
 
+<<<<<<< HEAD
 =======
 >>>>>>> main
+=======
+>>>>>>> origin/main

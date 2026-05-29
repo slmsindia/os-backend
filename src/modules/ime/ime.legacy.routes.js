@@ -4,6 +4,9 @@ const router = express.Router();
 
 // --- Static Data Endpoints (GET) ---
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 router.all('/Countries', (req, res) => imeController.getStaticData({ query: { type: 'WSST-CONV1' }, body: req.body }, res));
 router.all('/States/:CountryId', (req, res) => imeController.getStaticData({ query: { type: 'WSST-STTV1', reference: req.params.CountryId }, body: req.body }, res));
 router.all('/Districts/:StateId', (req, res) => imeController.getStaticData({ query: { type: 'WSST-DISV1', reference: req.params.StateId }, body: req.body }, res));
@@ -35,6 +38,7 @@ router.all('/GetAccountType', (req, res) => imeController.getStaticData({ query:
 router.all('/CSPRegistrationTypeList', (req, res) => imeController.getStaticData({ query: { type: 'WSST-REGV1' }, body: req.body }, res));
 router.all('/CSPBusinessTypeList', (req, res) => imeController.getStaticData({ query: { type: 'WSST-BUSV1' }, body: req.body }, res));
 router.all('/PurposeOfRemittance', (req, res) => imeController.getStaticData({ query: { type: 'WSST-PORV1' }, body: req.body }, res));
+<<<<<<< HEAD
 =======
 router.get('/Countries', (req, res) => imeController.getStaticData({ query: { type: 'WSST-CONV1' } }, res));
 router.get('/States/:CountryId', (req, res) => imeController.getStaticData({ query: { type: 'WSST-STTV1', reference: req.params.CountryId } }, res));
@@ -60,6 +64,8 @@ router.get('/CSPDocumentTypeList', (req, res) => imeController.getStaticData({ q
 router.get('/OwnerCategoryTypes', (req, res) => imeController.getStaticData({ query: { type: 'WSST-CATV1' } }, res));
 router.get('/EducationalQualificationList', (req, res) => imeController.getStaticData({ query: { type: 'WSST-EDQV1' } }, res));
 >>>>>>> main
+=======
+>>>>>>> origin/main
 
 // --- Main Business Endpoints (POST/GET) ---
 router.post('/CSPRegistration', imeController.cspRegistration);
@@ -68,9 +74,12 @@ router.get('/CheckCSP', imeController.checkCSP);
 router.get('/BalanceInquiry', imeController.balanceInquiry);
 router.get('/CheckCustomer/:mobileNo', imeController.checkCustomer);
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 router.post('/SendOTP', imeController.sendCustomerOtp);
 >>>>>>> main
+=======
+>>>>>>> origin/main
 router.post('/CustomerRegistration', imeController.createCustomer);
 router.post('/ConfirmCustomerRegistration', imeController.confirmCustomer);
 router.post('/GetCalculation', imeController.getCalculation);
