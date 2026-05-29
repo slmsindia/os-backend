@@ -12,6 +12,7 @@ router.get("/my-content", marketingController.getContentForMe);
 router.post("/content", marketingController.createContent);
 router.get("/my-created", marketingController.getMyContent);
 router.patch("/content/:id", marketingController.updateContent);
+router.delete("/content/:id", marketingController.deleteContent);
 
 // --- Super Admin Endpoints (Oversight) ---
 router.get("/superadmin/all", marketingController.superAdminListAll);

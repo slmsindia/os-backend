@@ -937,8 +937,10 @@ model GlobalSetting {
   @@index([tenantId])
 }
 
-// =====================================// 🌍 Location Master Data
-// ==============================model Country {
+// =====================================
+// 🌍 Location Master Data
+// ==============================
+model Country {
   id        String   @id @default(uuid())
   name      String   @unique
   code      String?  @unique // e.g. IN, NP
@@ -1449,8 +1451,10 @@ model SaathiPayment {
   @@index([applicationId])
 }
 
-// =====================================// 📘 Commission System Models
-// ==============================model CommissionScheme {
+// =====================================
+// 📘 Commission System Models
+// ==============================
+model CommissionScheme {
   id        String   @id @default(uuid())
   name      String
   isActive  Boolean  @default(true)
@@ -1600,8 +1604,10 @@ model AdminIncome {
   @@index([transactionId])
 }
 
-// =====================================// 📱 App Services & UI Management
-// ==============================model AppSection {
+// =====================================
+// 📱 App Services & UI Management
+// ==============================
+model AppSection {
   id           String       @id @default(uuid())
   name         String
   iconUrl      String?
@@ -1646,8 +1652,10 @@ model RoleServicePermission {
   @@unique([serviceId, identity])
 }
 
-// =====================================// 📢 Admin Content Management
-// ==============================model Poster {
+// =====================================
+// 📢 Admin Content Management
+// ==============================
+model Poster {
   id          String   @id @default(uuid())
   title       String?
   imageUrl    String
@@ -1691,8 +1699,10 @@ model Notice {
   @@index([tenantId])
 }
 
-// =====================================// 📝 Survey & Membership Questions
-// ==============================model SurveyQuestion {
+// =====================================
+// 📝 Survey & Membership Questions
+// ==============================
+model SurveyQuestion {
   id          String         @id @default(uuid())
   question    String
   type        String         @default("TEXT") // TEXT, SELECT, MULTI_SELECT, RADIO
@@ -1722,8 +1732,10 @@ model SurveyAnswer {
   @@index([userId])
 }
 
-// =====================================// 💳 Wallet Enhancements
-// ==============================model QRCode {
+// =====================================
+// 💳 Wallet Enhancements
+// ==============================
+model QRCode {
   id          String   @id @default(uuid())
   title       String
   imageUrl    String
@@ -1820,28 +1832,39 @@ enum TicketPriority {
 }
 
 model MarketingContent {
-  id            String         @id @default(uuid())
-  type          MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER
-  title         String
-  content       String?        @db.Text
-  imageUrl      String?
-  linkUrl       String?
+  id                  String         @id @default(uuid())
+  type                MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER, POPUP, RIBBON
+  title               String?        // Optional
+  content             String?        @db.Text
+  imageUrl            String?
+  linkUrl             String?
   
   // Targeting
-  targetType    TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC
-  targetIdentity Identity?     // If targetType is IDENTITY
-  targetUserId  String?        // If targetType is BRANCH or SPECIFIC
+  targetType          TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC, LOCATION
+  targetIdentity      Identity?     // If targetType is IDENTITY
+  targetUserId        String?        // If targetType is BRANCH or SPECIFIC
   
-  isActive      Boolean        @default(true)
-  isGlobalDeactivated Boolean  @default(false) // Master switch for Super Admin
+  // Advanced Multi-Location Targeting (PostgreSQL String Arrays)
+  targetCountries     String[]
+  targetStates        String[]
+  targetCities        String[]
+  targetDistricts     String[]
+  targetPincodes      String[]
   
-  creatorId     String
-  creator       User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  // Validity period
+  startDate           DateTime?
+  endDate             DateTime?
   
-  tenantId      String
+  isActive            Boolean        @default(false) // Deactivated by default
+  isGlobalDeactivated Boolean        @default(false) // Master switch for Super Admin
   
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  creatorId           String
+  creator             User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  
+  tenantId            String
+  
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([creatorId])
   @@index([tenantId])
@@ -1853,6 +1876,8 @@ enum MarketingType {
   NOTIFICATION
   NOTICE
   HOVER
+  POPUP
+  RIBBON
 }
 
 enum TargetType {
@@ -1860,6 +1885,7 @@ enum TargetType {
   IDENTITY
   BRANCH
   SPECIFIC
+  LOCATION
 }
 
 model UserLoginLog {
@@ -1933,8 +1959,10 @@ model FeatureRestriction {
   @@index([tenantId, identity])
 }
 
-// =====================================================// NEW: Unified Application System (runs alongside existing tables)
-// ==============================================model Application {
+// =====================================================
+// NEW: Unified Application System (runs alongside existing tables)
+// ==============================================
+model Application {
   id                String   @id @default(uuid())
   userId            String   // Target user (who is being upgraded)
   createdById       String   // Who submitted (self or admin/partner)

@@ -717,7 +717,15 @@ module.exports = {
   getEcho: proxyOperation('GetEcho', 'Get echo success'),
   getCashPayLocationList: proxyOperation('GetCashPayLocationList', 'Get cash pay location list success'),
   getAcPayBankBranchList: proxyOperation('GetAcPayBankBranchList', 'Get bank branch list success'),
-  getBalance: proxyOperation('GetBalance', 'Get balance success'),
+  getBalance: async (req, res) => {
+    try {
+      const result = await prabhuService.callEndpoint('GetBalance', req.body || {}, getRequestContext(req));
+      const balance = parseFloat(result?.data?.balance || 0);
+      return ok(res, 'Get balance success', { data: result.data, balance });
+    } catch (error) {
+      return fail(res, error);
+    }
+  },
   sendOTP: proxyOperation('SendOTP', 'Send OTP success'),
   getServiceCharge: proxyOperation('GetServiceCharge', 'Get service charge success'),
   getServiceChargeByCollection: proxyOperation('GetServiceChargeByCollection', 'Get service charge by collection success'),
