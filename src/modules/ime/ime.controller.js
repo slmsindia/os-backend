@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 const imeService = require('./ime.service');
+=======
+  const imeService = require('./ime.service');
+>>>>>>> origin/main
 const imeDataService = require('./ime-data.service');
 const imeStorageService = require('./ime.storage.service');
 const walletService = require('../../services/wallet.service');
@@ -1694,9 +1698,25 @@ const sendTransactionLegacy = async (req, res) => {
       }
     }
 
+<<<<<<< HEAD
     // Process Admin Commission if successful
     if (imeMeta.code === '0') {
       await walletService.processServiceCommission('IME', req.user.tenant_id, params.AgentTxnRefId, req.user.user_id || req.user.id);
+=======
+    // Process Admin Commission if successful (only when request is authenticated)
+    if (imeMeta.code === '0') {
+      try {
+        const tenantId = req.user && (req.user.tenant_id || req.user.tenantId || req.user.tenant);
+        const userId = req.user && (req.user.user_id || req.user.id || req.user.userId);
+        if (tenantId) {
+          await walletService.processServiceCommission('IME', tenantId, params.AgentTxnRefId, userId);
+        } else {
+          console.warn('[IME] Skipping commission processing: unauthenticated request (no tenant info)');
+        }
+      } catch (commErr) {
+        console.error('[IME] Commission processing failed:', commErr?.message || commErr);
+      }
+>>>>>>> origin/main
     }
     
     // Log API response
@@ -1798,7 +1818,23 @@ const getStoredTransactions = async (req, res) => {
         updatedAt: true
       }
     });
+<<<<<<< HEAD
     return ok(res, 'Stored transactions retrieved', { data: transactions });
+=======
+    const normalizedTransactions = transactions.map((transaction) => ({
+      ...transaction,
+      TransactionId: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      RefNo: transaction.transactionId || transaction.agentTxnRefId || transaction.icn || null,
+      Amount: transaction.collectAmount ?? transaction.sendAmount ?? transaction.payoutAmount ?? null,
+      TxnCharge: transaction.serviceCharge ?? 0,
+      PaymentType: transaction.paymentMode || null,
+      ReceiverName: transaction.receiverName || null,
+      Receiver: transaction.receiverName || null,
+      PaymentStatus: transaction.status || null
+    }));
+
+    return ok(res, 'Stored transactions retrieved', { data: normalizedTransactions });
+>>>>>>> origin/main
   } catch (error) {
     return fail(res, error);
   }
