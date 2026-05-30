@@ -326,7 +326,8 @@ const adminSaathiController = {
       const isSelfTarget =
         targetUser?.id === adminId ||
         String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
-      if (isSelfTarget) {
+      const isAdminOrPartner = !['USER', 'MEMBER'].includes(adminIdentity);
+      if (isSelfTarget && isAdminOrPartner) {
         return res.status(400).json({
           success: false,
           message: "Use a different mobile number to create a new Saathi under your hierarchy."
@@ -398,7 +399,7 @@ const adminSaathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 1000;
+          amount = parsed.amount !== undefined ? parsed.amount : 1000;
           // Support both names during transition
           if (!parsed.serviceCharge && parsed.serviceCharges) {
             parsed.serviceCharge = parsed.serviceCharges;
@@ -406,6 +407,10 @@ const adminSaathiController = {
         } catch (e) {
           amount = parseFloat(feeSetting.value);
         }
+      }
+
+      if (amount <= 0) {
+        paymentMethod = 'FREE';
       }
 
       const isWhiteLabelAdmin = String(adminIdentity || '').toUpperCase() === 'WHITE_LABEL_ADMIN';
@@ -426,7 +431,7 @@ const adminSaathiController = {
 
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
       let razorpayOrder = null;
-      if (paymentMethod === 'RAZORPAY') {
+      if (paymentMethod === 'RAZORPAY' && amount > 0) {
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {
@@ -505,7 +510,7 @@ const adminSaathiController = {
           documentsJson: req.body.documents || null,
           createdById: adminId,
           paymentType: paymentMethod,
-          status: paymentMethod === 'RAZORPAY' ? 'PAYMENT_PENDING' : 'PENDING'
+          status: (paymentMethod === 'RAZORPAY' && amount > 0) ? 'PAYMENT_PENDING' : 'PENDING'
         };
 
         let appResult;
@@ -522,18 +527,18 @@ const adminSaathiController = {
                       amount,
                       method: paymentMethod,
                       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? new Date() : null
                     },
                     update: {
                       amount,
                       method: paymentMethod,
                       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                      status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                      paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? new Date() : null
+                    }
                   }
                 }
-              }
             },
             include: { payment: true }
           });
@@ -549,8 +554,8 @@ const adminSaathiController = {
                     amount,
                     method: paymentMethod,
                     razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
-                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
-                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                    status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                    paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH' || amount <= 0) ? new Date() : null
                   }
                 }
               },

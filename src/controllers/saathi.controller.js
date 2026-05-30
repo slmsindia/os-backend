@@ -65,7 +65,7 @@ const saathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 1000;
+          amount = parsed.amount !== undefined ? parsed.amount : 1000;
         } catch (e) {
           amount = parseFloat(feeSetting.value);
         }
@@ -93,7 +93,7 @@ const saathiController = {
       let razorpayOrder = null;
 
       // Check wallet balance if method is WALLET
-      if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+      if (finalPaymentMethod === 'WALLET' && !isPaidResubmission && amount > 0) {
         const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
         if (!wallet || wallet.balance < amount) {
           // Automatic fallback to Razorpay
@@ -103,7 +103,7 @@ const saathiController = {
       }
 
       // Create Razorpay Order if needed (OUTSIDE transaction)
-      if (finalPaymentMethod === 'RAZORPAY' && !isPaidResubmission) {
+      if (finalPaymentMethod === 'RAZORPAY' && !isPaidResubmission && amount > 0) {
         const razorpayService = require("../services/razorpay.service");
         try {
           razorpayOrder = await razorpayService.createOrder(
@@ -145,8 +145,8 @@ const saathiController = {
                 amount,
                 method: finalPaymentMethod,
                 razorpayOrderId: razorpayOrder?.id || null,
-                status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
+                status: (finalPaymentMethod === 'WALLET' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                paidAt: (finalPaymentMethod === 'WALLET' || amount <= 0) ? new Date() : null
               }
             });
           }
@@ -170,8 +170,8 @@ const saathiController = {
                   amount,
                   method: finalPaymentMethod,
                   razorpayOrderId: razorpayOrder?.id || null,
-                  status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                  paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
+                  status: (finalPaymentMethod === 'WALLET' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                  paidAt: (finalPaymentMethod === 'WALLET' || amount <= 0) ? new Date() : null
                 }
               }
             },
@@ -180,7 +180,7 @@ const saathiController = {
         }
 
         // If WALLET and not resubmission, deduct now but don't credit admin immediately
-        if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+        if (finalPaymentMethod === 'WALLET' && !isPaidResubmission && amount > 0) {
           const userWallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
           const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } });
           
