@@ -21,8 +21,39 @@ const marketingController = {
     } = req.body;
 
     const mediaLink = imageUrl || mediaUrl;
-    if (!mediaLink) {
-      return res.status(400).json({ success: false, message: "Media link (image or video URL) is mandatory" });
+
+    // Type-specific validations
+    if (type === 'POPUP') {
+      if (!title || !title.trim()) {
+        return res.status(400).json({ success: false, message: "Title is mandatory for pop-ups" });
+      }
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, message: "Description (content) is mandatory for pop-ups" });
+      }
+      if (mediaLink) {
+        // Enforce only images for pop-ups (no YouTube, vimeo, direct videos, mp4, avi, etc.)
+        const isVideo = /\.(mp4|webm|ogg|avi|mov|flv|wmv|mkv)$/i.test(mediaLink) || 
+                        /youtube\.com|youtu\.be|vimeo\.com|drive\.google\.com\/file/i.test(mediaLink);
+        if (isVideo) {
+          return res.status(400).json({ success: false, message: "Pop-ups only support image formats. Videos or external video streams are not allowed." });
+        }
+      }
+    } else if (type === 'RIBBON') {
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, message: "Description (content) is mandatory for ribbons" });
+      }
+    } else if (type === 'NOTIFICATION') {
+      if (!title || !title.trim()) {
+        return res.status(400).json({ success: false, message: "Title is mandatory for notifications" });
+      }
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, message: "Description (content) is mandatory for notifications" });
+      }
+    } else {
+      // Banners or other types
+      if (!mediaLink) {
+        return res.status(400).json({ success: false, message: "Media link (image or video URL) is mandatory for banners" });
+      }
     }
 
     try {
@@ -99,6 +130,16 @@ const marketingController = {
 
       // Filter content based on hierarchical targeting rules
       const myContent = allContent.filter(item => {
+        // Creator Exclusion: The user who created the pop-up/ribbon does not get it on their dashboard
+        if ((item.type === 'POPUP' || item.type === 'RIBBON') && item.creatorId === userId) {
+          return false;
+        }
+
+        // WHITE_LABEL_ADMIN does not receive pop-up announcements
+        if (item.type === 'POPUP' && myIdentity === 'WHITE_LABEL_ADMIN') {
+          return false;
+        }
+
         // 1. Hierarchy Check: Is the creator above me in the tree?
         // SUPER_ADMIN banners are visible tenant-wide.
         // WHITE_LABEL_ADMIN is the root — their banners reach all users in the tenant.
@@ -223,6 +264,44 @@ const marketingController = {
       // Map media URLs
       const mediaLink = imageUrl !== undefined ? imageUrl : (mediaUrl !== undefined ? mediaUrl : undefined);
       const actionLink = linkUrl !== undefined ? linkUrl : (actionUrl !== undefined ? actionUrl : undefined);
+
+      // Type-specific validations for updates
+      const resolvedType = existing.type;
+      const finalTitle = title !== undefined ? title : existing.title;
+      const finalContent = content !== undefined ? content : existing.content;
+      const finalMedia = mediaLink !== undefined ? mediaLink : existing.imageUrl;
+
+      if (resolvedType === 'POPUP') {
+        if (title !== undefined && (!finalTitle || !finalTitle.trim())) {
+          return res.status(400).json({ success: false, message: "Title is mandatory for pop-ups" });
+        }
+        if (content !== undefined && (!finalContent || !finalContent.trim())) {
+          return res.status(400).json({ success: false, message: "Description (content) is mandatory for pop-ups" });
+        }
+        if (finalMedia) {
+          const isVideo = /\.(mp4|webm|ogg|avi|mov|flv|wmv|mkv)$/i.test(finalMedia) || 
+                          /youtube\.com|youtu\.be|vimeo\.com|drive\.google\.com\/file/i.test(finalMedia);
+          if (isVideo) {
+            return res.status(400).json({ success: false, message: "Pop-ups only support image formats. Videos or external video streams are not allowed." });
+          }
+        }
+      } else if (resolvedType === 'RIBBON') {
+        if (content !== undefined && (!finalContent || !finalContent.trim())) {
+          return res.status(400).json({ success: false, message: "Description (content) is mandatory for ribbons" });
+        }
+      } else if (resolvedType === 'NOTIFICATION') {
+        if (title !== undefined && (!finalTitle || !finalTitle.trim())) {
+          return res.status(400).json({ success: false, message: "Title is mandatory for notifications" });
+        }
+        if (content !== undefined && (!finalContent || !finalContent.trim())) {
+          return res.status(400).json({ success: false, message: "Description (content) is mandatory for notifications" });
+        }
+      } else {
+        // Banners or other types
+        if ((imageUrl !== undefined || mediaUrl !== undefined) && !finalMedia) {
+          return res.status(400).json({ success: false, message: "Media link (image or video URL) is mandatory for banners" });
+        }
+      }
 
       const updateData = {};
       if (isActive !== undefined) updateData.isActive = isActive;
