@@ -1,7 +1,7 @@
 const express = require("express");
 const walletController = require("../controllers/wallet.controller");
 const authMiddleware = require("../middleware/auth.middleware");
-const { checkIdentity } = require("../middleware/identity.middleware");
+const { checkIdentity, isWhiteLabelAdmin } = require("../middleware/identity.middleware");
 
 const router = express.Router();
 
@@ -22,20 +22,20 @@ router.get("/top-up/requests", authMiddleware, walletController.getMyTopUpReques
 const { checkPermission } = require("../middleware/permission.middleware");
 
 // ==================== ADMIN ENDPOINTS =============// Create bank details
-router.post("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.createBankDetails);
+router.post("/admin/bank-details", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.createBankDetails);
 
 // Get all bank details
-router.get("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getAllBankDetails);
+router.get("/admin/bank-details", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.getAllBankDetails);
 
 // Update bank details (including activate/deactivate)
-router.put("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.updateBankDetails);
+router.put("/admin/bank-details/:id", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.updateBankDetails);
 
 // Pincode-wise bank visibility
-router.get("/admin/bank-details/:id/pincode-visibility", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getBankPincodeVisibility);
-router.put("/admin/bank-details/:id/pincode-visibility", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.upsertBankPincodeVisibility);
+router.get("/admin/bank-details/:id/pincode-visibility", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.getBankPincodeVisibility);
+router.put("/admin/bank-details/:id/pincode-visibility", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.upsertBankPincodeVisibility);
 
 // Delete bank details
-router.delete("/admin/bank-details/:id", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.deleteBankDetails);
+router.delete("/admin/bank-details/:id", authMiddleware, isWhiteLabelAdmin, checkPermission("PERM_MANAGE_WALLETS"), walletController.deleteBankDetails);
 
 // Get all top-up requests
 router.get("/admin/top-up/requests", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.getAllTopUpRequests);

@@ -51,8 +51,9 @@ const resolveUserPincode = async (userId) => {
   ).trim();
 };
 
-const ensureBankVisibleForUserPincode = async ({ bankDetailsId, tenantId, userId }) => {
+const ensureBankVisibleForUserPincode = async ({ bankDetailsId, tenantId, userId, identity }) => {
   const pincode = await resolveUserPincode(userId);
+  const normalizedIdentity = normalizeIdentity(identity || "USER");
 
   if (!PINCODE_REGEX.test(pincode)) {
     return {
@@ -63,20 +64,37 @@ const ensureBankVisibleForUserPincode = async ({ bankDetailsId, tenantId, userId
     };
   }
 
-  const rows = await prisma.$queryRaw`
-    SELECT bd.*
-    FROM "BankDetails" bd
-    INNER JOIN "BankPincodeVisibility" bpv
-      ON bpv."bankDetailsId" = bd."id"
-    WHERE bd."id" = ${bankDetailsId}
-      AND bd."isActive" = true
-      AND bpv."pincode" = ${pincode}
-      AND bpv."isActive" = true
-      AND (${tenantId}::text IS NULL OR bd."tenantId" = ${tenantId})
-      AND (${tenantId}::text IS NULL OR bpv."tenantId" = ${tenantId})
-    LIMIT 1
-  `;
-  const bankDetails = rows[0];
+  const bankDetails = await prisma.bankDetails.findFirst({
+    where: {
+      id: bankDetailsId,
+      isActive: true,
+      tenantId: tenantId || undefined,
+      pincodeVisibility: {
+        some: {
+          pincode: { in: [pincode, "ALL"] },
+          isActive: true,
+          tenantId: tenantId || undefined,
+          OR: [
+            { targetType: 'ALL' },
+            {
+              targetType: 'IDENTITY',
+              OR: [
+                { targetIdentity: { isEmpty: true } },
+                { targetIdentity: { has: normalizedIdentity } }
+              ]
+            },
+            {
+              targetType: 'LOCATION',
+              OR: [
+                { targetIdentity: { isEmpty: true } },
+                { targetIdentity: { has: normalizedIdentity } }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  });
 
   if (!bankDetails) {
     return {
@@ -154,6 +172,7 @@ const walletController = {
     try {
       const tenantId = req.user?.tenant_id || req.user?.tenantId || req.tenant_id;
       const userId = req.user?.user_id;
+      const identity = normalizeIdentity(req.user?.identity || 'USER');
       const pincode = await resolveUserPincode(userId);
 
       if (!PINCODE_REGEX.test(pincode)) {
@@ -165,20 +184,39 @@ const walletController = {
         });
       }
       
-      console.log(`[WalletController] Fetching active bank details for tenant: ${tenantId}, pincode: ${pincode}`);
+      console.log(`[WalletController] Fetching active bank details for tenant: ${tenantId}, pincode: ${pincode}, identity: ${identity}`);
 
-      const bankDetails = await prisma.$queryRaw`
-        SELECT bd.*
-        FROM "BankDetails" bd
-        INNER JOIN "BankPincodeVisibility" bpv
-          ON bpv."bankDetailsId" = bd."id"
-        WHERE bd."isActive" = true
-          AND bpv."pincode" = ${pincode}
-          AND bpv."isActive" = true
-          AND (${tenantId}::text IS NULL OR bd."tenantId" = ${tenantId})
-          AND (${tenantId}::text IS NULL OR bpv."tenantId" = ${tenantId})
-        ORDER BY bd."createdAt" DESC
-      `;
+      const bankDetails = await prisma.bankDetails.findMany({
+        where: {
+          isActive: true,
+          tenantId: tenantId || undefined,
+          pincodeVisibility: {
+            some: {
+              pincode: { in: [pincode, "ALL"] },
+              isActive: true,
+              tenantId: tenantId || undefined,
+              OR: [
+                { targetType: 'ALL' },
+                {
+                  targetType: 'IDENTITY',
+                  OR: [
+                    { targetIdentity: { isEmpty: true } },
+                    { targetIdentity: { has: identity } }
+                  ]
+                },
+                {
+                  targetType: 'LOCATION',
+                  OR: [
+                    { targetIdentity: { isEmpty: true } },
+                    { targetIdentity: { has: identity } }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
 
       res.json({
         success: true,
@@ -242,7 +280,7 @@ const walletController = {
         });
       }
 
-      const visibility = await ensureBankVisibleForUserPincode({ bankDetailsId, tenantId, userId });
+      const visibility = await ensureBankVisibleForUserPincode({ bankDetailsId, tenantId, userId, identity });
       if (!visibility.ok) {
         return res.status(visibility.status).json({
           success: false,
@@ -512,24 +550,13 @@ const walletController = {
         ...(pincode ? { pincode: String(pincode).trim() } : {})
       };
 
-      const visibility = await prisma.$queryRaw`
-        SELECT
-          "id",
-          "bankDetailsId",
-          "tenantId",
-          "pincode",
-          "locationName",
-          "isActive",
-          "createdBy",
-          "updatedBy",
-          "createdAt",
-          "updatedAt"
-        FROM "BankPincodeVisibility"
-        WHERE "bankDetailsId" = ${id}
-          AND (${tenantId}::text IS NULL OR "tenantId" = ${tenantId})
-          AND (${pincode ? String(pincode).trim() : null}::text IS NULL OR "pincode" = ${pincode ? String(pincode).trim() : null})
-        ORDER BY "pincode" ASC, "createdAt" DESC
-      `;
+      const visibility = await prisma.bankPincodeVisibility.findMany({
+        where,
+        orderBy: [
+          { pincode: 'asc' },
+          { createdAt: 'desc' }
+        ]
+      });
 
       res.json({
         success: true,
@@ -551,13 +578,25 @@ const walletController = {
       const userId = req.user?.user_id;
       const pincode = String(req.body.pincode || "").trim();
       const locationName = String(req.body.locationName || "").trim() || null;
+      const targetType = String(req.body.targetType || 'ALL').toUpperCase();
+      const rawTargetIdentity = req.body.targetIdentity;
+      const targetIdentity = Array.isArray(rawTargetIdentity)
+        ? rawTargetIdentity.map((item) => normalizeIdentity(item)).filter((item) => !!item)
+        : String(rawTargetIdentity || "").split(",").map((item) => normalizeIdentity(item)).filter((item) => !!item);
+      const targetCountries = Array.isArray(req.body.targetCountries) ? req.body.targetCountries.map(String) : [];
+      const targetStates = Array.isArray(req.body.targetStates) ? req.body.targetStates.map(String) : [];
+      const targetCities = Array.isArray(req.body.targetCities) ? req.body.targetCities.map(String) : [];
+      const targetDistricts = Array.isArray(req.body.targetDistricts) ? req.body.targetDistricts.map(String) : [];
+      const targetPincodes = Array.isArray(req.body.targetPincodes) ? req.body.targetPincodes.map(String) : [];
       const isActive = Boolean(req.body.isActive);
 
-      if (!PINCODE_REGEX.test(pincode)) {
+      // Pincode validation: Allow "ALL" regardless of targetType, or require 6-digit pincode
+      const isAllPincode = pincode === "ALL";
+      if (!isAllPincode && !PINCODE_REGEX.test(pincode)) {
         return res.status(400).json({
           success: false,
           code: "INVALID_PINCODE",
-          message: "Valid 6 digit pincode is required."
+          message: "Valid 6 digit pincode or 'ALL' is required."
         });
       }
 
@@ -572,44 +611,50 @@ const walletController = {
         return res.status(404).json({ success: false, message: "Bank details not found" });
       }
 
-      const existingRows = await prisma.$queryRaw`
-        SELECT "id"
-        FROM "BankPincodeVisibility"
-        WHERE "bankDetailsId" = ${id}
-          AND "pincode" = ${pincode}
-          AND (${tenantId}::text IS NULL OR "tenantId" = ${tenantId})
-        LIMIT 1
-      `;
-      const existingVisibility = existingRows[0];
+      const existingVisibility = await prisma.bankPincodeVisibility.findFirst({
+        where: {
+          bankDetailsId: id,
+          pincode,
+          ...(tenantId ? { tenantId } : {})
+        }
+      });
+
+      const visibilityData = {
+        bankDetailsId: id,
+        tenantId,
+        pincode,
+        locationName,
+        targetType,
+        targetIdentity,
+        targetCountries,
+        targetStates,
+        targetCities,
+        targetDistricts,
+        targetPincodes,
+        isActive,
+        updatedBy: userId
+      };
 
       const visibility = existingVisibility
-        ? (await prisma.$queryRaw`
-          UPDATE "BankPincodeVisibility"
-          SET "isActive" = ${isActive},
-              "locationName" = ${locationName},
-              "updatedBy" = ${userId},
-              "updatedAt" = NOW()
-          WHERE "id" = ${existingVisibility.id}
-          RETURNING *
-        `)[0]
-        : (await prisma.$queryRaw`
-          INSERT INTO "BankPincodeVisibility" (
-            "id", "bankDetailsId", "tenantId", "pincode", "locationName",
-            "isActive", "createdBy", "updatedBy", "createdAt", "updatedAt"
-          )
-          VALUES (
-            ${generateUuid()}, ${id}, ${tenantId}, ${pincode}, ${locationName},
-            ${isActive}, ${userId}, ${userId}, NOW(), NOW()
-          )
-          RETURNING *
-        `)[0];
+        ? await prisma.bankPincodeVisibility.update({
+            where: { id: existingVisibility.id },
+            data: visibilityData
+          })
+        : await prisma.bankPincodeVisibility.create({
+            data: {
+              id: generateUuid(),
+              createdBy: userId,
+              updatedBy: userId,
+              ...visibilityData
+            }
+          });
 
       await logAction({
         userId,
         action: "BANK_PINCODE_VISIBILITY_UPDATE",
         targetId: id,
         tenantId,
-        metadata: { bankName: bank.bankName, pincode, locationName, isActive }
+        metadata: { bankName: bank.bankName, pincode, locationName, targetType, targetIdentity, isActive }
       });
 
       res.json({
@@ -686,18 +731,17 @@ const walletController = {
         });
       }
 
-      // Check if there are pending requests using this bank
-      const pendingRequests = await prisma.walletTopUpRequest.count({
+      // Check if there are any top-up requests using this bank
+      const relatedRequests = await prisma.walletTopUpRequest.count({
         where: {
-          bankDetailsId: id,
-          status: "PENDING"
+          bankDetailsId: id
         }
       });
 
-      if (pendingRequests > 0) {
+      if (relatedRequests > 0) {
         return res.status(400).json({
           success: false,
-          message: "Cannot delete bank details with pending top-up requests"
+          message: "Cannot delete bank details with existing top-up requests"
         });
       }
 
