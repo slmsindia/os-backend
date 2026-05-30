@@ -37,9 +37,6 @@ const databaseConfigMiddleware = (req, res, next) => {
     return next();
   }
 
-  const databaseUrl =
-    (process.env.DATABASE_URL || "").trim() ||
-    getDatabaseUrlFromEnvFile();
   const databaseUrl = (process.env.DATABASE_URL || "").trim() || getDatabaseUrlFromEnvFile();
 
   if (databaseUrl) {
@@ -51,9 +48,7 @@ const databaseConfigMiddleware = (req, res, next) => {
   if (!databaseUrl) {
     return res.status(503).json({
       success: false,
-      message:
-        "Database is not configured. Please set DATABASE_URL to use this service.",
-      message: "server error"
+      message: "Database is not configured. Please set DATABASE_URL to use this service."
     });
   }
 
