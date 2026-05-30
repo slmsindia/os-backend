@@ -192,7 +192,7 @@ const businessPartnerController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-    if (!calculatedAmount || calculatedAmount <= 0) {
+    if (calculatedAmount === undefined || isNaN(calculatedAmount) || calculatedAmount < 0) {
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
@@ -425,12 +425,13 @@ const businessPartnerController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 2000;
-          if (!parsed.serviceCharge && parsed.serviceCharges) {
+          amount = parsed.amount !== undefined ? parsed.amount : 2000;
+          if (parsed.serviceCharge === undefined && parsed.serviceCharges !== undefined) {
             parsed.serviceCharge = parsed.serviceCharges;
           }
         } catch (e) {
-          amount = parseFloat(feeSetting.value);
+          const val = parseFloat(feeSetting.value);
+          amount = isNaN(val) ? 2000 : val;
         }
       }
       
@@ -451,9 +452,13 @@ const businessPartnerController = {
         });
       }
 
+      if (amount === 0) {
+        paymentMethod = 'FREE';
+      }
+
       let razorpayOrder = null;
 
-      if (paymentMethod === 'RAZORPAY') {
+      if (paymentMethod === 'RAZORPAY' && amount > 0) {
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `biz_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {

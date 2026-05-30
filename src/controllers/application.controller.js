@@ -62,12 +62,12 @@ async function resolveFee(targetIdentity, tenantId) {
   }
   if (targetIdentity === 'SAATHI') {
     const s = await prisma.globalSetting.findFirst({ where: { key: 'SAATHI_FEE', tenantId } });
-    if (s?.value) { try { return JSON.parse(s.value).amount || 1000; } catch { return parseFloat(s.value) || 1000; } }
+    if (s?.value) { try { const parsed = JSON.parse(s.value); return parsed.amount !== undefined ? parsed.amount : 1000; } catch { const val = parseFloat(s.value); return isNaN(val) ? 1000 : val; } }
     return 1000;
   }
   if (targetIdentity === 'BUSINESS_USER' || targetIdentity === 'BUSINESS_PARTNER') {
     const s = await prisma.globalSetting.findFirst({ where: { key: 'BUSINESS_PARTNER_FEE', tenantId } });
-    if (s?.value) { try { return JSON.parse(s.value).amount || 2000; } catch { return parseFloat(s.value) || 2000; } }
+    if (s?.value) { try { const parsed = JSON.parse(s.value); return parsed.amount !== undefined ? parsed.amount : 2000; } catch { const val = parseFloat(s.value); return isNaN(val) ? 2000 : val; } }
     return 2000;
   }
   return 0; // Partners/admins created directly — no fee
