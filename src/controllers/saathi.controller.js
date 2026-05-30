@@ -94,7 +94,7 @@ const saathiController = {
       let razorpayOrder = null;
 
       // Check wallet balance if method is WALLET
-      if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+      if (finalPaymentMethod === 'WALLET' && !isPaidResubmission && amount > 0) {
         const wallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
         if (!wallet || wallet.balance < amount) {
           // Automatic fallback to Razorpay
@@ -150,8 +150,8 @@ const saathiController = {
                 amount,
                 method: finalPaymentMethod,
                 razorpayOrderId: razorpayOrder?.id || null,
-                status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
+                status: (finalPaymentMethod === 'WALLET' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                paidAt: (finalPaymentMethod === 'WALLET' || amount <= 0) ? new Date() : null
               }
             });
           }
@@ -175,8 +175,8 @@ const saathiController = {
                   amount,
                   method: finalPaymentMethod,
                   razorpayOrderId: razorpayOrder?.id || null,
-                  status: finalPaymentMethod === 'WALLET' ? 'SUCCESS' : 'PENDING',
-                  paidAt: finalPaymentMethod === 'WALLET' ? new Date() : null
+                  status: (finalPaymentMethod === 'WALLET' || amount <= 0) ? 'SUCCESS' : 'PENDING',
+                  paidAt: (finalPaymentMethod === 'WALLET' || amount <= 0) ? new Date() : null
                 }
               }
             },
@@ -185,7 +185,7 @@ const saathiController = {
         }
 
         // If WALLET and not resubmission, deduct now but don't credit admin immediately
-        if (finalPaymentMethod === 'WALLET' && !isPaidResubmission) {
+        if (finalPaymentMethod === 'WALLET' && !isPaidResubmission && amount > 0) {
           const userWallet = await walletService.resolveWallet(userId, tenantId, userIdentity);
           const adminWallet = await tx.wallet.findFirst({ where: { tenantId, isCorporate: true } });
           

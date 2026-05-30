@@ -149,7 +149,7 @@ const adminSaathiController = {
       calculatedAmount = parseFloat(legacyAmount);
     }
 
-    if (calculatedAmount === undefined || isNaN(calculatedAmount) || calculatedAmount < 0) {
+    if (!calculatedAmount || calculatedAmount <= 0) {
       return res.status(400).json({ success: false, message: "Invalid amount or fee configuration" });
     }
 
@@ -227,8 +227,7 @@ const adminSaathiController = {
    */
   createSaathiDirectly: async (req, res) => {
     console.log("[SaathiDirect-Debug] Incoming Request Body:", JSON.stringify(req.body, null, 2));
-    const { user_id: adminId, tenant_id: tenantId, identity, role } = req.user;
-    const adminIdentity = identity || role;
+    const { user_id: adminId, tenant_id: tenantId, identity: adminIdentity } = req.user;
     let { userId: providedUserId, fullName, mobile, email, gender, dateOfBirth, address, paymentMethod, liveAddress, liveCity, liveState, livePincode, liveCountry } = req.body;
 
     try {
@@ -327,8 +326,7 @@ const adminSaathiController = {
       const isSelfTarget =
         targetUser?.id === adminId ||
         String(targetUser?.mobile || '').trim() === String(adminUser?.mobile || '').trim();
-      const normalizedIdentity = String(adminIdentity || '').toUpperCase();
-      if (isSelfTarget && normalizedIdentity !== 'USER' && normalizedIdentity !== 'MEMBER') {
+      if (isSelfTarget) {
         return res.status(400).json({
           success: false,
           message: "Use a different mobile number to create a new Saathi under your hierarchy."
@@ -400,14 +398,13 @@ const adminSaathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount !== undefined ? parsed.amount : 1000;
+          amount = parsed.amount || 1000;
           // Support both names during transition
-          if (parsed.serviceCharge === undefined && parsed.serviceCharges !== undefined) {
+          if (!parsed.serviceCharge && parsed.serviceCharges) {
             parsed.serviceCharge = parsed.serviceCharges;
           }
         } catch (e) {
-          const val = parseFloat(feeSetting.value);
-          amount = isNaN(val) ? 1000 : val;
+          amount = parseFloat(feeSetting.value);
         }
       }
 
@@ -427,13 +424,9 @@ const adminSaathiController = {
         });
       }
 
-      if (amount === 0) {
-        paymentMethod = 'FREE';
-      }
-
       // 4. Pre-create Razorpay Order OUTSIDE transaction to avoid DB timeouts
       let razorpayOrder = null;
-      if (paymentMethod === 'RAZORPAY' && amount > 0) {
+      if (paymentMethod === 'RAZORPAY') {
         try {
           razorpayOrder = await razorpayService.createOrder(tenantId, amount, 'INR', `saathi_direct_${targetUserId.slice(0, 8)}`);
         } catch (err) {
@@ -538,9 +531,9 @@ const adminSaathiController = {
                       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
                     status: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? 'SUCCESS' : 'PENDING',
                     paidAt: (paymentMethod === 'WALLET' || paymentMethod === 'CASH') ? new Date() : null
+                    }
                   }
                 }
-              }
             },
             include: { payment: true }
           });

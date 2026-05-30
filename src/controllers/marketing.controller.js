@@ -163,7 +163,8 @@ const marketingController = {
           case 'ALL':
             return true;
           case 'IDENTITY':
-            return myIdentity === item.targetIdentity;
+            if (!item.targetIdentity) return false;
+            return item.targetIdentity.split(',').includes(myIdentity);
           case 'BRANCH':
             // Target specific branch: Me or someone in my path must be the targetUserId
             return userId === item.targetUserId || (me.path && me.path.includes(item.targetUserId));
@@ -190,6 +191,11 @@ const marketingController = {
             if (item.targetPincodes && item.targetPincodes.length > 0) {
               const userPincode = me.registrationPincode;
               if (!userPincode || !item.targetPincodes.includes(userPincode)) return false;
+            }
+            // Optional role filter within location targeting
+            if (item.targetIdentity && item.targetIdentity !== 'ALL') {
+              const allowedRoles = item.targetIdentity.split(',');
+              if (!allowedRoles.includes(myIdentity)) return false;
             }
             return true;
           }
