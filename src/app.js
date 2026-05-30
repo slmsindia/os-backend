@@ -7,6 +7,7 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const openApiSpec = require("./docs/openapi");
 
 const tenantMiddleware = require("./middleware/tenant.middleware");
+const databaseConfigMiddleware = require("./middleware/database-config.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const deviceRoutes = require("./routes/device.routes");
