@@ -3,7 +3,7 @@ const { generateUuid } = require("../utils/id");
 const { logAction } = require("../utils/audit");
 
 const adminContentController = {
-  // ==================== POSTERS (BANNERS) ====================
+  // ==================== POSTERS (BANNERS) =============
   addPoster: async (req, res) => {
     const { tenant_id: tenantId, user_id: adminId } = req.user;
     const { title, imageUrl, linkUrl, screen, order } = req.body;
@@ -33,7 +33,7 @@ const adminContentController = {
     }
   },
 
-  // ==================== ANNOUNCEMENTS (TICKER) ====================
+  // ==================== ANNOUNCEMENTS (TICKER) =============
   addAnnouncement: async (req, res) => {
     const { tenant_id: tenantId } = req.user;
     const { text, type } = req.body;
@@ -62,7 +62,7 @@ const adminContentController = {
     }
   },
 
-  // ==================== NOTICES (POPUPS) ====================
+  // ==================== NOTICES (POPUPS) =============
   addNotice: async (req, res) => {
     const { tenant_id: tenantId } = req.user;
     const { title, message, imageUrl, isPopup } = req.body;
@@ -91,7 +91,7 @@ const adminContentController = {
     }
   },
 
-  // ==================== APP SERVICES (UI) ====================
+  // ==================== APP SERVICES (UI) =============
   addAppSection: async (req, res) => {
     const { tenant_id: tenantId } = req.user;
     const { name, iconUrl, order } = req.body;
@@ -159,7 +159,7 @@ const adminContentController = {
     }
   },
 
-  // ==================== SURVEY & QUESTIONS ====================
+  // ==================== SURVEY & QUESTIONS =============
   addSurveyQuestion: async (req, res) => {
     const { tenant_id: tenantId } = req.user;
     const { question, type, options, order, isRequired } = req.body;

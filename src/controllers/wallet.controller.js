@@ -92,7 +92,6 @@ const ensureBankVisibleForUserPincode = async ({ bankDetailsId, tenantId, userId
 
 const walletController = {
   // ==================== MEMBER ENDPOINTS ====================
-
   /**
    * Get my wallet details
    */
@@ -402,7 +401,6 @@ const walletController = {
   },
 
   // ==================== ADMIN ENDPOINTS ====================
-
   /**
    * Create bank details
    */

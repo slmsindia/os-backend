@@ -1536,7 +1536,7 @@ const paths = {
     }
   },
 
-  // ==================== IME LEGACY SOAP ENDPOINTS ====================
+  // ==================== IME LEGACY SOAP ENDPOINTS =============
   "/api/ime/GetCalculation": {
     post: {
       tags: ["IME 4: Transaction Flow"],
@@ -2337,7 +2337,7 @@ const paths = {
   },
 
 
-  // ==================== WALLET ENDPOINTS ====================
+  // ==================== WALLET ENDPOINTS =============
   "/api/wallet": {
     get: {
       tags: ["Wallet"],
@@ -2411,7 +2411,7 @@ const paths = {
     },
   },
 
-  // ==================== WALLET ADMIN ENDPOINTS ====================
+  // ==================== WALLET ADMIN ENDPOINTS =============
   "/api/wallet/admin/bank-details": {
     post: {
       tags: ["Wallet Admin"],
@@ -2511,7 +2511,7 @@ const paths = {
     },
   },
 
-  // ==================== MEMBERSHIP ENDPOINTS ====================
+  // ==================== MEMBERSHIP ENDPOINTS =============
   "/api/membership/price": {
     get: {
       tags: ["Membership"],
@@ -2587,7 +2587,7 @@ const paths = {
     },
   },
 
-  // ==================== ADMIN MEMBERSHIP ENDPOINTS ====================
+  // ==================== ADMIN MEMBERSHIP ENDPOINTS =============
   "/api/admin/membership/price": {
     put: {
       tags: ["Admin"],
@@ -2808,7 +2808,7 @@ const paths = {
     },
   },
 
-  // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
+  // ==================== ADMIN USER MANAGEMENT ENDPOINTS =============
   "/api/admin/users": {
     get: {
       tags: ["Admin"],
@@ -2990,7 +2990,7 @@ const paths = {
     },
   },
 
-  // ==================== USER ENDPOINTS ====================
+  // ==================== USER ENDPOINTS =============
   "/api/users/profile": {
     get: {
       tags: ["Users"],
@@ -3077,7 +3077,7 @@ const paths = {
     },
   },
 
-  // ==================== DEVICE ENDPOINTS ====================
+  // ==================== DEVICE ENDPOINTS =============
   "/api/devices": {
     get: {
       tags: ["Devices"],
@@ -3105,7 +3105,7 @@ const paths = {
     },
   },
 
-  // ==================== RD ENDPOINTS ====================
+  // ==================== RD ENDPOINTS =============
   "/api/rd/capture": {
     post: {
       tags: ["RD"],
@@ -3226,8 +3226,7 @@ paths[`${prabhuPrefix}/VerifyTransaction/{pinNo}`] = {
   });
 });
 
-// ==================== IME ENDPOINTS ====================
-
+// ==================== IME ENDPOINTS =============
 // Authentication & Session Management
 paths["/api/ime/authenticate"] = {
   post: {

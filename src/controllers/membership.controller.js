@@ -513,6 +513,7 @@ const membershipController = {
           app = await tx.membershipApplication.update({
             where: { id: existingApplication.id },
             data: { ...mappedData, status: 'RESUBMITTED', createdById: userId }
+            data: { ...mappedData, status: 'PENDING', createdById: userId }
           });
         } else if (existingApplication && existingApplication.status === 'PAYMENT_PENDING') {
           // Update the existing application instead of creating a new one
@@ -603,7 +604,7 @@ const membershipController = {
         return res.status(200).json({
           success: true,
           message: "Membership application resubmitted successfully. Previous payment reused.",
-          data: { applicationId: application.id, status: 'RESUBMITTED' }
+          data: { applicationId: application.id, status: 'PENDING' }
         });
       }
 
@@ -894,7 +895,7 @@ const membershipController = {
           permanentDistrict: body.permanentDistrict || rejectedApplication.permanentDistrict,
           permanentAddress: body.permanentAddress || rejectedApplication.permanentAddress,
           permanentPincode: body.permanentPincode || rejectedApplication.permanentPincode,
-          status: 'RESUBMITTED',
+          status: 'PENDING',
           rejectionReason: null
         }
       });
@@ -931,8 +932,7 @@ const membershipController = {
         success: true,
         message: "Application resubmitted successfully. No payment required.",
         data: {
-          applicationId: updatedApplication.id,
-          status: 'RESUBMITTED'
+          applicationId: updatedApplication.id
         }
       });
     } catch (err) {

@@ -6,7 +6,6 @@ const swaggerUi = require("swagger-ui-express");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const openApiSpec = require("./docs/openapi");
 
-const databaseConfigMiddleware = require("./middleware/database-config.middleware");
 const tenantMiddleware = require("./middleware/tenant.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
@@ -37,7 +36,7 @@ const adminAccessRoutes = require("./routes/admin.access.routes");
 const draftRoutes = require("./routes/draft.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const applicationRoutes = require("./routes/application.routes");
-
+const router = require("./routes/jobs.route");
 const app = express();
 
 app.use(helmet());
@@ -71,6 +70,8 @@ app.get("/api/health-check", (req, res) => res.json({
   timestamp: new Date().toISOString()
 }));
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 const buildSwaggerSpec = (req) => {
   const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
@@ -114,6 +115,13 @@ app.use(
 
 app.use(tenantMiddleware);
 
+// Health check to verify deployment
+app.get("/api/health-check", (req, res) => res.json({ 
+  status: "ok", 
+  version: "1.0.7", 
+  timestamp: new Date().toISOString() 
+}));
+app.use("/api/jobs", router);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/membership", membershipRoutes);
 app.use("/api/auth", authRoutes);
@@ -143,6 +151,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/admin/access-control", adminAccessRoutes);
 app.use("/api/drafts", draftRoutes);
 app.use("/api/notifications", notificationRoutes);
+
+app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 
 app.use((req, res) => res.status(404).json({ message: "not found" }));
 

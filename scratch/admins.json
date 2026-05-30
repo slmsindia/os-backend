@@ -1,0 +1,62 @@
+[
+  {
+    "id": "e8c0afac-91d8-4938-9909-8c398aac2b09",
+    "mobile": "9099005251",
+    "fullName": "Main Super Admin",
+    "identity": "SUPER_ADMIN",
+    "approvalStatus": "APPROVED",
+    "tenant": {
+      "id": "ab1e5d76-0589-4147-b484-e8d284ea9749",
+      "name": "Main Platform",
+      "domain": "localhost"
+    }
+  },
+  {
+    "id": "868c5954-39ba-4b7f-8d19-e48a34c68614",
+    "mobile": "9876543210",
+    "fullName": "Sample WhiteLabel Admin",
+    "identity": "WHITE_LABEL_ADMIN",
+    "approvalStatus": "APPROVED",
+    "tenant": {
+      "id": "469b4f78-1672-4902-a0d6-9f4f2284baa4",
+      "name": "Frontend Dev 5173",
+      "domain": "localhost:5173"
+    }
+  },
+  {
+    "id": "75334832-ab6d-4117-ab3a-3821882530f7",
+    "mobile": "8488856252",
+    "fullName": "onlinesaathi",
+    "identity": "WHITE_LABEL_ADMIN",
+    "approvalStatus": "APPROVED",
+    "tenant": {
+      "id": "46dae55e-bc68-44a2-a2fe-999a0dd5659a",
+      "name": "onlinesaathi",
+      "domain": "apiv3.onlinesaathi.org"
+    }
+  },
+  {
+    "id": "dce50eab-482f-4954-8a84-4462a50f3574",
+    "mobile": "0000000001",
+    "fullName": "Htech Solutions Pvt Ltd",
+    "identity": "WHITE_LABEL_ADMIN",
+    "approvalStatus": "APPROVED",
+    "tenant": {
+      "id": "537ab884-ccfe-4737-8d19-85b70a5d5452",
+      "name": "H Tech Solution Pvt Ltd",
+      "domain": "htechsolution.com"
+    }
+  },
+  {
+    "id": "af1a8ef9-aebe-473d-a20e-dc56a72deebf",
+    "mobile": "9099005252",
+    "fullName": "Online Saathi",
+    "identity": "WHITE_LABEL_ADMIN",
+    "approvalStatus": "APPROVED",
+    "tenant": {
+      "id": "9ca4b18f-98e0-4a97-ad53-e2b7f518f62b",
+      "name": "Online Saathi",
+      "domain": "dash.onlinesaathi.org"
+    }
+  }
+]

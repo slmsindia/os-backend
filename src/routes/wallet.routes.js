@@ -5,8 +5,7 @@ const { checkIdentity } = require("../middleware/identity.middleware");
 
 const router = express.Router();
 
-// ==================== MEMBER ENDPOINTS ====================
-// Get my wallet details
+// ==================== MEMBER ENDPOINTS =============// Get my wallet details
 router.get("/", authMiddleware, walletController.getMyWallet);
 router.get("/my-wallet", authMiddleware, walletController.getMyWallet);
 
@@ -22,8 +21,7 @@ router.get("/top-up/requests", authMiddleware, walletController.getMyTopUpReques
 
 const { checkPermission } = require("../middleware/permission.middleware");
 
-// ==================== ADMIN ENDPOINTS ====================
-// Create bank details
+// ==================== ADMIN ENDPOINTS =============// Create bank details
 router.post("/admin/bank-details", authMiddleware, checkIdentity(["SUPER_ADMIN", "WHITE_LABEL_ADMIN", "ADMIN", "SUB_ADMIN"]), checkPermission("PERM_MANAGE_WALLETS"), walletController.createBankDetails);
 
 // Get all bank details

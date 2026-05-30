@@ -2131,13 +2131,8 @@ const sendTransactionLegacy = async (req, res) => {
     }
 
     // Process Admin Commission if successful
-    if (imeMeta.code === "0") {
-      await walletService.processServiceCommission(
-        "IME",
-        req.user.tenant_id,
-        params.AgentTxnRefId,
-        req.user.user_id || req.user.id,
-      );
+    if (imeMeta.code === '0') {
+      await walletService.processServiceCommission('IME', req.user.tenant_id, params.AgentTxnRefId, req.user.user_id || req.user.id);
     }
 
     // Log API response

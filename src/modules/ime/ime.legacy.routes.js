@@ -41,6 +41,7 @@ router.post('/CSPDocumentUpload', imeController.cspDocumentUpload);
 router.get('/CheckCSP', imeController.checkCSP);
 router.get('/BalanceInquiry', imeController.balanceInquiry);
 router.get('/CheckCustomer/:mobileNo', imeController.checkCustomer);
+router.post('/SendOTP', imeController.sendCustomerOtp);
 router.post('/CustomerRegistration', imeController.createCustomer);
 router.post('/ConfirmCustomerRegistration', imeController.confirmCustomer);
 router.post('/GetCalculation', imeController.getCalculation);

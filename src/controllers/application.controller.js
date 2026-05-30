@@ -360,13 +360,11 @@ const applicationController = {
       }
 
       // Update password for existing targetUser if provided
-      // ── 2. Auto-create base USER if not found (admin/partner creating for new person) ──
       if (!targetUser && targetMobile && ALL_ADMIN_ROLES.includes(creatorIdentity)) {
-        const passwordToHash = isStrongPassword(password) ? password : generateTemporaryPassword();
-
         const creator = await prisma.user.findUnique({ where: { id: creatorId }, select: { path: true } });
         const path = creator?.path ? `${creator.path}/${creatorId}` : `/${creatorId}`;
-        const hashedPwd = await bcrypt.hash(passwordToHash, 10);
+        const passwordToUse = formData.password || targetMobile.slice(-4);
+        const hashedPwd = await bcrypt.hash(passwordToUse, 10);
         try {
           targetUser = await prisma.user.create({
             data: {
@@ -389,6 +387,14 @@ const applicationController = {
         }
       }
 
+      if (targetUser && formData.password) {
+        const hashedPwd = await bcrypt.hash(formData.password, 10);
+        targetUser = await prisma.user.update({
+          where: { id: targetUser.id },
+          data: { password: hashedPwd }
+        });
+      }
+
       if (!targetUser) return res.status(404).json({ success: false, message: "Target user not found. Provide targetMobile or targetUserId." });
 
       // ── 3. Block if already has this or higher identity ─────────────────────
@@ -405,121 +411,17 @@ const applicationController = {
 
       // ── 4. Block duplicate pending application ──────────────────────────────
       const duplicate = await prisma.application.findFirst({
-        where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'RESUBMITTED', 'PAYMENT_PENDING', 'APPROVED'] } }
+        where: { userId: targetUser.id, targetIdentity, status: { in: ['PENDING', 'PAYMENT_PENDING', 'APPROVED'] } }
       });
       if (duplicate?.status === 'APPROVED') {
         return res.status(400).json({ success: false, message: `${targetIdentity} already approved for this user.` });
       }
-      if (duplicate?.status === 'PENDING' || duplicate?.status === 'RESUBMITTED') {
+      if (duplicate?.status === 'PENDING') {
         return res.status(400).json({ success: false, message: `A pending ${targetIdentity} application already exists.` });
       }
 
       // ── 5. Resolve fee ───────────────────────────────────────────────────────
-      const paidRejectedApplication = await prisma.application.findFirst({
-        where: {
-          userId: targetUser.id,
-          targetIdentity,
-          status: "REJECTED",
-          paymentStatus: "SUCCESS"
-        },
-        orderBy: { updatedAt: "desc" }
-      });
-
-      if (paidRejectedApplication) {
-        const resubmitted = await prisma.application.update({
-          where: { id: paidRejectedApplication.id },
-          data: {
-            status: "RESUBMITTED",
-            rejectionReason: null,
-            submittedData,
-            ...geoFields
-          }
-        });
-
-        await logAction({
-          userId: creatorId,
-          action: `${targetIdentity}_APP_RESUBMITTED_PAYMENT_REUSED`,
-          targetId: resubmitted.id,
-          tenantId
-        });
-
-        return res.status(201).json({
-          success: true,
-          message: "Application resubmitted. Previous payment reused.",
-          data: { applicationId: resubmitted.id, paymentReused: true }
-        });
-      }
-
       const fee = await resolveFee(targetIdentity, tenantId);
-
-      if (duplicate?.status === 'PAYMENT_PENDING') {
-        const method = (submittedData.paymentMethod || '').toUpperCase();
-        const updatedApp = await prisma.application.update({
-          where: { id: duplicate.id },
-          data: {
-            submittedData,
-            paymentAmount: fee,
-            ...geoFields
-          }
-        });
-
-        if (fee === 0 || method === 'CASH') {
-          const paidApp = await prisma.application.update({
-            where: { id: updatedApp.id },
-            data: {
-              status: 'PENDING',
-              paymentStatus: 'SUCCESS',
-              paymentMethod: fee === 0 ? 'FREE' : 'CASH'
-            }
-          });
-          await safeSettleApplicationFeeToCorporateWallet(paidApp, "APPLICATION_CASH_SUBMITTED");
-          return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: paidApp.id } });
-        }
-
-        if (updatedApp.razorpayOrderId && updatedApp.paymentMethod === 'RAZORPAY') {
-          return res.status(201).json({
-            success: true,
-            message: "Please complete payment via Razorpay.",
-            paymentMethod: 'RAZORPAY',
-            data: {
-              applicationId: updatedApp.id,
-              orderId: updatedApp.razorpayOrderId,
-              amount: fee,
-              key: await razorpayService.getKeyId(tenantId)
-            }
-          });
-        }
-
-        try {
-          const order = await razorpayService.createOrder(tenantId, fee, 'INR', `app_${updatedApp.id.slice(0, 20)}`);
-          await prisma.application.update({
-            where: { id: updatedApp.id },
-            data: {
-              razorpayOrderId: order.id,
-              paymentStatus: 'PENDING',
-              paymentMethod: 'RAZORPAY'
-            }
-          });
-          return res.status(201).json({
-            success: true,
-            message: "Please complete payment via Razorpay.",
-            paymentMethod: 'RAZORPAY',
-            data: {
-              applicationId: updatedApp.id,
-              orderId: order.id,
-              amount: fee,
-              key: await razorpayService.getKeyId(tenantId)
-            }
-          });
-        } catch (rzpErr) {
-          console.error('[ExistingPendingPayment] Razorpay failed:', rzpErr.message);
-          return res.status(400).json({
-            success: false,
-            message: "Razorpay initialization failed. Please try again.",
-            error: rzpErr.message
-          });
-        }
-      }
 
       // ── 6. ADMIN / WHITE_LABEL_ADMIN / SUB_ADMIN: Cash or Razorpay ──────────
       // All admin-level creators use the same payment flow and go to PENDING queue.
@@ -546,8 +448,7 @@ const applicationController = {
         });
 
         if (method === 'CASH' || fee === 0) {
-          const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
-          await safeSettleApplicationFeeToCorporateWallet(updatedApp, "APPLICATION_CASH_SUBMITTED");
+          await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS' } });
           return res.status(201).json({ success: true, message: "Application submitted.", data: { applicationId: app.id } });
         }
 
@@ -562,8 +463,7 @@ const applicationController = {
               wallet.id, adminWallet?.id, fee,
               `${targetIdentity} application fee`, app.id, tenantId, 'WALLET', prisma, false
             );
-            const updatedApp = await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
-            await processApplicationCommissionOnce(updatedApp);
+            await prisma.application.update({ where: { id: app.id }, data: { status: 'PENDING', paymentStatus: 'SUCCESS', paymentMethod: 'WALLET' } });
             return res.status(201).json({ success: true, message: "Application submitted via corporate wallet.", data: { applicationId: app.id } });
           } catch (walletErr) {
             console.warn('[AdminWalletFallback] Wallet failed, falling back to Razorpay:', walletErr.message);
@@ -713,18 +613,7 @@ const applicationController = {
 
     } catch (err) {
       console.error('[Application.submit] Error:', err);
-      if (isUniqueConstraintError(err, "mobile")) {
-        return res.status(409).json({
-          success: false,
-          message: "This mobile number is already registered. Please use a different mobile number."
-        });
-      }
-      res.status(500).json({
-        success: false,
-        message: err.message || "Internal server error",
-        code: err.code || undefined,
-        target: err.meta?.target || undefined
-      });
+      res.status(500).json({ success: false, message: err.message || "Internal server error" });
     }
   },
 
@@ -832,6 +721,44 @@ const applicationController = {
         // 1) Always credit tenant corporate wallet first. If payment was already
         // settled during verification/rejection, this is a no-op.
         await settleApplicationFeeToCorporateWallet(app, "APPLICATION_APPROVAL");
+        // 1) Always credit tenant corporate wallet first.
+        await prisma.$transaction(async (tx) => {
+          const adminWallet = await tx.wallet.findFirst({ where: { tenantId: app.tenantId, isCorporate: true } }) || await tx.wallet.create({
+            data: {
+              id: generateUuid(),
+              userId: null,
+              tenantId: app.tenantId,
+              isCorporate: true,
+              balance: 0,
+              currency: "INR",
+              isActive: true
+            }
+          });
+
+          await tx.wallet.update({
+            where: { id: adminWallet.id },
+            data: { balance: { increment: settlementAmount } }
+          });
+
+          await tx.walletTransaction.create({
+            data: {
+              id: generateUuid(),
+              walletId: adminWallet.id,
+              amount: settlementAmount,
+              type: "CREDIT",
+              category: "SERVICE_CHARGE",
+              status: "SUCCESS",
+              referenceId: app.id,
+              description: `${app.targetIdentity} application fee received from user ${app.userId}`,
+              tenantId: app.tenantId,
+              metadata: {
+                trigger: "APPLICATION_APPROVAL",
+                applicationId: app.id,
+                userId: app.userId
+              }
+            }
+          });
+        });
 
         // 2) Commission should not rollback wallet settlement.
         const slugMap = { MEMBER: 'membership_fee', SAATHI: 'saathi_fee', BUSINESS_USER: 'business_partner_fee', BUSINESS_PARTNER: 'business_partner_fee' };

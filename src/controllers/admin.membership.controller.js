@@ -101,8 +101,8 @@ const adminMembershipController = {
     }
 
     const isNewUserFlow = flowType === 'ADMIN_CREATE_NEW_USER';
-    if (isNewUserFlow && !isStrongPassword(password)) {
-      return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
+    if (isNewUserFlow && !password) {
+      return res.status(400).json({ success: false, message: "Password is required for new user creation" });
     }
 
     // Sanitize identity input (convert camelCase or spaces to UPPER_SNAKE_CASE)
@@ -243,14 +243,14 @@ const adminMembershipController = {
 
 
       // ─── CASE B: User Does NOT Exist → Create brand new user ───
-      if (!isStrongPassword(password)) {
-        return res.status(400).json({ success: false, message: PASSWORD_RULE_MESSAGE });
+      if (isNewUserFlow && !password) {
+        return res.status(400).json({ success: false, message: "Password is required for new user creation" });
       }
 
       // ─── Flow 3 Fix: Create Application for New Users ───
       // Instead of direct creation, we create an APPLICATION record that must be approved.
       
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password || mobile.slice(-4), 10);
       const { getLocationData } = require("../utils/location");
       const loc = getLocationData(req);
 
@@ -553,9 +553,7 @@ const adminMembershipController = {
       if (adminIdentity !== 'SUPER_ADMIN') {
         where.user = { tenantId: tenantId };
       }
-      if (status === 'PENDING') {
-        where.status = { in: ['PENDING', 'RESUBMITTED'] };
-      } else if (status) {
+      if (status) {
         where.status = status;
       }
 
@@ -571,11 +569,7 @@ const adminMembershipController = {
 
       const unifiedWhere = {
         targetIdentity: 'MEMBER',
-        ...(status === 'PENDING'
-          ? { status: { in: ['PENDING', 'RESUBMITTED'] } }
-          : status
-            ? { status }
-            : {})
+        ...(status ? { status } : {})
       };
       if (adminIdentity !== 'SUPER_ADMIN') {
         unifiedWhere.tenantId = tenantId;
@@ -654,7 +648,7 @@ const adminMembershipController = {
       res.json({
         success: true,
         data: {
-          members: enrichedApps,
+          members: paginatedApps,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -912,12 +906,12 @@ const adminMembershipController = {
                 referenceId: application.id,
                 description: `Membership fee received from user ${application.userId} (via ${modeLabel})`,
                 tenantId,
-                metadata: sanitizeJsonValue({
+                metadata: {
                   trigger: "MEMBERSHIP_APPROVAL",
                   applicationId,
                   userId: application.userId,
                   paymentId: application.payment?.id
-                })
+                }
               }
             });
           }
@@ -1000,8 +994,7 @@ const adminMembershipController = {
       }
 
       const application = await prisma.membershipApplication.findUnique({
-        where: { id: applicationId },
-        include: { user: true, payment: true }
+        where: { id: applicationId }
       });
 
       if (!application) {

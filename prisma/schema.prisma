@@ -15,7 +15,10 @@ model Tenant {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   users     User[]
-  wallets   Wallet[] // Opposite relation for shared wallets
+  wallets   Wallet[]
+  adminJobs       Job[]
+resumeTemplates ResumeTemplate[]
+ // Opposite relation for shared wallets
   
   // App & Admin Management
   appSections     AppSection[]
@@ -109,6 +112,8 @@ model User {
   businessProfile BusinessProfile?
   businessApplications BusinessApplication[]
   jobPosts        JobPost[]
+  adminJobs      Job[]            @relation("AdminJobs")
+userJobApps    JobApplication[] @relation("UserJobApps")
 
   // Scalability & Hierarchy
   path              String?  @default("")
@@ -268,9 +273,9 @@ model BusinessApplication {
 }
 
 model JobPost {
-  id                String   @id @default(uuid())
-  businessId        String
-  business          BusinessProfile @relation(fields: [businessId], references: [id])
+   id                String   @id @default(uuid())
+  businessId        String?
+  business          BusinessProfile? @relation(fields: [businessId], references: [id])
   creatorId         String
   creator           User     @relation(fields: [creatorId], references: [id])
   
@@ -318,6 +323,60 @@ model JobPost {
 
   @@index([businessId])
   @@index([sectorId])
+}
+model Job {
+  id              String           @id @default(uuid())
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title           String
+  companyName     String
+  salary          String
+  experience      String
+  location        String
+  skills          String[]         
+  category        String           // "Majdur Chowk" અથવા "Government Job"
+  description     String           @db.Text
+  vacancies       Int              @default(1)
+  lastDate        DateTime?
+  jobType         String           // "FULL_TIME", "PART_TIME"
+  workMode        String           // "ONSITE", "REMOTE"
+  status          String           @default("ACTIVE") // ACTIVE, CLOSED
+  createdById     String
+  createdBy       User             @relation("AdminJobs", fields: [createdById], references: [id])
+  applications    JobApplication[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([category])
+}
+
+model ResumeTemplate {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templateName String
+  thumbnail    String   
+  templateFile String   
+  category     String   
+  createdById  String
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model JobApplication {
+  id          String   @id @default(uuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation("UserJobApps", fields: [userId], references: [id], onDelete: Cascade)
+  resumeUrl   String
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  appliedDate DateTime @default(now())
+
+  @@index([jobId])
+  @@index([userId])
 }
 
 // Additional Master Data
@@ -420,11 +479,8 @@ model OtpCode {
   @@index([mobile])
 }
 
-// ============================================
-// 📘 IME API Response Storage Tables
-// ============================================
-
-// IME Static Data Storage
+// =====================================// 📘 IME API Response Storage Tables
+// ==============================// IME Static Data Storage
 model ImeStaticData {
   id          String   @id @default(uuid())
   typeCode    String   // WSST-GDRV1, WSST-STTV1, etc.
@@ -881,10 +937,9 @@ model GlobalSetting {
   @@index([tenantId])
 }
 
-// ============================================
+// =====================================
 // 🌍 Location Master Data
-// ============================================
-
+// ==============================
 model Country {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -1396,10 +1451,9 @@ model SaathiPayment {
   @@index([applicationId])
 }
 
-// ============================================
+// =====================================
 // 📘 Commission System Models
-// ============================================
-
+// ==============================
 model CommissionScheme {
   id        String   @id @default(uuid())
   name      String
@@ -1550,10 +1604,9 @@ model AdminIncome {
   @@index([transactionId])
 }
 
-// ============================================
+// =====================================
 // 📱 App Services & UI Management
-// ============================================
-
+// ==============================
 model AppSection {
   id           String       @id @default(uuid())
   name         String
@@ -1599,10 +1652,9 @@ model RoleServicePermission {
   @@unique([serviceId, identity])
 }
 
-// ============================================
+// =====================================
 // 📢 Admin Content Management
-// ============================================
-
+// ==============================
 model Poster {
   id          String   @id @default(uuid())
   title       String?
@@ -1647,10 +1699,9 @@ model Notice {
   @@index([tenantId])
 }
 
-// ============================================
+// =====================================
 // 📝 Survey & Membership Questions
-// ============================================
-
+// ==============================
 model SurveyQuestion {
   id          String         @id @default(uuid())
   question    String
@@ -1681,10 +1732,9 @@ model SurveyAnswer {
   @@index([userId])
 }
 
-// ============================================
+// =====================================
 // 💳 Wallet Enhancements
-// ============================================
-
+// ==============================
 model QRCode {
   id          String   @id @default(uuid())
   title       String
@@ -1782,28 +1832,39 @@ enum TicketPriority {
 }
 
 model MarketingContent {
-  id            String         @id @default(uuid())
-  type          MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER
-  title         String
-  content       String?        @db.Text
-  imageUrl      String?
-  linkUrl       String?
+  id                  String         @id @default(uuid())
+  type                MarketingType  // BANNER, NOTIFICATION, NOTICE, HOVER, POPUP, RIBBON
+  title               String?        // Optional
+  content             String?        @db.Text
+  imageUrl            String?
+  linkUrl             String?
   
   // Targeting
-  targetType    TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC
-  targetIdentity Identity?     // If targetType is IDENTITY
-  targetUserId  String?        // If targetType is BRANCH or SPECIFIC
+  targetType          TargetType     @default(ALL) // ALL, IDENTITY, BRANCH, SPECIFIC, LOCATION
+  targetIdentity      Identity?     // If targetType is IDENTITY
+  targetUserId        String?        // If targetType is BRANCH or SPECIFIC
   
-  isActive      Boolean        @default(true)
-  isGlobalDeactivated Boolean  @default(false) // Master switch for Super Admin
+  // Advanced Multi-Location Targeting (PostgreSQL String Arrays)
+  targetCountries     String[]
+  targetStates        String[]
+  targetCities        String[]
+  targetDistricts     String[]
+  targetPincodes      String[]
   
-  creatorId     String
-  creator       User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  // Validity period
+  startDate           DateTime?
+  endDate             DateTime?
   
-  tenantId      String
+  isActive            Boolean        @default(false) // Deactivated by default
+  isGlobalDeactivated Boolean        @default(false) // Master switch for Super Admin
   
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  creatorId           String
+  creator             User           @relation("CreatedMarketing", fields: [creatorId], references: [id])
+  
+  tenantId            String
+  
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([creatorId])
   @@index([tenantId])
@@ -1815,6 +1876,8 @@ enum MarketingType {
   NOTIFICATION
   NOTICE
   HOVER
+  POPUP
+  RIBBON
 }
 
 enum TargetType {
@@ -1822,6 +1885,7 @@ enum TargetType {
   IDENTITY
   BRANCH
   SPECIFIC
+  LOCATION
 }
 
 model UserLoginLog {
@@ -1895,10 +1959,9 @@ model FeatureRestriction {
   @@index([tenantId, identity])
 }
 
-// ============================================================
+// =====================================================
 // NEW: Unified Application System (runs alongside existing tables)
-// ============================================================
-
+// ==============================================
 model Application {
   id                String   @id @default(uuid())
   userId            String   // Target user (who is being upgraded)
