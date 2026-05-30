@@ -513,7 +513,6 @@ const membershipController = {
           app = await tx.membershipApplication.update({
             where: { id: existingApplication.id },
             data: { ...mappedData, status: 'RESUBMITTED', createdById: userId }
-            data: { ...mappedData, status: 'PENDING', createdById: userId }
           });
         } else if (existingApplication && existingApplication.status === 'PAYMENT_PENDING') {
           // Update the existing application instead of creating a new one

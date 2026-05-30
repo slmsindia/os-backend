@@ -40,7 +40,7 @@ const databaseConfigMiddleware = (req, res, next) => {
   const databaseUrl =
     (process.env.DATABASE_URL || "").trim() ||
     getDatabaseUrlFromEnvFile();
-  const databaseUrl = (process.env.DATABASE_URL || "").trim() || getDatabaseUrlFromEnvFile();
+
 
   if (databaseUrl) {
     process.env.DATABASE_URL = databaseUrl;

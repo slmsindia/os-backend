@@ -7,6 +7,7 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const openApiSpec = require("./docs/openapi");
 
 const tenantMiddleware = require("./middleware/tenant.middleware");
+const databaseConfigMiddleware = require("./middleware/database-config.middleware");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const deviceRoutes = require("./routes/device.routes");
@@ -59,8 +60,6 @@ app.use(morgan("dev"));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(databaseConfigMiddleware);
 
 // Health checks stay available even when DATABASE_URL is intentionally unset.
@@ -70,8 +69,6 @@ app.get("/api/health-check", (req, res) => res.json({
   timestamp: new Date().toISOString()
 }));
 app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 const buildSwaggerSpec = (req) => {
   const forwardedProto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
