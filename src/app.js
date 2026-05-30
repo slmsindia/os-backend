@@ -56,6 +56,20 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan("dev"));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(databaseConfigMiddleware);
+
+// Health checks stay available even when DATABASE_URL is intentionally unset.
+app.get("/api/health-check", (req, res) => res.json({
+  status: "ok",
+  version: "1.0.7",
+  timestamp: new Date().toISOString()
+}));
+app.get("/api/ping", (req, res) => res.json({ message: "pong" }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 

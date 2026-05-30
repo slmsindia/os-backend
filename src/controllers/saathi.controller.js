@@ -67,7 +67,8 @@ const saathiController = {
           const parsed = JSON.parse(feeSetting.value);
           amount = parsed.amount !== undefined ? parsed.amount : 1000;
         } catch (e) {
-          amount = parseFloat(feeSetting.value);
+          const val = parseFloat(feeSetting.value);
+          amount = isNaN(val) ? 1000 : val;
         }
       }
 
@@ -100,6 +101,10 @@ const saathiController = {
           console.log(`[SaathiApply] Insufficient wallet balance for user ${userId}. Falling back to Razorpay.`);
           finalPaymentMethod = 'RAZORPAY';
         }
+      }
+
+      if (amount === 0) {
+        finalPaymentMethod = 'FREE';
       }
 
       // Create Razorpay Order if needed (OUTSIDE transaction)

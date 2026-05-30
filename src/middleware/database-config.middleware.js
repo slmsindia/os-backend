@@ -5,12 +5,12 @@ const allowedWithoutDatabase = new Set([
   "/api/health-check",
   "/api/ping",
   "/api-docs",
-  "/api-docs.json"
+  "/api-docs.json",
 ]);
 
-const isAllowedWithoutDatabase = (path) => {
-  if (allowedWithoutDatabase.has(path)) return true;
-  return path.startsWith("/api-docs/");
+const isAllowedWithoutDatabase = (requestPath) => {
+  if (allowedWithoutDatabase.has(requestPath)) return true;
+  return requestPath.startsWith("/api-docs/");
 };
 
 const getDatabaseUrlFromEnvFile = () => {
@@ -18,6 +18,7 @@ const getDatabaseUrlFromEnvFile = () => {
 
   try {
     const content = fs.readFileSync(envPath, "utf8");
+
     const line = content
       .split(/\r?\n/)
       .find((entry) => /^\s*DATABASE_URL\s*=/.test(entry));
@@ -28,7 +29,7 @@ const getDatabaseUrlFromEnvFile = () => {
     return rawValue.replace(/^['"]|['"]$/g, "").trim();
   } catch (err) {
     return "";
-  }
+  } 
 };
 
 const databaseConfigMiddleware = (req, res, next) => {
@@ -36,6 +37,9 @@ const databaseConfigMiddleware = (req, res, next) => {
     return next();
   }
 
+  const databaseUrl =
+    (process.env.DATABASE_URL || "").trim() ||
+    getDatabaseUrlFromEnvFile();
   const databaseUrl = (process.env.DATABASE_URL || "").trim() || getDatabaseUrlFromEnvFile();
 
   if (databaseUrl) {
@@ -47,6 +51,8 @@ const databaseConfigMiddleware = (req, res, next) => {
   if (!databaseUrl) {
     return res.status(503).json({
       success: false,
+      message:
+        "Database is not configured. Please set DATABASE_URL to use this service.",
       message: "server error"
     });
   }
