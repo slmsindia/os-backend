@@ -79,7 +79,8 @@ const notificationController = {
             case 'ALL':
               return true;
             case 'IDENTITY':
-              return myIdentity === item.targetIdentity;
+              if (!item.targetIdentity) return false;
+              return item.targetIdentity.split(',').includes(myIdentity);
             case 'BRANCH':
               return userId === item.targetUserId || (me.path && me.path.includes(item.targetUserId));
             case 'SPECIFIC':
@@ -101,6 +102,11 @@ const notificationController = {
               if (item.targetPincodes && item.targetPincodes.length > 0) {
                 const userPincode = me.registrationPincode;
                 if (!userPincode || !item.targetPincodes.includes(userPincode)) return false;
+              }
+              // Optional role filter within location targeting
+              if (item.targetIdentity && item.targetIdentity !== 'ALL') {
+                const allowedRoles = item.targetIdentity.split(',');
+                if (!allowedRoles.includes(myIdentity)) return false;
               }
               return true;
             }
