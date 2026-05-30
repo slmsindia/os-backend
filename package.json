@@ -4,29 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-<<<<<<< HEAD
-<<<<<<< HEAD
+
     "postinstall": "prisma generate",
     "start": "prisma db push --accept-data-loss && node src/server.js",
-=======
-    "start": "node src/server.js",
->>>>>>> main
-=======
-    "postinstall": "prisma generate",
-    "start": "prisma db push --accept-data-loss && node src/server.js",
->>>>>>> origin/main
+
     "dev": "nodemon src/server.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "seed": "node prisma/seed.js",
-<<<<<<< HEAD
-<<<<<<< HEAD
     "seed:membership": "node scripts/seed-membership.js",
-=======
->>>>>>> main
-=======
-    "seed:membership": "node scripts/seed-membership.js",
->>>>>>> origin/main
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -44,38 +30,21 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
+
+
+
+
     "razorpay": "^2.9.6",
     "soap": "^1.8.0",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^14.0.0",
-<<<<<<< HEAD
-=======
-    "soap": "^1.8.0",
-    "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
->>>>>>> main
-=======
->>>>>>> origin/main
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
     "prisma": "^6.4.1"
-<<<<<<< HEAD
-<<<<<<< HEAD
   },
   "prisma": {
     "seed": "node prisma/seed.js"
-=======
->>>>>>> main
-=======
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
->>>>>>> origin/main
   }
 }
