@@ -65,9 +65,10 @@ const saathiController = {
       if (feeSetting && feeSetting.value) {
         try {
           const parsed = JSON.parse(feeSetting.value);
-          amount = parsed.amount || 1000;
+          amount = parsed.amount !== undefined ? parsed.amount : 1000;
         } catch (e) {
-          amount = parseFloat(feeSetting.value);
+          const val = parseFloat(feeSetting.value);
+          amount = isNaN(val) ? 1000 : val;
         }
       }
 
@@ -102,8 +103,12 @@ const saathiController = {
         }
       }
 
+      if (amount === 0) {
+        finalPaymentMethod = 'FREE';
+      }
+
       // Create Razorpay Order if needed (OUTSIDE transaction)
-      if (finalPaymentMethod === 'RAZORPAY' && !isPaidResubmission) {
+      if (finalPaymentMethod === 'RAZORPAY' && !isPaidResubmission && amount > 0) {
         const razorpayService = require("../services/razorpay.service");
         try {
           razorpayOrder = await razorpayService.createOrder(

@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function main() { const drafts = await prisma.formDraft.findMany({select: {id:true, formType:true, targetMobile:true, tenantId:true, userId:true}}); console.log(JSON.stringify(drafts, null, 2)); } main().finally(() => prisma.$disconnect());

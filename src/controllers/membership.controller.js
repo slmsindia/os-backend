@@ -249,7 +249,12 @@ const membershipController = {
           identity: true,
           email: true,
           gender: true,
-          dateOfBirth: true
+          dateOfBirth: true,
+          memberProfile: true,
+          registrationState: true,
+          registrationCity: true,
+          registrationPincode: true,
+          registrationAddress: true
         } 
       });
 
@@ -265,7 +270,7 @@ const membershipController = {
       }
       res.json({
         success: true, isRegistered: !!user, user: user || null,
-        application: application ? { id: application.id, status: application.status, paymentStatus: application.payment?.status || application.paymentStatus || 'NONE', createdAt: application.createdAt, rejectionReason: application.rejectionReason } : null
+        application: application ? { id: application.id, status: application.status, paymentStatus: application.payment?.status || application.paymentStatus || 'NONE', createdAt: application.createdAt, rejectionReason: application.rejectionReason, submittedData: application.submittedData || null } : null
       });
     } catch (err) { res.status(500).json({ success: false, message: "Internal server error" }); }
   },
